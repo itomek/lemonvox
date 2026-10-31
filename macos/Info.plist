@@ -11,4 +11,10 @@
 <key>LSUIElement</key><true/>
 <key>NSMicrophoneUsageDescription</key><string>LemonVox records speech for dictation through a local Lemonade server.</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>SUBundleName</key><string>LemonVox</string>
+<key>SUFeedURL</key><string>https://itomek.github.io/lemonvox/appcast.xml</string>
+<key>SUPublicEDKey</key><string>6UhLm/9m1qTqT3LVvUUggD+MTcrny6HUWAdEHoDEShc=</string>
+<key>SUEnableAutomaticChecks</key><true/>
+<key>SUScheduledCheckInterval</key><integer>86400</integer>
+<key>SUAutomaticallyUpdate</key><false/>
 </dict></plist>

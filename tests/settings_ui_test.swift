@@ -26,6 +26,9 @@ import AppKit
         precondition(pane.trigger.recording); pane.trigger.cancelRecording()
         var saved:DictationConfig?
         var closed=false
+        var updateSaved:(Bool,Bool)?
+        pane.updatePreferences={ (false,true) }
+        pane.saveUpdatePreferences={ updateSaved=($0,$1) }
         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
         precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && pane.save.isEnabled)
         precondition(pane.prompt.string == config.cleanupPrompt)
@@ -76,6 +79,7 @@ import AppKit
                         Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
                             MainActor.assumeIsolated {
                                 pane.saveSettings()
+                                precondition(updateSaved?.0 == false && updateSaved?.1 == true)
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
                                 precondition(saved?.cleanupPrompt == config.cleanupPrompt && !pane.window.isVisible)
                                 try? FileManager.default.removeItem(at:directory)

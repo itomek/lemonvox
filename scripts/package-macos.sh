@@ -44,6 +44,15 @@ with plist.open('wb') as f: plistlib.dump(info,f)
 fixture=app/'Contents/Resources/LemonVox Keyboard Test.app'
 if fixture.exists(): shutil.rmtree(fixture)
 PY
+# Seal nested updater code inside-out, using the same identity as the app.
+SPARKLE_FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
+for COMPONENT in "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate" "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Downloader.xpc" "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc" "$SPARKLE_FRAMEWORK/Versions/B/Updater.app" "$SPARKLE_FRAMEWORK"; do
+    if [[ "$MODE" == developer-id ]]; then
+        /usr/bin/codesign --force --sign "$IDENTITY" --options runtime --timestamp --preserve-metadata=entitlements "$COMPONENT"
+    else
+        /usr/bin/codesign --force --sign - --timestamp=none --preserve-metadata=entitlements "$COMPONENT"
+    fi
+done
 if [[ "$MODE" == developer-id ]]; then
     /usr/bin/codesign --force --sign "$IDENTITY" --identifier com.itomek.lemonvox.prototype --options runtime --timestamp --entitlements "$ROOT/macos/LemonVox.entitlements" "$APP"
 else
