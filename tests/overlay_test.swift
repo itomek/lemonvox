@@ -39,6 +39,21 @@ import AppKit
             panel.setPhase(.message("Target changed · text ready to copy"))
             precondition(panel.overlay.stopButton.isHidden)
             precondition(panel.overlay.statusLabel.stringValue == "Target changed · text ready to copy")
+            var opened = 0, retried = 0
+            panel.onOpenSettings = { opened += 1 }
+            panel.onRetryPermission = { retried += 1 }
+            panel.showPermission("Enable Accessibility; the previous trigger remains active.")
+            precondition(!panel.canBecomeKey && panel.overlay.openSettingsButton.isHidden == false)
+            precondition(!panel.overlay.retryPermissionButton.isHidden)
+            precondition(panel.overlay.openSettingsButton.frame.maxY < panel.overlay.statusLabel.frame.minY)
+            precondition(panel.overlay.retryPermissionButton.frame.maxX < panel.overlay.bounds.maxX)
+            panel.overlay.openSettingsButton.performClick(nil)
+            panel.overlay.retryPermissionButton.performClick(nil)
+            precondition(opened == 1 && retried == 1)
+            panel.setPhase(.recording)
+            precondition(panel.overlay.openSettingsButton.isHidden && panel.overlay.retryPermissionButton.isHidden)
+            panel.overlay.openSettingsButton.performClick(nil)
+            precondition(opened == 1, "Hidden permission action must not run during dictation")
             panel.orderOut(nil)
             panel.overlay.startAnimation()
             print("PASS: native glass, readable status, light/dark controls and phase callbacks")
