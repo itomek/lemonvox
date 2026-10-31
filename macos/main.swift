@@ -64,6 +64,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var useCurrentField = UserDefaults.standard.bool(forKey: "currentField")
     var triggerChoice = UserDefaults.standard.data(forKey:"triggerChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
         ?? TriggerChoice.migrate(UserDefaults.standard.object(forKey:"shortcut") as? Int)
+    var pendingPermissionTrigger:TriggerChoice?
     var modifierTrigger:ModifierTrigger?
     var sampleMode = CommandLine.arguments.contains("--smoke-cancel") || CommandLine.arguments.contains("--sample")
     let capture = Recorder()
@@ -85,13 +86,15 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         super.init(); lv_init(&session)
         panel.onCancel = { [weak self] in
             guard let self else { return }
-            if self.session.state == LV_IDLE && !self.inserting { self.panel.orderOut(nil) }
+            if self.session.state == LV_IDLE && !self.inserting { self.pendingPermissionTrigger=nil; self.panel.orderOut(nil) }
             else { self.cancel() }
         }
         panel.onStop = { [weak self] in
             guard let self, self.session.state == LV_RECORDING else { return }
             self.toggle()
         }
+        panel.onOpenSettings = { [weak self] in self?.openAccessibilitySettings() }
+        panel.onRetryPermission = { [weak self] in self?.retryPermissionTrigger() }
         applyAppearance()
     }
     func applyAppearance() {
@@ -226,15 +229,47 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             guard result == noErr else { panel.show("Shortcut unavailable (\(result)); previous retained"); return false }
             modifierTrigger?.stop(); modifierTrigger=nil
         case .doubleTap(let key):
+            guard AXIsProcessTrusted() else {
+                pendingPermissionTrigger=choice
+                let fallback = binding.reference != nil || modifierTrigger != nil ? "The previous trigger stays active." : "Start dictation from the menu meanwhile."
+                panel.showPermission("Enable LemonVox in Accessibility, then Check Again. " + fallback)
+                return false
+            }
             let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
                 guard let self else { return false }; return !self.configuring && !self.inserting
             },fire:{ [weak self] in self?.toggle() })
-            guard candidate.start() else { candidate.stop(); panel.show("Accessibility needed for modifier trigger; previous retained"); return false }
+            guard candidate.start() else { candidate.stop(); panel.show("Modifier trigger unavailable; previous trigger retained. Try again in Settings."); return false }
             modifierTrigger?.stop(); modifierTrigger=candidate; binding.clear()
         }
-        triggerChoice=choice; return true
+        pendingPermissionTrigger=nil; triggerChoice=choice; return true
     }
-    func item(_ title: String, _ action: Selector) -> NSMenuItem {
+    func openAccessibilitySettings() {
+        // User action only. macOS owns the permission dialog and switch.
+        let options=[kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String:true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        guard let url=URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"),
+              NSWorkspace.shared.open(url) else {
+            panel.showPermission("Open System Settings → Privacy & Security → Accessibility. Enable LemonVox, then Check Again.")
+            return
+        }
+    }
+    func retryPermissionTrigger() {
+        guard session.state == LV_IDLE && !inserting, let choice=pendingPermissionTrigger else { return }
+        guard AXIsProcessTrusted() else {
+            panel.showPermission("Accessibility is still off. Enable the current LemonVox app; relaunch if macOS requires it.")
+            return
+        }
+        // A failed Settings save remains a draft. Permission recovery must not
+        // commit that draft independently of the Settings Save action.
+        if configuring {
+            panel.show("Accessibility available · return to Settings and Save")
+            return
+        }
+        guard installTrigger(choice) else { return }
+        if let data=try? JSONEncoder().encode(choice) { UserDefaults.standard.set(data,forKey:"triggerChoice") }
+        panel.show("Accessibility available · trigger ready")
+    }
+        func item(_ title: String, _ action: Selector) -> NSMenuItem {
         let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
         entry.target = self
         return entry
@@ -278,7 +313,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             guard let self else { return }
             UserDefaults.standard.set(try JSONEncoder().encode(updated), forKey:"dictationConfig")
             self.config=updated
-        }, close: { [weak self] in self?.configuring=false })
+        }, close: { [weak self] in
+            guard let self else { return }
+            self.configuring=false
+            if self.pendingPermissionTrigger != nil { self.panel.orderOut(nil) }
+            self.pendingPermissionTrigger=nil
+        })
     }
     @objc func toggle() {
         guard !configuring, !inserting else { return }

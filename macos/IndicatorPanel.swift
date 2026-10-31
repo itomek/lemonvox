@@ -1,6 +1,6 @@
 import AppKit
 
-enum OverlayPhase { case recording, processing, message(String) }
+enum OverlayPhase { case recording, processing, message(String), permission(String) }
 
 final class OverlayButton: NSButton {
     override var acceptsFirstResponder: Bool { false }
@@ -31,6 +31,10 @@ final class OverlayView: NSView {
     let activity = ActivityView()
     let cancelButton = OverlayButton()
     let stopButton = OverlayButton()
+    let openSettingsButton = OverlayButton(title:"Open Settings…",target:nil,action:nil)
+    let retryPermissionButton = OverlayButton(title:"Check Again",target:nil,action:nil)
+    var onOpenSettings: (() -> Void)?
+    var onRetryPermission: (() -> Void)?
     var onCancel: (() -> Void)?
     var onStop: (() -> Void)?
     var phase = OverlayPhase.recording { didSet { updateState() } }
@@ -66,6 +70,11 @@ final class OverlayView: NSView {
             button.toolTip = description; button.setAccessibilityLabel(description)
             content.addSubview(button)
         }
+        for (button, action) in [(openSettingsButton, #selector(openSettings)), (retryPermissionButton, #selector(retryPermission))] {
+            button.bezelStyle = .rounded; button.target = self; button.action = action
+            button.refusesFirstResponder = true; button.setAccessibilityLabel(button.title)
+            content.addSubview(button)
+        }
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -89,11 +98,17 @@ final class OverlayView: NSView {
         activity.frame = NSRect(x: 56, y: bounds.midY - 14, width: 43, height: 28)
         spinner.frame = NSRect(x: 66, y: bounds.midY - 8, width: 16, height: 16)
         let message: Bool
-        if case .message = phase { message = true } else { message = false }
+        switch phase { case .message, .permission: message = true; default: message = false }
         statusLabel.maximumNumberOfLines = message ? 2 : 1
         statusLabel.lineBreakMode = message ? .byWordWrapping : .byTruncatingTail
         statusLabel.frame = NSRect(x: message ? 56 : 110, y: bounds.midY - (message ? 20 : 9),
             width: bounds.width - (message ? 72 : 164), height: message ? 40 : 20)
+        if case .permission = phase {
+            statusLabel.frame = NSRect(x:56,y:bounds.height-54,width:bounds.width-72,height:40)
+            cancelButton.frame.origin.y = bounds.height-46
+            openSettingsButton.frame = NSRect(x:56,y:12,width:142,height:28)
+            retryPermissionButton.frame = NSRect(x:208,y:12,width:120,height:28)
+        }
     }
     func updateAccessibilityAppearance() {
         applyTransparencyPreference(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
@@ -117,7 +132,7 @@ final class OverlayView: NSView {
     func startAnimation() {
         stopAnimation()
         guard window?.isVisible == true else { return }
-        if case .message = phase { return }
+        switch phase { case .message, .permission: return; default: break }
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         if case .processing = phase { spinner.startAnimation(nil) }
         animation = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -126,6 +141,9 @@ final class OverlayView: NSView {
         if let animation { RunLoop.main.add(animation, forMode: .common) }
     }
     private func updateState() {
+        let permission: Bool
+        if case .permission = phase { permission = true } else { permission = false }
+        openSettingsButton.isHidden = !permission; retryPermissionButton.isHidden = !permission
         switch phase {
         case .recording:
             statusLabel.stringValue = isSample ? "Sample recording" : "Listening…"
@@ -141,7 +159,7 @@ final class OverlayView: NSView {
             }
             activity.isHidden = true; spinner.isHidden = false
             stopButton.isHidden = false; stopButton.isEnabled = false
-        case .message(let message):
+        case .message(let message), .permission(let message):
             statusLabel.stringValue = message
             activity.isHidden = true; spinner.isHidden = true
             stopButton.isHidden = true; stopButton.isEnabled = false
@@ -150,6 +168,8 @@ final class OverlayView: NSView {
         needsLayout = true
         if window?.isVisible == true { startAnimation() }
     }
+    @objc private func openSettings() { if case .permission = phase { onOpenSettings?() } }
+    @objc private func retryPermission() { if case .permission = phase { onRetryPermission?() } }
     @objc private func cancel() { onCancel?() }
     @objc private func stop() { if stopButton.isEnabled { onStop?() } }
 }
@@ -160,6 +180,8 @@ final class IndicatorPanel: NSPanel {
     let overlay = OverlayView(frame: NSRect(x: 0, y: 0, width: 280, height: 56))
     var onCancel: (() -> Void)? { didSet { overlay.onCancel = onCancel } }
     var onStop: (() -> Void)? { didSet { overlay.onStop = onStop } }
+    var onOpenSettings: (() -> Void)? { didSet { overlay.onOpenSettings = onOpenSettings } }
+    var onRetryPermission: (() -> Void)? { didSet { overlay.onRetryPermission = onRetryPermission } }
     init() {
         super.init(contentRect: overlay.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         level = .floating
@@ -172,8 +194,11 @@ final class IndicatorPanel: NSPanel {
     func setPhase(_ phase: OverlayPhase) {
         overlay.phase = phase
         let size: NSSize
-        if case .message = phase { size = NSSize(width: 430, height: 72) }
-        else { size = NSSize(width: 280, height: 56) }
+        switch phase {
+        case .permission: size = NSSize(width:480,height:112)
+        case .message: size = NSSize(width:430,height:72)
+        default: size = NSSize(width:280,height:56)
+        }
         setContentSize(size)
         overlay.layoutSubtreeIfNeeded()
     }
@@ -185,6 +210,7 @@ final class IndicatorPanel: NSPanel {
         }
         orderFrontRegardless(); overlay.startAnimation()
     }
+    func showPermission(_ text: String) { present(.permission(text)) }
     func show(_ text: String) { present(.message(text)) }
     override func orderOut(_ sender: Any?) { overlay.stopAnimation(); super.orderOut(sender) }
 }
