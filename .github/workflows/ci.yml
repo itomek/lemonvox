@@ -1,0 +1,33 @@
+name: macOS checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify runner and toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          xcodebuild -version
+          xcrun swiftc --version
+          xcrun --sdk macosx --show-sdk-version
+      - name: Build, test and package without release credentials
+        run: |
+          bash scripts/package-macos.sh --ad-hoc --output "$RUNNER_TEMP/lemonvox-check" --version 0.0.0 --build-number "$GITHUB_RUN_NUMBER"
+          bash tests/packaging_test.sh "$RUNNER_TEMP/lemonvox-check/LemonVox-0.0.0-$GITHUB_RUN_NUMBER-arm64-ad-hoc.zip"
