@@ -269,7 +269,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if let data=try? JSONEncoder().encode(choice) { UserDefaults.standard.set(data,forKey:"triggerChoice") }
         panel.show("Accessibility available · trigger ready")
     }
-        func item(_ title: String, _ action: Selector) -> NSMenuItem {
+    func item(_ title: String, _ action: Selector) -> NSMenuItem {
         let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
         entry.target = self
         return entry

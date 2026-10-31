@@ -31,7 +31,7 @@ final class OverlayView: NSView {
     let activity = ActivityView()
     let cancelButton = OverlayButton()
     let stopButton = OverlayButton()
-    let openSettingsButton = OverlayButton(title:"Open Settings…",target:nil,action:nil)
+    let openSettingsButton = OverlayButton(title:"Open Accessibility Settings…",target:nil,action:nil)
     let retryPermissionButton = OverlayButton(title:"Check Again",target:nil,action:nil)
     var onOpenSettings: (() -> Void)?
     var onRetryPermission: (() -> Void)?
@@ -106,8 +106,8 @@ final class OverlayView: NSView {
         if case .permission = phase {
             statusLabel.frame = NSRect(x:56,y:bounds.height-54,width:bounds.width-72,height:40)
             cancelButton.frame.origin.y = bounds.height-46
-            openSettingsButton.frame = NSRect(x:56,y:12,width:142,height:28)
-            retryPermissionButton.frame = NSRect(x:208,y:12,width:120,height:28)
+            openSettingsButton.frame = NSRect(x:56,y:12,width:220,height:28)
+            retryPermissionButton.frame = NSRect(x:288,y:12,width:120,height:28)
         }
     }
     func updateAccessibilityAppearance() {
