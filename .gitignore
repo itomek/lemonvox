@@ -1,0 +1,10 @@
+.build/
+.DS_Store
+.env
+.env.*
+*.p8
+*.p12
+*.pfx
+*.key
+*.cer
+*.certSigningRequest
