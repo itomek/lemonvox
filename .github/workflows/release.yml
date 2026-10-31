@@ -40,11 +40,14 @@ jobs:
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$(uname -m)" = arm64
           # Distinguish a missing release from a network/authentication failure.
+          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$RELEASE_VERSION" > "$RUNNER_TEMP/tags.json"
           gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --slurp > "$RUNNER_TEMP/releases.json"
           python3 - <<'PY'
           import json, os
           releases=[r for page in json.load(open(os.environ['RUNNER_TEMP']+'/releases.json')) for r in page]
           assert all(r['tag_name'] != 'v'+os.environ['RELEASE_VERSION'] for r in releases), 'Release already exists'
+          tags=json.load(open(os.environ['RUNNER_TEMP']+'/tags.json'))
+          assert all(t['ref'] != 'refs/tags/v'+os.environ['RELEASE_VERSION'] for t in tags), 'Tag already exists; reconcile before release'
           PY
       - name: Import approved signing identity into temporary Keychain
         env:
@@ -107,7 +110,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $GITHUB_SHA."
+          # Create the tag atomically. An existing/concurrently created tag
+          # fails here instead of silently releasing a different source commit.
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$GITHUB_SHA" >/dev/null
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $GITHUB_SHA."
       - name: Remove temporary signing material
         if: ${{ always() }}
         run: |
