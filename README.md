@@ -13,4 +13,4 @@ macOS comes first. Windows and Ubuntu follow, sharing the dictation pipeline and
 
 The local Mac prototype uses Swift/AppKit and a small C++ session core. It supports a fixed-text sample mode and a user-started microphone → local Lemonade transcription → cleanup → insertion path. [Build and test instructions](macos/PROTOTYPE.md) describe configuration, permissions, and remaining live checks.
 
-License selection is pending; this repository does not yet include a license.
+Licensed under the [MIT License](LICENSE).
