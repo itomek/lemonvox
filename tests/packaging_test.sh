@@ -30,6 +30,7 @@ if [[ $# -gt 0 ]]; then
     TASK_APP="$TASK_TEMP/unpacked/LemonVox Prototype.app"
     /usr/bin/codesign --verify --strict --verbose=2 "$TASK_APP"
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TASK_APP/Contents/Info.plist")" = com.itomek.lemonvox.prototype
+    cmp "$ROOT/LICENSE" "$TASK_APP/Contents/Resources/LICENSE"
     test ! -e "$TASK_APP/Contents/Resources/LemonVox Keyboard Test.app"
     printf '\ntamper' >> "$TASK_APP/Contents/Resources/LemonVox.icns"
     if /usr/bin/codesign --verify --strict "$TASK_APP" >/dev/null 2>&1; then echo 'FAIL: tampered resource accepted'; exit 1; fi

@@ -63,6 +63,7 @@ xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" "$ROO
 "$OUT/render-icons" "$OUT/LemonVox.iconset"
 mkdir -p "$APP/Contents/Resources"
 iconutil -c icns "$OUT/LemonVox.iconset" -o "$APP/Contents/Resources/LemonVox.icns"
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/tests/modifier_trigger_test.swift" -framework AppKit -framework ApplicationServices -o "$OUT/modifier-trigger-test"
 "$OUT/modifier-trigger-test"

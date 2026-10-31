@@ -1,6 +1,6 @@
 # macOS packaging and signing
 
-The package builder creates a versioned app and ZIP in a new output directory. It builds/tests in isolated staging, preserves bundle ID `com.itomek.lemonvox.prototype` and executable `LemonVoxPrototype`, excludes the development keyboard-test fixture, signs and verifies the finished bundle, and records a checksum and source/version manifest. It does not install, launch, notarize or publish the app.
+The package builder creates a versioned app and ZIP in a new output directory. It builds/tests in isolated staging, preserves bundle ID `com.itomek.lemonvox.prototype` and executable `LemonVoxPrototype`, excludes the development keyboard-test fixture, includes the MIT license, signs and verifies the finished bundle, and records a checksum and source/version manifest. It does not install, launch, notarize or publish the app.
 
 ## Local verification package
 
