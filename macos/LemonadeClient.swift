@@ -81,13 +81,23 @@ struct LocalModel: Decodable {
     let recipe: String?
     let labels: [String]?
     let cloud_provider: String?
+    private func coreFacts() -> LVModelFacts {
+        var facts = LVModelFacts()
+        facts.downloaded = downloaded == true ? 1 : 0
+        facts.has_cloud_provider = cloud_provider == nil ? 0 : 1
+        facts.is_cloud_recipe = recipe == "cloud" ? 1 : 0
+        facts.is_whispercpp_recipe = recipe == "whispercpp" ? 1 : 0
+        facts.is_moonshine_recipe = recipe == "moonshine" ? 1 : 0
+        facts.is_llamacpp_recipe = recipe == "llamacpp" ? 1 : 0
+        facts.is_flm_recipe = recipe == "flm" ? 1 : 0
+        facts.is_ryzenai_llm_recipe = recipe == "ryzenai-llm" ? 1 : 0
+        facts.has_transcription_label = labels?.contains("transcription") == true ? 1 : 0
+        facts.has_chat_label = labels?.contains("chat") == true ? 1 : 0
+        return facts
+    }
     func supports(_ asr: Bool) -> Bool {
-        if recipe == "cloud", cloud_provider != nil {
-            return !asr && labels?.contains("chat") == true
-        }
-        guard downloaded == true, cloud_provider == nil else { return false }
-        let allowed = asr ? ["whispercpp", "moonshine"] : ["llamacpp", "flm", "ryzenai-llm"]
-        return allowed.contains(recipe ?? "") && labels?.contains(asr ? "transcription" : "chat") == true
+        var facts = coreFacts()
+        return lv_model_supports(&facts, asr ? LV_MODEL_ASR : LV_MODEL_CLEANUP) != 0
     }
 }
 
