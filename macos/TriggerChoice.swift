@@ -11,23 +11,37 @@ enum TriggerChoice: Codable, Equatable {
 
 struct DoubleTapDetector {
     let key: UInt16
-    private var pressed: (key:UInt16,time:TimeInterval)?
-    private var first: (key:UInt16,time:TimeInterval)?
-    init(key:UInt16) { self.key=key }
-    mutating func reset() { pressed=nil; first=nil }
+    private var core: LVDoubleTapDetector
+    init(key:UInt16) {
+        self.key=key
+        core=LVDoubleTapDetector()
+        let target=Self.normalizedTarget(key)
+        lv_double_tap_init(&core,target.key,target.side)
+    }
+    mutating func reset() { lv_double_tap_cancel(&core) }
+    mutating func intervening(time:TimeInterval) {
+        _=lv_double_tap_event(&core,LVNormalizedKeyEvent(key:LV_KEY_UNKNOWN,side:LV_KEY_SIDE_NONE,action:LV_KEY_INTERVENING,timestamp:time))
+    }
     mutating func event(key candidate:UInt16, down:Bool, time:TimeInterval) -> Bool {
-        guard candidate == key || (key == 0 && [54,55].contains(candidate)) else { reset(); return false }
-        if down {
-            guard pressed == nil else { reset(); return false }
-            if let first, first.key != candidate || time-first.time > 0.35 || time < first.time { self.first=nil }
-            pressed=(candidate,time); return false
+        guard let normalized=Self.normalized(candidate) else { intervening(time:time); return false }
+        let action:LVKeyAction=down ? LV_KEY_PRESS : LV_KEY_RELEASE
+        return lv_double_tap_event(&core,LVNormalizedKeyEvent(key:normalized.key,side:normalized.side,action:action,timestamp:time)) != 0
+    }
+    private static func normalizedTarget(_ key:UInt16) -> (key:LVKeyIdentity,side:LVKeySide) {
+        key == 0 ? (LV_KEY_COMMAND,LV_KEY_SIDE_ANY) : (normalized(key) ?? (LV_KEY_UNKNOWN,LV_KEY_SIDE_NONE))
+    }
+    private static func normalized(_ key:UInt16) -> (key:LVKeyIdentity,side:LVKeySide)? {
+        switch key {
+        case 54: return (LV_KEY_COMMAND,LV_KEY_SIDE_RIGHT)
+        case 55: return (LV_KEY_COMMAND,LV_KEY_SIDE_LEFT)
+        case 58: return (LV_KEY_OPTION,LV_KEY_SIDE_LEFT)
+        case 61: return (LV_KEY_OPTION,LV_KEY_SIDE_RIGHT)
+        case 59: return (LV_KEY_CONTROL,LV_KEY_SIDE_LEFT)
+        case 62: return (LV_KEY_CONTROL,LV_KEY_SIDE_RIGHT)
+        case 56: return (LV_KEY_SHIFT,LV_KEY_SIDE_LEFT)
+        case 60: return (LV_KEY_SHIFT,LV_KEY_SIDE_RIGHT)
+        default: return nil
         }
-        guard let press=pressed,press.key == candidate,time >= press.time,time-press.time <= 0.25 else { reset(); return false }
-        pressed=nil
-        if let first,first.key == candidate,time-first.time <= 0.60 {
-            reset(); return true
-        }
-        first=(candidate,time); return false
     }
 }
 
