@@ -23,7 +23,8 @@ import ApplicationServices
     }
     func reset() { detector.reset() }
     func receive(_ event:NSEvent) {
-        guard allowed(),event.type == .flagsChanged else { reset(); return }
+        guard allowed() else { reset(); return }
+        guard event.type == .flagsChanged else { detector.intervening(time:event.timestamp); return }
         let key=event.keyCode
         let mask:NSEvent.ModifierFlags
         switch key {
@@ -31,10 +32,10 @@ import ApplicationServices
         case 58,61: mask = .option
         case 59,62: mask = .control
         case 56,60: mask = .shift
-        default: reset(); return
+        default: detector.intervening(time:event.timestamp); return
         }
         let flags=event.modifierFlags.intersection([.command,.option,.control,.shift,.capsLock,.function])
-        guard flags.subtracting(mask).isEmpty else { reset(); return }
+        guard flags.subtracting(mask).isEmpty else { detector.intervening(time:event.timestamp); return }
         // Device-specific flag bits disambiguate release when the opposite side is held.
         let sideBits:[UInt16:UInt64]=[55:0x8,54:0x10,58:0x20,61:0x40,59:0x1,62:0x2000,56:0x2,60:0x4]
         let down=(event.modifierFlags.rawValue & UInt(sideBits[key] ?? 0)) != 0

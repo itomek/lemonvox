@@ -16,12 +16,14 @@ mkdir -p "$OUT"
 SPARKLE=$(bash "$ROOT/scripts/prepare-sparkle.sh")
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/session_test.cpp" "$ROOT/core/session.cpp" -o "$OUT/session-test"
 "$OUT/session-test"
+xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/trigger_core_test.cpp" "$ROOT/core/session.cpp" -o "$OUT/trigger-core-test"
+"$OUT/trigger-core-test"
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -c "$ROOT/core/session.cpp" -o "$OUT/session.o"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/tests/core_bridge_test.swift" "$OUT/session.o" -lc++ -o "$OUT/core-bridge-test"
 "$OUT/core-bridge-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/tests/insertion_policy_test.swift" "$OUT/session.o" -lc++ -o "$OUT/policy-test"
 "$OUT/policy-test"
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/tests/hotkey_test.swift" -framework AppKit -framework Carbon -o "$OUT/hotkey-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/tests/hotkey_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework Carbon -o "$OUT/hotkey-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/IndicatorPanel.swift" "$ROOT/tests/overlay_test.swift" -framework AppKit -o "$OUT/overlay-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/tests/pipeline_test.swift" "$OUT/session.o" -lc++ -o "$OUT/pipeline-test"
 "$OUT/pipeline-test"
@@ -59,7 +61,7 @@ xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/system_clipboard_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework ApplicationServices -framework Carbon -o "$OUT/system-clipboard-test"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/tests/trigger_test.swift" -o "$OUT/trigger-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/tests/trigger_test.swift" "$OUT/session.o" -lc++ -o "$OUT/trigger-test"
 "$OUT/trigger-test"
 cp "$ROOT/scripts/render_icons.swift" "$OUT/main.swift"
 xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" "$ROOT/macos/LemonIcon.swift" "$OUT/main.swift" -framework AppKit -o "$OUT/render-icons"
@@ -68,7 +70,7 @@ mkdir -p "$APP/Contents/Resources"
 iconutil -c icns "$OUT/LemonVox.iconset" -o "$APP/Contents/Resources/LemonVox.icns"
 cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/tests/modifier_trigger_test.swift" -framework AppKit -framework ApplicationServices -o "$OUT/modifier-trigger-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/tests/modifier_trigger_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework ApplicationServices -o "$OUT/modifier-trigger-test"
 "$OUT/modifier-trigger-test"
 
 mkdir -p "$APP/Contents/Frameworks"

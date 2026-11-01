@@ -19,6 +19,8 @@ mkdir -p "$OUT"
 "$AR" rcs "$OUT/liblemonvox_core.a" "$OUT/session.o"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/session_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/session-test"
 "$OUT/session-test"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/trigger_core_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/trigger-core-test"
+"$OUT/trigger-core-test"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/contracts_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/contracts-test"
 "$OUT/contracts-test"
 echo 'PASS: portable core library and adapter contracts'
