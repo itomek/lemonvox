@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>LemonVox Prototype</title>
+        <item>
+            <title>0.2.0</title>
+            <pubDate>Sun, 01 Nov 2026 15:44:47 +0000</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/itomek/lemonvox/releases/download/v0.2.0/LemonVox-0.2.0-arm64.zip" length="1500569" type="application/octet-stream" sparkle:edSignature="ojBH7Y05Mkuup6fFTigwolabhWjMBY8sMetoLqYH9ZUzCwKL8mOVxrQgyOUm0KiWi5A/W96XEgeK/zP2hW4xAg=="/>
+        </item>
+    </channel>
+</rss>
