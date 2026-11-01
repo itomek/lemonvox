@@ -1,8 +1,13 @@
-name: Release (awaiting signing setup)
+name: Protected draft release
 
 on:
   workflow_dispatch:
     inputs:
+      source_commit:
+        description: Exact reviewed main commit to build
+        required: true
+        default: b90844ea38d2b29637922d1ea622ab38042f7c6a
+        type: string
       version:
         description: Release version (X.Y.Z)
         required: true
@@ -21,15 +26,15 @@ concurrency:
 
 jobs:
   release:
-    # Deliberately disabled. Enable only after the credential transfer and
-    # release environment protection described in docs/automation.md are approved.
-    if: ${{ false && github.ref == 'refs/heads/main' }}
+    # Manual dispatch still requires the protected release environment approval.
+    if: ${{ github.ref == 'refs/heads/main' }}
     environment: release
     runs-on: macos-26
     timeout-minutes: 90
     permissions:
       contents: write
     env:
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
       RELEASE_VERSION: ${{ inputs.version }}
       RELEASE_BUILD: ${{ inputs.build_number }}
       SIGNING_IDENTITY: ${{ vars.SIGNING_IDENTITY }}
@@ -38,10 +43,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.source_commit }}
       - name: Validate release input and destination
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$RELEASE_BUILD" =~ ^[1-9][0-9]*$ ]]
           gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/latest-release.json"
@@ -130,8 +141,8 @@ jobs:
         run: |
           # Create the tag atomically. An existing/concurrently created tag
           # fails here instead of silently releasing a different source commit.
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$GITHUB_SHA" >/dev/null
-          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $GITHUB_SHA."
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$SOURCE_COMMIT" >/dev/null
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $SOURCE_COMMIT."
       - name: Remove temporary signing material
         if: ${{ always() }}
         run: |
