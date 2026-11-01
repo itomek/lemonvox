@@ -34,6 +34,14 @@ import Foundation
         guard result.status == LV_PROTOCOL_UPSTREAM else { return nil }
         return text(result.value)
     }
+    static func utf32BE(_ scalars: [UInt32]) -> Data {
+        var bytes: [UInt8] = []
+        for scalar in scalars {
+            bytes.append(UInt8((scalar >> 24) & 0xFF)); bytes.append(UInt8((scalar >> 16) & 0xFF))
+            bytes.append(UInt8((scalar >> 8) & 0xFF)); bytes.append(UInt8(scalar & 0xFF))
+        }
+        return Data(bytes)
+    }
     static func main() {
         withSlice("http://127.0.0.1:13305/v1") { endpoint in
             withSlice("asr") { asr in
@@ -74,6 +82,25 @@ import Foundation
             precondition(decoded == jsonSerializationText(data), "Foundation disagreement for \(name)")
             precondition(decoded == protocolText(data), "Protocol disagreement for \(name)")
         }
+        let unicodeSource = #"{"text":"Żółć 😀"}"#
+        let unicodeEncodings: [(String, Data)] = [
+            ("unicode-utf16le", unicodeSource.data(using: .utf16LittleEndian)!),
+            ("unicode-utf16be", unicodeSource.data(using: .utf16BigEndian)!),
+            ("unicode-utf16le-bom", Data([0xFF, 0xFE]) + unicodeSource.data(using: .utf16LittleEndian)!),
+            ("unicode-utf16be-bom", Data([0xFE, 0xFF]) + unicodeSource.data(using: .utf16BigEndian)!),
+            ("unicode-utf32le", unicodeSource.data(using: .utf32LittleEndian)!),
+            ("unicode-utf32be", unicodeSource.data(using: .utf32BigEndian)!),
+            ("unicode-utf32be-bom", Data([0, 0, 0xFE, 0xFF]) + unicodeSource.data(using: .utf32BigEndian)!)
+        ]
+        for (name, data) in unicodeEncodings {
+            let decoded = (try? JSONDecoder().decode(Transcript.self, from: data))?.text
+            precondition(decoded == "Żółć 😀" && decoded == jsonSerializationText(data), "Foundation disagreement for \(name)")
+            precondition(decoded == protocolText(data), "Protocol disagreement for \(name)")
+        }
+        let loneSurrogate = Data(#"{"text":"\uD83D"}"#.utf8)
+        precondition((try? JSONDecoder().decode(Transcript.self, from: loneSurrogate)) == nil && protocolText(loneSurrogate) == nil)
+        let malformedUTF32 = utf32BE(Array(#"{"text":""#.utf8).map(UInt32.init) + [0x0011_0000] + Array(#""}"#.utf8).map(UInt32.init))
+        precondition((try? JSONDecoder().decode(Transcript.self, from: malformedUTF32)) == nil && protocolText(malformedUTF32) == nil)
         for number in ["1e9999", "-1e9999", "1e-9999", "123456789012345678901"] {
             let data = Data("{\"text\":\"x\",\"n\":\(number)}".utf8)
             precondition((try? JSONDecoder().decode(Transcript.self, from: data))?.text == "x")

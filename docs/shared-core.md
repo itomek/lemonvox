@@ -110,6 +110,21 @@ root container, so the core performs a post-parse 512-container check solely to
 retain that Mac behavior. It adds no audio, response, transcript, or byte-size
 cap.
 
+### Measured dependency burden
+
+On the same local arm64/macOS machine, a fresh unoptimized extraction build
+measured the following baseline-to-protocol change:
+
+| Measure | Baseline | Protocol build | Change |
+| --- | ---: | ---: | ---: |
+| `scripts/build.sh` elapsed time | 58.13 s | 59.40 s | +1.27 s |
+| App executable | 1,191,984 B | 2,446,128 B | +1,254,144 B |
+| App bundle | 4,532 KiB | 5,764 KiB | +1,232 KiB |
+
+This is local extraction evidence, not a package-size or performance guarantee.
+The vendored yyjson source is 756,745 bytes across `yyjson.c`, `yyjson.h`, and
+its MIT license; runtime artifact size is the relevant shipping measure.
+
 ## Swift ABI boundary
 
 [`core/session.h`](../core/session.h) is the narrow C-compatible bridge used by
