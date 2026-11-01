@@ -17,6 +17,8 @@ SPARKLE=$(bash "$ROOT/scripts/prepare-sparkle.sh")
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/session_test.cpp" "$ROOT/core/session.cpp" -o "$OUT/session-test"
 "$OUT/session-test"
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -c "$ROOT/core/session.cpp" -o "$OUT/session.o"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/tests/core_bridge_test.swift" "$OUT/session.o" -lc++ -o "$OUT/core-bridge-test"
+"$OUT/core-bridge-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/InsertionPolicy.swift" "$ROOT/tests/insertion_policy_test.swift" -o "$OUT/policy-test"
 "$OUT/policy-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/tests/hotkey_test.swift" -framework AppKit -framework Carbon -o "$OUT/hotkey-test"
