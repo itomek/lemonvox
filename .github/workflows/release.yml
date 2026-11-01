@@ -7,6 +7,10 @@ on:
         description: Release version (X.Y.Z)
         required: true
         type: string
+      build_number:
+        description: Increasing release build number (greater than latest published build)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +31,7 @@ jobs:
       contents: write
     env:
       RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_BUILD: ${{ inputs.build_number }}
       SIGNING_IDENTITY: ${{ vars.SIGNING_IDENTITY }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
     steps:
@@ -38,6 +43,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_BUILD" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/latest-release.json"
+          PREVIOUS_BUILD=$(python3 scripts/latest-release-build.py "$RUNNER_TEMP/latest-release.json")
+          test "$RELEASE_BUILD" -gt "$PREVIOUS_BUILD"
+          echo "PREVIOUS_BUILD=$PREVIOUS_BUILD" >> "$GITHUB_ENV"
           test "$(uname -m)" = arm64
           # Distinguish a missing release from a network/authentication failure.
           gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$RELEASE_VERSION" > "$RUNNER_TEMP/tags.json"
@@ -71,13 +81,13 @@ jobs:
           xcrun notarytool store-credentials lemonvox-ci --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$KEYCHAIN"
       - name: Build and sign reviewed source
         run: |
-          bash scripts/package-macos.sh --identity "$SIGNING_IDENTITY" --output "$RUNNER_TEMP/signed" --version "$RELEASE_VERSION" --build-number "$GITHUB_RUN_NUMBER"
-          bash tests/packaging_test.sh "$RUNNER_TEMP/signed/LemonVox-$RELEASE_VERSION-$GITHUB_RUN_NUMBER-arm64-developer-id.zip"
+          bash scripts/package-macos.sh --identity "$SIGNING_IDENTITY" --output "$RUNNER_TEMP/signed" --version "$RELEASE_VERSION" --build-number "$RELEASE_BUILD"
+          bash tests/packaging_test.sh "$RUNNER_TEMP/signed/LemonVox-$RELEASE_VERSION-$RELEASE_BUILD-arm64-developer-id.zip"
       - name: Submit once to Apple
         run: |
           # Never automatically retry submit. A failed/uncertain upload requires
           # reconciliation against notarytool history before a new workflow run.
-          xcrun notarytool submit "$RUNNER_TEMP/signed/LemonVox-$RELEASE_VERSION-$GITHUB_RUN_NUMBER-arm64-developer-id.zip" --keychain-profile lemonvox-ci --keychain "$RUNNER_TEMP/lemonvox-signing.keychain-db" --output-format json > "$RUNNER_TEMP/submission.json"
+          xcrun notarytool submit "$RUNNER_TEMP/signed/LemonVox-$RELEASE_VERSION-$RELEASE_BUILD-arm64-developer-id.zip" --keychain-profile lemonvox-ci --keychain "$RUNNER_TEMP/lemonvox-signing.keychain-db" --output-format json > "$RUNNER_TEMP/submission.json"
           python3 - <<'PY'
           import json, os
           submission=json.load(open(os.environ['RUNNER_TEMP']+'/submission.json'))
@@ -106,6 +116,14 @@ jobs:
           bash tests/packaging_test.sh "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip"
           cd "$RUNNER_TEMP/distribution"
           shasum -a 256 "LemonVox-$RELEASE_VERSION-arm64.zip" > SHA256SUMS
+      - name: Sign and validate final update feed
+        env:
+          SPARKLE_ED25519_PRIVATE_KEY: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$SPARKLE_ED25519_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-key"
+          bash scripts/prepare-update-feed.sh "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RELEASE_VERSION" "$PREVIOUS_BUILD" "$RUNNER_TEMP/sparkle-key"
+          rm "$RUNNER_TEMP/sparkle-key"
       - name: Create draft release for final review
         env:
           GH_TOKEN: ${{ github.token }}
@@ -113,11 +131,11 @@ jobs:
           # Create the tag atomically. An existing/concurrently created tag
           # fails here instead of silently releasing a different source commit.
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$GITHUB_SHA" >/dev/null
-          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $GITHUB_SHA."
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $GITHUB_SHA."
       - name: Remove temporary signing material
         if: ${{ always() }}
         run: |
-          rm -f "$RUNNER_TEMP/signing.p12"
+          rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/sparkle-key"
           if test -f "$RUNNER_TEMP/lemonvox-signing.keychain-db"; then
             security delete-keychain "$RUNNER_TEMP/lemonvox-signing.keychain-db"
           fi

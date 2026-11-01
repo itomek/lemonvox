@@ -5,6 +5,10 @@ import AppKit
     let scroll = NSScrollView()
     let trigger = TriggerControl(frame:.zero)
     let dark = NSButton(checkboxWithTitle:"Always use dark overlay",target:nil,action:nil)
+    let automaticChecks=NSButton(checkboxWithTitle:"Check for updates automatically",target:nil,action:nil)
+    let automaticInstallation=NSButton(checkboxWithTitle:"Download and install updates automatically",target:nil,action:nil)
+    var updatePreferences:(() -> (Bool,Bool))?
+    var saveUpdatePreferences:((Bool,Bool) -> Void)?
     let currentField = NSButton(checkboxWithTitle:"Insert into field selected at completion",target:nil,action:nil)
     var savePreferences: ((TriggerChoice,Bool,Bool) throws -> Void)?
     let endpoint = NSTextField()
@@ -38,7 +42,7 @@ import AppKit
         guard let root = window.contentView else { return }
         scroll.frame=NSRect(x:0,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
         scroll.hasVerticalScroller=true; scroll.drawsBackground=false
-        let view=NSView(frame:NSRect(x:0,y:0,width:640,height:850)); scroll.documentView=view; root.addSubview(scroll)
+        let view=NSView(frame:NSRect(x:0,y:0,width:640,height:930)); scroll.documentView=view; root.addSubview(scroll)
         func label(_ text: String, _ y: CGFloat) {
             let label = NSTextField(labelWithString:text); label.frame = NSRect(x:24,y:y,width:592,height:20)
             label.font = .systemFont(ofSize:13,weight:.medium); view.addSubview(label)
@@ -63,6 +67,9 @@ import AppKit
         let openLog=NSButton(title:"Open Log",target:self,action:#selector(openLog))
         openLog.frame=NSRect(x:24,y:150,width:110,height:30); view.addSubview(openLog)
         logPath.frame=NSRect(x:24,y:104,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
+        automaticChecks.frame=NSRect(x:24,y:900,width:592,height:24)
+        automaticInstallation.frame=NSRect(x:24,y:872,width:592,height:24)
+        view.addSubview(automaticChecks);view.addSubview(automaticInstallation)
         label("Dictation trigger", 820)
         trigger.frame=NSRect(x:24,y:752,width:592,height:62); view.addSubview(trigger)
         dark.frame=NSRect(x:24,y:720,width:280,height:24); view.addSubview(dark)
@@ -72,12 +79,15 @@ import AppKit
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
         if window.isVisible { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
         saveConfig=save; didClose=close
+        let updates=updatePreferences?() ?? (true,false)
+        automaticChecks.state=updates.0 ? .on : .off
+        automaticInstallation.state=updates.1 ? .on : .off
         endpoint.stringValue=config.endpoint; prompt.string=config.cleanupPrompt
         populate(transcription, models:[], selected:config.asrModel)
         populate(cleanup, models:[], selected:config.cleanupModel)
         previousMenu=NSApp.mainMenu; installEditingMenu()
         NSApp.setActivationPolicy(.accessory)
-        scroll.contentView.scroll(to:NSPoint(x:0,y:max(0,850-scroll.contentView.bounds.height))); scroll.reflectScrolledClipView(scroll.contentView)
+        scroll.contentView.scroll(to:NSPoint(x:0,y:max(0,930-scroll.contentView.bounds.height))); scroll.reflectScrolledClipView(scroll.contentView)
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true)
         log.record(.settingsOpened); refreshLogs(); refresh()
     }
@@ -131,7 +141,7 @@ import AppKit
     @objc func saveSettings() {
         let config=DictationConfig(endpoint:endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines),
             asrModel:selected(transcription),cleanupModel:selected(cleanup),cleanupPrompt:prompt.string)
-        do { trigger.cancelRecording(); _ = try config.baseURL(); try savePreferences?(trigger.choice,dark.state == .on,currentField.state == .on); try saveConfig?(config); log.record(.configSaved); window.close() }
+        do { trigger.cancelRecording(); _ = try config.baseURL(); try savePreferences?(trigger.choice,dark.state == .on,currentField.state == .on); try saveConfig?(config); saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on); log.record(.configSaved); window.close() }
         catch { status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue }
     }
     @objc func refreshLogs() {

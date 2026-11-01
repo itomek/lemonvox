@@ -75,6 +75,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var inserting = false
     lazy var paste = PasteTransaction(clipboard:SystemClipboard())
     var configuring = false
+    lazy var updater=UpdateCoordinator(safety:{ [weak self] in
+        guard let self else { return UpdateSafety(sessionBusy:true) }
+        return UpdateSafety(sessionBusy:self.session.state != LV_IDLE || self.capture.isRecording,
+            pasteBusy:self.inserting || self.paste.active,pendingText:self.pendingText != nil,settingsOpen:self.configuring)
+    },changed:{ [weak self] in self?.updateMenuIndicator() })
     let diagnostics = DiagnosticLog.shared
     lazy var settings = SettingsController(log: diagnostics,
         discover: { [transport] endpoint in try await ModelDiscovery(transport: transport).load(endpoint: endpoint) },
@@ -111,6 +116,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         statusItem.button?.image = LemonIcon.image(size:20,template:true)
         statusItem.button?.setAccessibilityLabel("LemonVox")
         statusItem.button?.toolTip="LemonVox"
+        if !CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--") }) { updater.start() }
         var specs = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
@@ -287,8 +293,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if pendingText != nil && !inserting { menu.addItem(item("Copy Text",#selector(copyPending))) }
         menu.addItem(.separator())
         let settingsItem=item("Settings…",#selector(configure)); settingsItem.keyEquivalent=","; menu.addItem(settingsItem)
+        menu.addItem(item(updater.menuTitle,#selector(checkForUpdates)))
         menu.addItem(.separator()); menu.addItem(item("Quit LemonVox",#selector(quit)))
     }
+    func updateMenuIndicator() {
+        statusItem?.button?.title=updater.updateAvailable ? " •" : ""
+        statusItem?.button?.toolTip=updater.updateAvailable ? "LemonVox · Update available" : "LemonVox"
+    }
+    @objc func checkForUpdates() { updater.check() }
     @objc func showSamplePreview() {
         let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/LemonVox Keyboard Test.app")
         let configuration = NSWorkspace.OpenConfiguration()
@@ -298,6 +310,13 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
     }
     @objc func configure() {
+        // Finish the explicit updater interaction before opening another editor.
+        // Normal Settings/dictation behavior remains unchanged.
+        if updater.blocksNewDictation { updater.check(); return }
+        settings.updatePreferences={ [weak self] in (self?.updater.automaticChecks ?? true,self?.updater.automaticInstallation ?? false) }
+        settings.saveUpdatePreferences={ [weak self] checks,install in
+            self?.updater.automaticChecks=checks;self?.updater.automaticInstallation=install
+        }
         if configuring { settings.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
         cancel(); modifierTrigger?.reset(); configuring=true
         settings.showPreferences(trigger:triggerChoice,dark:UserDefaults.standard.bool(forKey:"overlayAlwaysDark"),current:useCurrentField) { [weak self] choice,dark,current in
@@ -321,7 +340,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         })
     }
     @objc func toggle() {
-        guard !configuring, !inserting else { return }
+        guard !configuring, !inserting, !updater.blocksNewDictation else { return }
         if session.state == LV_PROCESSING { return }
         if session.state == LV_RECORDING && !sampleMode {
             if captureReady { stopRealRecording() }
@@ -487,6 +506,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
     @objc func quit() { cancel(); NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender:NSApplication) -> NSApplication.TerminateReply {
+        guard updater.canTerminate else { return .terminateCancel }
         guard paste.active else { return .terminateNow }
         operation?.cancel()
         Task { [weak self] in

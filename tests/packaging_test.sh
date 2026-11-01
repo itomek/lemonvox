@@ -30,6 +30,12 @@ if [[ $# -gt 0 ]]; then
     TASK_APP="$TASK_TEMP/unpacked/LemonVox Prototype.app"
     /usr/bin/codesign --verify --strict --verbose=2 "$TASK_APP"
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TASK_APP/Contents/Info.plist")" = com.itomek.lemonvox.prototype
+    test -L "$TASK_APP/Contents/Frameworks/Sparkle.framework/Sparkle"
+    test -s "$TASK_APP/Contents/Resources/Sparkle-LICENSE"
+    test "$(/usr/libexec/PlistBuddy -c 'Print :SUBundleName' "$TASK_APP/Contents/Info.plist")" = LemonVox
+    test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$TASK_APP/Contents/Info.plist")" = LemonVox
+    /usr/bin/codesign --verify --deep --strict "$TASK_APP"
+    /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$TASK_APP/Contents/Info.plist" | /usr/bin/grep -Fx '6UhLm/9m1qTqT3LVvUUggD+MTcrny6HUWAdEHoDEShc='
     cmp "$ROOT/LICENSE" "$TASK_APP/Contents/Resources/LICENSE"
     test ! -e "$TASK_APP/Contents/Resources/LemonVox Keyboard Test.app"
     printf '\ntamper' >> "$TASK_APP/Contents/Resources/LemonVox.icns"

@@ -1,0 +1,67 @@
+name: Publish update feed (awaiting release verification)
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release tag whose verified appcast should go live
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: update-feed
+  cancel-in-progress: false
+jobs:
+  deploy:
+    # Enable only after Pages hosting and a real signed upgrade are verified.
+    if: ${{ false && github.ref == 'refs/heads/main' }}
+    runs-on: macos-26
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download and verify public feed and archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          mkdir "$RUNNER_TEMP/feed"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          python3 - <<'PYCODE'
+          import json,os
+          r=json.load(open(os.environ['RUNNER_TEMP']+'/release.json'))
+          assert not r['draft'] and not r['prerelease'] and r['published_at'], 'Release must be public and published'
+          assert r['tag_name']==os.environ['RELEASE_TAG']
+          PYCODE
+          # Anonymous downloads prove end users can retrieve both assets.
+          curl --fail --location --silent --show-error "https://github.com/itomek/lemonvox/releases/download/$RELEASE_TAG/appcast.xml" -o "$RUNNER_TEMP/feed/appcast.xml"
+          curl --fail --location --silent --show-error "https://github.com/itomek/lemonvox/releases/download/$RELEASE_TAG/LemonVox-${RELEASE_TAG#v}-arm64.zip" -o "$RUNNER_TEMP/feed/LemonVox-${RELEASE_TAG#v}-arm64.zip"
+          HTTP_STATUS=$(curl --location --silent --show-error --output "$RUNNER_TEMP/current.xml" --write-out '%{http_code}' https://itomek.github.io/lemonvox/appcast.xml)
+          if test "$HTTP_STATUS" = 200; then
+            PREVIOUS_BUILD=$(python3 -c 'import sys,xml.etree.ElementTree as E;print(max(int(i.findtext("{http://www.andymatuschak.org/xml-namespaces/sparkle}version") or i.find("enclosure").get("{http://www.andymatuschak.org/xml-namespaces/sparkle}version")) for i in E.parse(sys.argv[1]).findall("./channel/item")))' "$RUNNER_TEMP/current.xml")
+          elif test "$HTTP_STATUS" = 404; then
+            PREVIOUS_BUILD=0
+          else
+            echo "Cannot reconcile current public feed ($HTTP_STATUS)" >&2; exit 1
+          fi
+          python3 scripts/validate-appcast.py --archive "$RUNNER_TEMP/feed/LemonVox-${RELEASE_TAG#v}-arm64.zip" --feed "$RUNNER_TEMP/feed/appcast.xml" --previous-build "$PREVIOUS_BUILD"
+          SIGNATURE=$(python3 -c 'import sys,xml.etree.ElementTree as E;print(E.parse(sys.argv[1]).find("./channel/item/enclosure").get("{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature"))' "$RUNNER_TEMP/feed/appcast.xml")
+          xcrun swiftc -parse-as-library tests/sparkle_signature_test.swift -o "$RUNNER_TEMP/verify"
+          "$RUNNER_TEMP/verify" "$RUNNER_TEMP/feed/LemonVox-${RELEASE_TAG#v}-arm64.zip" '6UhLm/9m1qTqT3LVvUUggD+MTcrny6HUWAdEHoDEShc=' "$SIGNATURE"
+          mkdir "$RUNNER_TEMP/site"
+          cp "$RUNNER_TEMP/feed/appcast.xml" "$RUNNER_TEMP/site/appcast.xml"
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: ${{ runner.temp }}/site
+      - name: Deploy verified appcast
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
