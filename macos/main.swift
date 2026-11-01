@@ -52,50 +52,94 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
 }
 
 @MainActor final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    var session = LVSession()
+    // LVSession remains only for the explicitly synthetic sample/smoke paths.
+    // Production dictation is owned by WorkflowBridge and WorkflowNativeAdapter.
+    var sampleSession = LVSession()
     let panel = IndicatorPanel()
     var statusItem: NSStatusItem!
     let binding = HotKeyBinding()
     var handler: EventHandlerRef?
-    var timer: Timer?
-    var originalElement: AXUIElement?
-    var originalPID: pid_t?
+    var sampleTimer: Timer?
+    var sampleOperation: Task<Void, Never>?
     var pendingText: String?
     var useCurrentField = UserDefaults.standard.bool(forKey: "currentField")
     var triggerChoice = UserDefaults.standard.data(forKey:"triggerChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
         ?? TriggerChoice.migrate(UserDefaults.standard.object(forKey:"shortcut") as? Int)
     var pendingPermissionTrigger:TriggerChoice?
     var modifierTrigger:ModifierTrigger?
+    let syntheticRun = CommandLine.arguments.contains("--sample") || CommandLine.arguments.contains(where: { $0.hasPrefix("--smoke-") })
     var sampleMode = CommandLine.arguments.contains("--smoke-cancel") || CommandLine.arguments.contains("--sample")
     let capture = Recorder()
     let transport = LocalHTTP()
-    var operation: Task<Void, Never>?
     var meter: Timer?
-    var captureReady = false
     var inserting = false
     lazy var paste = PasteTransaction(clipboard:SystemClipboard())
+    lazy var workflowTargeting = SystemWorkflowTargeting(
+        trusted: { AXIsProcessTrusted() },
+        focused: { focusedElement() },
+        metadata: { element in
+            let metadata = insertionMetadata(element)
+            return WorkflowNativeTargetMetadata(editable: metadata.editable, secure: metadata.secure)
+        },
+        frontmost: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+        dispatch: { postPaste(to: $0) }
+    )
+    lazy var workflowAdapter = WorkflowNativeAdapter(capture: capture, transport: transport,
+        paste: paste, targeting: workflowTargeting)
+    lazy var workflow: WorkflowBridge = {
+        var callbacks = WorkflowBridgeCallbacks()
+        callbacks.phaseChanged = { [weak self] operation, phase in self?.workflowPhaseChanged(operation, phase) }
+        callbacks.textReady = { [weak self] operation, text in self?.workflowTextReady(operation, text) }
+        callbacks.failed = { [weak self] operation, failure in self?.workflowFailed(operation, failure) }
+        callbacks.completed = { [weak self] operation, outcome in self?.workflowCompleted(operation, outcome) }
+        callbacks.diagnostic = { [weak self] event, error, status in self?.workflowDiagnostic(event, error, status) }
+        let bridge = WorkflowBridge(native: workflowAdapter, callbacks: callbacks)
+        workflowAdapter.attach(bridge)
+        workflowAdapter.onCaptureWillStart = { [weak self] in self?.workflowWaitingForMicrophone() }
+        return bridge
+    }()
+    var workflowCreated = false
+    var launchTracker = WorkflowLaunchTracker()
+    var pendingLaunchEpoch: UInt64?
+    var preflightTask: Task<Void, Never>?
+    // Smoke-only staged facts enter the same production warmup path without
+    // querying AX or starting a provider/capture request.
+    var syntheticPreflight: (originalPID: pid_t?, frontmostPID: pid_t?)?
     var configuring = false
     lazy var updater=UpdateCoordinator(safety:{ [weak self] in
         guard let self else { return UpdateSafety(sessionBusy:true) }
-        return UpdateSafety(sessionBusy:self.session.state != LV_IDLE || self.capture.isRecording,
+        return UpdateSafety(sessionBusy:self.workflowBusy || self.sampleSession.state != LV_IDLE,
             pasteBusy:self.inserting || self.paste.active,pendingText:self.pendingText != nil,settingsOpen:self.configuring)
     },changed:{ [weak self] in self?.updateMenuIndicator() })
     let diagnostics = DiagnosticLog.shared
-    lazy var settings = SettingsController(log: diagnostics,
-        discover: { [transport] endpoint in try await ModelDiscovery(transport: transport).load(endpoint: endpoint) },
-        readVersion: { [transport] endpoint in await ModelDiscovery(transport: transport).version(endpoint: endpoint) })
+    lazy var settings: SettingsController = {
+        let synthetic = syntheticRun
+        return SettingsController(log: diagnostics,
+            discover: { [transport] endpoint in
+                if synthetic {
+                    return DiscoveredModels(
+                        transcription: [LocalModel(id: "synthetic-asr", downloaded: true, recipe: "whispercpp", labels: ["transcription"], cloud_provider: nil)],
+                        cleanup: [LocalModel(id: "synthetic-cleanup", downloaded: true, recipe: "llamacpp", labels: ["chat"], cloud_provider: nil)],
+                        reason: nil, version: "synthetic")
+                }
+                return try await ModelDiscovery(transport: transport).load(endpoint: endpoint)
+            },
+            readVersion: { [transport] endpoint in
+                synthetic ? "synthetic" : await ModelDiscovery(transport: transport).version(endpoint: endpoint)
+            })
+    }()
     var config = UserDefaults.standard.data(forKey: "dictationConfig").flatMap { try? JSONDecoder().decode(DictationConfig.self, from: $0) } ?? .empty
     let sample = "LemonVox prototype: send Alex the 14 invoices on Friday."
 
     override init() {
-        super.init(); lv_init(&session)
+        super.init(); lv_init(&sampleSession)
         panel.onCancel = { [weak self] in
             guard let self else { return }
-            if self.session.state == LV_IDLE && !self.inserting { self.pendingPermissionTrigger=nil; self.panel.orderOut(nil) }
+            if !self.workflowBusy && self.sampleSession.state == LV_IDLE && !self.inserting { self.pendingPermissionTrigger=nil; self.panel.orderOut(nil) }
             else { self.cancel() }
         }
         panel.onStop = { [weak self] in
-            guard let self, self.session.state == LV_RECORDING else { return }
+            guard let self, self.sampleSession.state == LV_RECORDING || self.launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING else { return }
             self.toggle()
         }
         panel.onOpenSettings = { [weak self] in self?.openAccessibilitySettings() }
@@ -132,31 +176,34 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             menuNeedsUpdate(menu)
             precondition(menu.items.map(\.title) == ["Start Dictation","","Settings…","","Quit LemonVox"])
             precondition(statusItem.button?.image?.isTemplate == true)
-            _=lv_toggle(&session); menuNeedsUpdate(menu)
+            _=lv_toggle(&sampleSession); menuNeedsUpdate(menu)
             precondition(menu.items.first?.title == "Stop Dictation" && menu.item(withTitle:"Cancel") != nil)
-            _=lv_toggle(&session); menuNeedsUpdate(menu); precondition(menu.items.first?.isEnabled == false)
+            _=lv_toggle(&sampleSession); menuNeedsUpdate(menu); precondition(menu.items.first?.isEnabled == false)
             cancel(); pendingText="synthetic pending text"; menuNeedsUpdate(menu)
             precondition(menu.item(withTitle:"Copy Text") != nil && menu.item(withTitle:"Cancel") == nil)
             pendingText=nil
             print("PASS: everyday menu, contextual Cancel/Copy, processing disabled, template accessible icon")
             Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
         } else if CommandLine.arguments.contains("--smoke-focus-change") || CommandLine.arguments.contains("--smoke-focus-cancel") {
-            originalElement=nil; originalPID = -1
-            let generation=lv_toggle(&session)
-            beginRealRecording(generation)
+            syntheticPreflight = (originalPID: 101, frontmostPID: CommandLine.arguments.contains("--smoke-focus-change") ? 202 : 101)
+            beginWorkflow()
             if CommandLine.arguments.contains("--smoke-focus-cancel") { cancel() }
             Timer.scheduledTimer(withTimeInterval:0.7,repeats:false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    precondition(self.session.state == LV_IDLE && !self.capture.isRecording && !self.captureReady)
-                    print("PASS: focus warmup cancellation leaves session idle with no capture")
+                    precondition(!self.workflowBusy && !self.workflowCreated && !self.capture.isRecording)
+                    print("PASS: synthetic focus warmup cancellation leaves workflow idle with no capture")
                     self.cancel(); NSApp.terminate(nil)
                 }
             }
         } else if CommandLine.arguments.contains("--smoke-canceled-completion") {
-            let generation=session.generation
-            operation=Task { [weak self] in guard let self else { return }; await self.complete(self.sample,generation:generation) }
+            let epoch = launchTracker.begin()
+            precondition(launchTracker.acceptPhase(operation: 77, phase: LV_WORKFLOW_PHASE_PREPARING))
+            precondition(launchTracker.finishStart(operation: 77, epoch: epoch))
             cancel()
+            workflowTextReady(77, sample)
+            workflowCompleted(77, WorkflowBridgeOutcome(kind: LV_WORKFLOW_OUTCOME_COPY_FALLBACK,
+                fallbackReason: LV_WORKFLOW_FALLBACK_TARGET_UNAVAILABLE))
             Timer.scheduledTimer(withTimeInterval:0.2,repeats:false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
@@ -185,22 +232,22 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             runShowCheck()
         } else if CommandLine.arguments.contains("--smoke-config-guard") {
             sampleMode = true; configuring = true; toggle()
-            let blocked = session.state == LV_IDLE && !captureReady
+            let blocked = sampleSession.state == LV_IDLE && !workflowBusy
             cancel()
             print("\(blocked ? "PASS" : "FAIL"): configuration blocks recording hotkey")
             exit(blocked ? 0 : 1)
         } else if CommandLine.arguments.contains("--smoke-cancel") {
             toggle()
             panel.overlay.cancelButton.performClick(nil)
-            precondition(session.state == LV_IDLE)
+            precondition(sampleSession.state == LV_IDLE)
             toggle()
             panel.overlay.stopButton.performClick(nil)
-            precondition(session.state == LV_PROCESSING)
+            precondition(sampleSession.state == LV_PROCESSING)
             panel.overlay.cancelButton.performClick(nil)
             Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { fatalError("Controller released early") }
-                    precondition(self.session.state == LV_IDLE && self.pendingText == nil && self.originalElement == nil)
+                    precondition(self.sampleSession.state == LV_IDLE && self.pendingText == nil && !self.workflowBusy)
                     print("PASS: overlay cancel in recording and processing; no late completion")
                     NSApp.terminate(nil)
                 }
@@ -213,11 +260,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
     }
     func runShowCheck() {
-        let generation=session.generation
+        let generation=sampleSession.generation
         pendingText="pending test result"
         showSamplePreview()
         precondition(!panel.isVisible, "Sample menu must not show listening overlay")
-        precondition(session.state == LV_IDLE && session.generation == generation)
+        precondition(sampleSession.state == LV_IDLE && sampleSession.generation == generation)
         precondition(!capture.isRecording && pendingText == "pending test result")
         Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { _ in
             MainActor.assumeIsolated {
@@ -260,7 +307,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
     }
     func retryPermissionTrigger() {
-        guard session.state == LV_IDLE && !inserting, let choice=pendingPermissionTrigger else { return }
+        guard !workflowBusy && sampleSession.state == LV_IDLE && !inserting, let choice=pendingPermissionTrigger else { return }
         guard AXIsProcessTrusted() else {
             panel.showPermission("Accessibility is still off. Enable the current LemonVox app; relaunch if macOS requires it.")
             return
@@ -285,9 +332,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
     func menuNeedsUpdate(_ menu:NSMenu) {
         menu.removeAllItems()
-        let active=session.state != LV_IDLE || inserting
-        let action=item(session.state == LV_RECORDING ? "Stop Dictation" : "Start Dictation",#selector(toggle))
-        action.isEnabled = !configuring && !inserting && session.state != LV_PROCESSING
+        let sampleActive = sampleSession.state != LV_IDLE
+        let active = sampleActive || workflowBusy || inserting
+        let recording = sampleSession.state == LV_RECORDING || launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING
+        let action=item(recording ? "Stop Dictation" : "Start Dictation",#selector(toggle))
+        action.isEnabled = !configuring && !inserting && !workflowBusy && sampleSession.state != LV_PROCESSING
+        if recording { action.isEnabled = !configuring && !inserting }
         menu.addItem(action)
         if active { menu.addItem(item("Cancel",#selector(cancel))) }
         if pendingText != nil && !inserting { menu.addItem(item("Copy Text",#selector(copyPending))) }
@@ -341,161 +391,316 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
     @objc func toggle() {
         guard !configuring, !inserting, !updater.blocksNewDictation else { return }
-        if session.state == LV_PROCESSING { return }
-        if session.state == LV_RECORDING && !sampleMode {
-            if captureReady { stopRealRecording() }
+        if sampleMode {
+            toggleSample()
             return
         }
-        if session.state == LV_IDLE {
-            if let element=focusedElement(),insertionMetadata(element).secure { panel.show("Secure field · dictation unavailable"); return }
-            pendingText = nil
-            originalPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-            FocusAccessibility.prepareIfNeeded()
-            originalElement = editableFocusedElement()
+        if launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING, launchTracker.activeOperation != nil {
+            _ = workflow.stop(boundary: "LemonVox-\(UUID().uuidString)")
+            return
         }
-        let previous = session.state
-        let generation = lv_toggle(&session)
-        panel.overlay.isSample = sampleMode
-        if session.state == LV_RECORDING {
-            if sampleMode { panel.present(.recording) }
-            else { beginRealRecording(generation) }
+        guard !workflowBusy else { return }
+        beginWorkflow()
+    }
+
+    private var workflowBusy: Bool {
+        preflightTask != nil || launchTracker.activeOperation != nil || inserting ||
+            (workflowCreated && workflowAdapter.isRecording)
+    }
+
+    private func workflowConfiguration() -> WorkflowBridgeConfig {
+        let components = URLComponents(string: config.endpoint)
+        let url = components?.url
+        let endpoint = WorkflowBridgeEndpointFacts(
+            canonicalBaseURL: url?.absoluteString ?? config.endpoint,
+            schemeAllowed: ["http", "https"].contains(components?.scheme ?? ""),
+            hostLoopback: ["127.0.0.1", "localhost", "::1", "[::1]"].contains(components?.host ?? ""),
+            noUserinfo: components?.user == nil && components?.password == nil,
+            noQueryFragment: components?.query == nil && components?.fragment == nil,
+            pathEndsV1: components?.path.split(separator: "/").last == "v1")
+        return WorkflowBridgeConfig(endpoint: endpoint, preferenceEndpoint: config.endpoint,
+            asrModel: config.asrModel, cleanupModel: config.cleanupModel,
+            cleanupPrompt: config.cleanupPrompt, insertCurrentTarget: useCurrentField)
+    }
+
+    private func editableTargetForStart() -> WorkflowNativeTarget? {
+        guard let target = workflowTargeting.focusedTarget() else { return nil }
+        guard target.editable else {
+            workflowTargeting.release(target)
+            return nil
+        }
+        return target
+    }
+
+    private func beginWorkflow() {
+        let stagedPreflight = syntheticPreflight
+        if stagedPreflight == nil {
+            if let element = focusedElement(), insertionMetadata(element).secure {
+                panel.show("Secure field · dictation unavailable")
+                return
+            }
+        }
+        pendingText = nil
+        // Snapshot before Chromium/Electron focus preparation so a changed
+        // frontmost PID can only abort the warmup, never redefine its target.
+        let originalPID = stagedPreflight?.originalPID ?? workflowTargeting.frontmostPID()
+        if stagedPreflight == nil { FocusAccessibility.prepareIfNeeded() }
+        let initialOriginal = stagedPreflight == nil ? editableTargetForStart() : nil
+        let epoch = launchTracker.begin()
+        pendingLaunchEpoch = epoch
+        if let initialOriginal,
+            originalPID != initialOriginal.pid || workflowTargeting.frontmostPID() != originalPID {
+            workflowTargeting.release(initialOriginal)
+            abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
+            return
+        }
+        panel.overlay.isSample = false
+        panel.overlay.progressLabel = "CHECKING LOCAL MODELS"
+        panel.present(.processing)
+        preflightTask = Task { [weak self] in
+            guard let self else { return }
+            var original = initialOriginal
+            var handedOff = false
+            defer {
+                if !handedOff, let original { self.workflowTargeting.release(original) }
+                if self.pendingLaunchEpoch == epoch {
+                    self.pendingLaunchEpoch = nil
+                    self.preflightTask = nil
+                }
+            }
+            guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
+            if original == nil {
+                for _ in 0..<8 {
+                    try? await Task.sleep(nanoseconds: 60_000_000)
+                    guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
+                    let frontmostPID = stagedPreflight?.frontmostPID ?? self.workflowTargeting.frontmostPID()
+                    guard frontmostPID == originalPID else {
+                        self.abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
+                        return
+                    }
+                    let candidate = stagedPreflight == nil ? self.editableTargetForStart() : nil
+                    if let candidate {
+                        guard originalPID == candidate.pid,
+                            self.workflowTargeting.frontmostPID() == originalPID else {
+                            self.workflowTargeting.release(candidate)
+                            self.abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
+                            return
+                        }
+                        original = candidate
+                        break
+                    }
+                }
+            }
+            guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
+            self.workflowCreated = true
+            self.workflowAdapter.prepareForStart(original: original, originalPID: originalPID, useCurrentField: self.useCurrentField)
+            handedOff = true
+            let operation = self.workflow.start(self.workflowConfiguration())
+            let accepted = self.launchTracker.finishStart(operation: operation, epoch: epoch)
+            if !accepted { self.workflowAdapter.finalizeOperation(operation) }
+        }
+    }
+
+    private func abortPreflight(epoch: UInt64, message: String) {
+        guard pendingLaunchEpoch == epoch else { return }
+        launchTracker.cancel()
+        pendingLaunchEpoch = nil
+        preflightTask?.cancel()
+        preflightTask = nil
+        syntheticPreflight = nil
+        diagnostics.record(.canceled)
+        panel.show(message)
+    }
+
+    private func workflowWaitingForMicrophone() {
+        guard launchTracker.activeOperation != nil else { return }
+        panel.overlay.progressLabel = "WAITING FOR MICROPHONE"
+        panel.overlay.needsDisplay = true
+    }
+
+    private func workflowPhaseChanged(_ operation: UInt64, _ phase: LVWorkflowPhase) {
+        guard launchTracker.acceptPhase(operation: operation, phase: phase) else { return }
+        switch phase {
+        case LV_WORKFLOW_PHASE_PREPARING:
+            panel.overlay.progressLabel = "CHECKING LOCAL MODELS"
+            panel.present(.processing)
+        case LV_WORKFLOW_PHASE_RECORDING:
+            panel.present(.recording)
+            startMeter()
+        case LV_WORKFLOW_PHASE_TRANSCRIBING:
+            stopMeter()
+            panel.overlay.progressLabel = "TRANSCRIBING"
+            panel.present(.processing)
+        case LV_WORKFLOW_PHASE_CLEANING:
+            panel.overlay.progressLabel = "CLEANING UP"
+            panel.present(.processing)
+        case LV_WORKFLOW_PHASE_INSERTING:
+            inserting = true
+            // Keep the existing cleaning/processing presentation through the
+            // terminal outcome; insertion did not previously add a new label.
+        case LV_WORKFLOW_PHASE_IDLE:
+            stopMeter()
+        default:
+            break
+        }
+    }
+
+    private func startMeter() {
+        meter?.invalidate()
+        meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING,
+                    self.launchTracker.activeOperation != nil else { return }
+                self.panel.overlay.level = self.workflowAdapter.level
+                self.panel.overlay.needsDisplay = true
+                if !self.workflowAdapter.isRecording {
+                    _ = self.workflow.stop(boundary: "LemonVox-\(UUID().uuidString)")
+                }
+            }
+        }
+        if let meter { RunLoop.main.add(meter, forMode: .common) }
+    }
+
+    private func stopMeter() {
+        meter?.invalidate()
+        meter = nil
+    }
+
+    private func workflowTextReady(_ operation: UInt64, _ text: String) {
+        guard launchTracker.acceptsSynchronousCallback(operation: operation) else { return }
+        pendingText = text
+    }
+
+    private func workflowFailed(_ operation: UInt64, _ failure: WorkflowBridgeFailure) {
+        guard launchTracker.acceptTerminal(operation: operation) else { return }
+        stopMeter()
+        inserting = false
+        pendingText = nil
+        workflowAdapter.finalizeOperation(operation)
+        if failure.source == LV_WORKFLOW_FAILURE_ADAPTER,
+            failure.adapterError == LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE {
+            panel.show("Secure field · dictation unavailable")
+        } else {
+            panel.show(SafeDisplay.error(workflowError(failure)))
+        }
+    }
+
+    private func workflowCompleted(_ operation: UInt64, _ outcome: WorkflowBridgeOutcome) {
+        guard launchTracker.acceptTerminal(operation: operation) else { return }
+        stopMeter()
+        inserting = false
+        workflowAdapter.finalizeOperation(operation)
+        switch outcome.kind {
+        case LV_WORKFLOW_OUTCOME_INSERTED:
+            pendingText = nil
+            panel.orderOut(nil)
+        case LV_WORKFLOW_OUTCOME_COPY_FALLBACK:
+            panel.show(fallbackMessage(outcome.fallbackReason))
+        default:
+            panel.show("Target unavailable · text ready to copy")
+        }
+    }
+
+    private func workflowError(_ failure: WorkflowBridgeFailure) -> DictationError {
+        if failure.source == LV_WORKFLOW_FAILURE_PROTOCOL {
+            return CoreProtocolBridge.error(status: failure.protocolStatus, httpStatus: Int32(failure.httpStatus), detail: failure.safeDetail)
+        }
+        switch failure.adapterError {
+        case LV_WORKFLOW_ADAPTER_UNAVAILABLE: return .microphone
+        case LV_WORKFLOW_ADAPTER_INVALID_INPUT: return .recording
+        case LV_WORKFLOW_ADAPTER_NETWORK: return .serverUnavailable
+        case LV_WORKFLOW_ADAPTER_RESPONSE: return .response
+        case LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE: return .response
+        default: return .response
+        }
+    }
+
+    private func fallbackMessage(_ reason: LVWorkflowFallbackReason) -> String {
+        switch reason {
+        case LV_WORKFLOW_FALLBACK_ACCESSIBILITY_UNAVAILABLE: return "Accessibility needed · text ready to copy"
+        case LV_WORKFLOW_FALLBACK_TARGET_UNAVAILABLE: return "Target unavailable · text ready to copy"
+        case LV_WORKFLOW_FALLBACK_TARGET_CHANGED: return "Target changed · text ready to copy"
+        case LV_WORKFLOW_FALLBACK_SECURE_FIELD: return "Secure field · insertion stopped"
+        case LV_WORKFLOW_FALLBACK_UNSUPPORTED_FIELD: return "Field unsupported · text ready to copy"
+        case LV_WORKFLOW_FALLBACK_PASTE_UNAVAILABLE: return "Paste unavailable · text ready to copy"
+        default: return "Target unavailable · text ready to copy"
+        }
+    }
+
+    private func workflowDiagnostic(_ event: LVWorkflowDiagnosticEvent, _ error: LVWorkflowAdapterError, _ status: Int) {
+        switch event {
+        case LV_WORKFLOW_DIAGNOSTIC_RECORDING_STARTED: diagnostics.record(.recordingStarted)
+        case LV_WORKFLOW_DIAGNOSTIC_TRANSCRIPTION_STARTED: diagnostics.record(.transcriptionStarted)
+        case LV_WORKFLOW_DIAGNOSTIC_CLEANUP_STARTED: diagnostics.record(.cleanupStarted)
+        case LV_WORKFLOW_DIAGNOSTIC_INSERTION_FALLBACK: diagnostics.record(.insertionFallback)
+        case LV_WORKFLOW_DIAGNOSTIC_INSERTION_SUCCEEDED: diagnostics.record(.pasteDispatched)
+        case LV_WORKFLOW_DIAGNOSTIC_CANCELED: diagnostics.record(.canceled)
+        case LV_WORKFLOW_DIAGNOSTIC_TRANSPORT_FAILED, LV_WORKFLOW_DIAGNOSTIC_DICTATION_FAILED:
+            diagnostics.record(.dictationFailed, error: diagnosticError(error, status: status))
+        default:
+            diagnostics.record(.dictationFailed, error: diagnosticError(error, status: status))
+        }
+    }
+
+    private func diagnosticError(_ adapterError: LVWorkflowAdapterError, status: Int) -> Error? {
+        if status != 0 { return DictationError.http(status) }
+        switch adapterError {
+        case LV_WORKFLOW_ADAPTER_NETWORK: return URLError(.cannotConnectToHost)
+        case LV_WORKFLOW_ADAPTER_UNAVAILABLE: return DictationError.microphone
+        case LV_WORKFLOW_ADAPTER_INVALID_INPUT: return DictationError.recording
+        case LV_WORKFLOW_ADAPTER_RESPONSE, LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE: return DictationError.response
+        case LV_WORKFLOW_ADAPTER_CANCELED: return CancellationError()
+        default: return nil
+        }
+    }
+
+    private func toggleSample() {
+        if sampleSession.state == LV_PROCESSING { return }
+        let previous = sampleSession.state
+        let generation = lv_toggle(&sampleSession)
+        panel.overlay.isSample = true
+        if sampleSession.state == LV_RECORDING {
+            panel.present(.recording)
         } else if previous == LV_RECORDING {
             panel.overlay.progressLabel = "PROCESSING SAMPLE"
             panel.present(.processing)
-            timer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
+            sampleTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, lv_finish(&self.session, generation) != 0 else { return }
-                    self.operation=Task { [weak self] in guard let self else { return }; await self.complete(self.sample,generation:generation) }
+                    guard let self, lv_finish(&self.sampleSession, generation) != 0 else { return }
+                    self.sampleOperation = Task { [weak self] in
+                        await Task.yield()
+                        guard let self, !Task.isCancelled,
+                            self.sampleSession.generation == generation else { return }
+                        self.pendingText = self.sample
+                        self.panel.show("Sample text ready to copy")
+                    }
                 }
             }
         }
     }
-    func current(_ generation: UInt64) -> Bool {
-        session.generation == generation && session.state != LV_IDLE
-    }
-    func beginRealRecording(_ generation: UInt64) {
-        panel.overlay.progressLabel = "CHECKING LOCAL MODELS"
-        panel.present(.processing)
-        let selected = config
-        operation = Task { [weak self] in
-            guard let self else { return }
-            do {
-                if self.originalElement == nil {
-                    for _ in 0..<8 {
-                        try await Task.sleep(nanoseconds:60_000_000)
-                        guard self.current(generation) else { return }
-                        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == self.originalPID else {
-                            self.cancel(); self.panel.show("Target changed before recording · try again"); return
-                        }
-                        self.originalElement=editableFocusedElement()
-                        if self.originalElement != nil { break }
-                    }
-                }
-                let client = LemonadeClient(config: selected, transport: self.transport)
-                try await client.validateModels()
-                try Task.checkCancellation()
-                guard self.current(generation) else { return }
-                self.panel.overlay.progressLabel = "WAITING FOR MICROPHONE"
-                self.panel.overlay.needsDisplay = true
-                try await self.capture.start()
-                try Task.checkCancellation()
-                guard self.current(generation) else { self.capture.cancel(); return }
-                self.diagnostics.record(.recordingStarted)
-                self.captureReady = true
-                self.panel.present(.recording)
-                self.meter = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                    MainActor.assumeIsolated {
-                        guard let self, self.captureReady else { return }
-                        self.panel.overlay.level = self.capture.level
-                        self.panel.overlay.needsDisplay = true
-                        if !self.capture.isRecording { self.stopRealRecording() }
-                    }
-                }
-                if let meter = self.meter { RunLoop.main.add(meter, forMode: .common) }
-            } catch is CancellationError { }
-            catch { self.fail(error, generation: generation) }
-        }
-    }
-    func stopRealRecording() {
-        let generation = lv_toggle(&session)
-        captureReady = false; meter?.invalidate(); meter = nil
-        do {
-            let wav = try capture.finish()
-            let selected = config
-            diagnostics.record(.transcriptionStarted)
-            panel.overlay.progressLabel = "TRANSCRIBING"
-            panel.present(.processing)
-            operation = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let text = try await LemonadeClient(config: selected, transport: self.transport).process(wav: wav) { [weak self] in
-                        await MainActor.run {
-                            guard let self, self.current(generation) else { return }
-                            self.diagnostics.record(.cleanupStarted)
-                            self.panel.overlay.progressLabel = "CLEANING UP"
-                            self.panel.overlay.needsDisplay = true
-                        }
-                    }
-                    guard lv_finish(&self.session, generation) != 0 else { return }
-                    await self.complete(text,generation:generation)
-                } catch is CancellationError { }
-                catch { self.fail(error, generation: generation) }
-            }
-        } catch { fail(error, generation: generation) }
-    }
-    func fail(_ error: Error, generation: UInt64) {
-        guard current(generation) else { return }
-        diagnostics.record(.dictationFailed,error:error)
-        cancel()
-        panel.show(SafeDisplay.error(error))
-    }
-    func complete(_ text:String,generation:UInt64) async {
-        guard session.generation == generation, !Task.isCancelled else { return }
-        pendingText=text; inserting=true
-        defer { inserting=false }
-        guard AXIsProcessTrusted() else {
-            diagnostics.record(.insertionFallback); panel.show("Accessibility needed · text ready to copy"); clearTarget(); return
-        }
-        guard let target=useCurrentField ? focusedElement() : originalElement else {
-            diagnostics.record(.insertionFallback); panel.show("Target unavailable · text ready to copy"); clearTarget(); return
-        }
-        let metadata=insertionMetadata(target)
-        guard metadata.editable else {
-            diagnostics.record(.insertionFallback)
-            panel.show(metadata.secure ? "Secure field · insertion stopped" : "Field unsupported · text ready to copy")
-            clearTarget(); return
-        }
-        var pid:pid_t=0
-        guard AXUIElementGetPid(target,&pid) == .success else { clearTarget(); panel.show("Target unavailable · text ready to copy"); return }
-        let original=originalPID
-        let currentPolicy=useCurrentField
-        let result=await paste.insert(text,validate:{
-            guard self.session.generation == generation, let current=focusedElement(),CFEqual(target,current) else { return false }
-            let metadata=insertionMetadata(current)
-            guard metadata.editable else { return false }
-            return canInsert(currentTarget: currentPolicy, originalMatches: original == pid,
-                frontmostMatches: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-                secure: metadata.secure)
-        },dispatch:{ postPaste(to:pid) })
-        guard session.generation == generation, !Task.isCancelled else { return }
-        clearTarget()
-        switch result {
-        case .dispatched:
-            diagnostics.record(.pasteDispatched); pendingText=nil; panel.orderOut(nil)
-        case .targetChanged:
-            diagnostics.record(.insertionFallback); panel.show("Target changed · text ready to copy")
-        case .unavailable:
-            diagnostics.record(.insertionFallback); panel.show("Paste unavailable · text ready to copy")
-        case .canceled: break
-        }
-    }
-    func clearTarget() { originalElement = nil; originalPID = nil }
+
     @objc func cancel() {
-        if session.state != LV_IDLE { diagnostics.record(.canceled) }
-        operation?.cancel(); operation = nil
-        meter?.invalidate(); meter = nil; capture.cancel(); captureReady = false
-        timer?.invalidate(); timer = nil; lv_cancel(&session)
-        clearTarget(); pendingText = nil; panel.orderOut(nil)
+        let hadPreflight = preflightTask != nil || pendingLaunchEpoch != nil
+        let hadSample = sampleSession.state != LV_IDLE
+        let operation = launchTracker.activeOperation
+        let activeCore = operation != nil && workflowCreated
+        launchTracker.cancel()
+        pendingLaunchEpoch = nil
+        syntheticPreflight = nil
+        preflightTask?.cancel(); preflightTask = nil
+        if let operation, activeCore {
+            workflow.cancel()
+            workflowAdapter.finalizeOperation(operation)
+        }
+        if workflowCreated { workflowAdapter.discardPreparedStart() }
+        stopMeter()
+        sampleOperation?.cancel(); sampleOperation = nil
+        sampleTimer?.invalidate(); sampleTimer = nil
+        if hadSample { lv_cancel(&sampleSession) }
+        // Core reports an active operation synchronously. A preflight or
+        // synthetic sample has no core callback, so record only those here.
+        if (hadPreflight && !activeCore) || hadSample { diagnostics.record(.canceled) }
+        inserting = false; pendingText = nil; panel.orderOut(nil)
     }
     @objc func copyPending() {
         guard let pendingText else { panel.show("No pending text"); return }
@@ -509,17 +714,26 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     @objc func quit() { cancel(); NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender:NSApplication) -> NSApplication.TerminateReply {
         guard updater.canTerminate else { return .terminateCancel }
-        guard paste.active else { return .terminateNow }
-        operation?.cancel()
+        cancel()
+        guard workflowCreated && workflowAdapter.pasteActive else { return .terminateNow }
         Task { [weak self] in
             guard let self else { return }
-            while self.paste.active { try? await Task.sleep(nanoseconds:10_000_000) }
+            while self.workflowAdapter.pasteActive { try? await Task.sleep(nanoseconds:10_000_000) }
             NSApp.reply(toApplicationShouldTerminate:true)
         }
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
-        modifierTrigger?.stop(); cancel(); transport.close(); binding.clear()
+        modifierTrigger?.stop(); cancel()
+        if workflowCreated {
+            workflow.close()
+            workflowAdapter.prepareForShutdown()
+        } else {
+            // Settings discovery shares this transport without constructing a
+            // workflow, so preserve the former unconditional shutdown path.
+            transport.close()
+        }
+        binding.clear()
         if let handler { RemoveEventHandler(handler) }
     }
 }
