@@ -4,6 +4,7 @@ import ApplicationServices
 /// Passive observation only. No character strings, event suppression or permission requests.
 @MainActor final class ModifierTrigger {
     private var monitor:Any?
+    var isMonitoring:Bool { monitor != nil }
     private var activation:Any?
     private var detector:DoubleTapDetector
     let allowed:() -> Bool

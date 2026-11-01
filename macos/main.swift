@@ -59,6 +59,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var statusItem: NSStatusItem!
     let binding = HotKeyBinding()
     var handler: EventHandlerRef?
+    var debugTimer: Timer?
+    var lastDebugState: String?
     var sampleTimer: Timer?
     var sampleOperation: Task<Void, Never>?
     var pendingText: String?
@@ -146,6 +148,29 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         panel.onRetryPermission = { [weak self] in self?.retryPermissionTrigger() }
         applyAppearance()
     }
+    func reportDebugState() {
+        // Explicit local debugging only: fixed state/permission facts, never content.
+        let state:[String:Any] = [
+            "pid":ProcessInfo.processInfo.processIdentifier,
+            "sample":sampleMode, "settingsOpen":configuring,
+            "settingsVisible":settings.window.isVisible, "panelVisible":panel.isVisible,
+            "samplePhase":sampleSession.state.rawValue, "workflowBusy":workflowBusy,
+            "microphoneRecording":capture.isRecording, "pendingText":pendingText != nil,
+            "inserting":inserting, "pasteActive":workflowCreated && workflowAdapter.pasteActive,
+            "updaterHoldsDictation":updater.blocksNewDictation, "handlerInstalled":handler != nil,
+            "combinationRegistered":binding.reference != nil,
+            "modifierMonitoring":modifierTrigger?.isMonitoring == true,
+            "configuredTrigger":String(describing:triggerChoice),
+            "pendingTriggerRecovery":pendingPermissionTrigger != nil,
+            "accessibilityTrusted":AXIsProcessTrusted(),
+            "eventPostAllowed":CGPreflightPostEventAccess(),
+            "microphoneAuthorization":AVCaptureDevice.authorizationStatus(for:.audio).rawValue
+        ]
+        guard let data=try? JSONSerialization.data(withJSONObject:state,options:[.sortedKeys]),
+              let text=String(data:data,encoding:.utf8),text != lastDebugState else { return }
+        lastDebugState=text
+        print("DEBUG_STATE " + text); fflush(stdout)
+    }
     func applyAppearance() {
         panel.appearance = UserDefaults.standard.bool(forKey: "overlayAlwaysDark") ? NSAppearance(named: .darkAqua) : nil
     }
@@ -171,6 +196,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         else { panel.show("Shortcut handler unavailable (\(status)); use LV menu") }
         refreshMenu()
         diagnostics.record(.appStarted)
+        if CommandLine.arguments.contains("--debug-status") {
+            reportDebugState()
+            debugTimer=Timer.scheduledTimer(withTimeInterval:0.5,repeats:true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reportDebugState() }
+            }
+        }
         if CommandLine.arguments.contains("--smoke-menu") {
             let menu=NSMenu(); menu.autoenablesItems=false
             menuNeedsUpdate(menu)
@@ -236,6 +267,19 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             cancel()
             print("\(blocked ? "PASS" : "FAIL"): configuration blocks recording hotkey")
             exit(blocked ? 0 : 1)
+        } else if CommandLine.arguments.contains("--smoke-trigger-recovery") {
+            modifierTrigger?.stop(); modifierTrigger=nil; binding.clear()
+            triggerChoice = .defaultMac; pendingPermissionTrigger = .defaultMac
+            panel.showPermission("Synthetic startup trigger unavailable")
+            configure()
+            precondition(configuring && !panel.isVisible)
+            settings.window.close()
+            precondition(!configuring)
+            let installed = modifierTrigger != nil || binding.reference != nil
+            precondition(installed || (pendingPermissionTrigger == .defaultMac && panel.isVisible),
+                "Closing Settings must restore startup trigger recovery")
+            print("PASS: Settings close restores configured trigger or visible permission recovery without saving preferences")
+            Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
         } else if CommandLine.arguments.contains("--smoke-cancel") {
             toggle()
             panel.overlay.cancelButton.performClick(nil)
@@ -385,8 +429,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }, close: { [weak self] in
             guard let self else { return }
             self.configuring=false
-            if self.pendingPermissionTrigger != nil { self.panel.orderOut(nil) }
-            self.pendingPermissionTrigger=nil
+            if self.binding.reference == nil && self.modifierTrigger == nil {
+                // Retry the configured trigger, never an unsaved Settings choice.
+                // Startup permission recovery must survive closing Settings.
+                _ = self.installTrigger(self.triggerChoice)
+            } else {
+                if self.pendingPermissionTrigger != nil { self.panel.orderOut(nil) }
+                self.pendingPermissionTrigger=nil
+            }
         })
     }
     @objc func toggle() {
@@ -724,6 +774,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
+        debugTimer?.invalidate(); debugTimer=nil
         modifierTrigger?.stop(); cancel()
         if workflowCreated {
             workflow.close()
