@@ -19,13 +19,13 @@ xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROO
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -c "$ROOT/core/session.cpp" -o "$OUT/session.o"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/tests/core_bridge_test.swift" "$OUT/session.o" -lc++ -o "$OUT/core-bridge-test"
 "$OUT/core-bridge-test"
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/InsertionPolicy.swift" "$ROOT/tests/insertion_policy_test.swift" -o "$OUT/policy-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/tests/insertion_policy_test.swift" "$OUT/session.o" -lc++ -o "$OUT/policy-test"
 "$OUT/policy-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/tests/hotkey_test.swift" -framework AppKit -framework Carbon -o "$OUT/hotkey-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/IndicatorPanel.swift" "$ROOT/tests/overlay_test.swift" -framework AppKit -o "$OUT/overlay-test"
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/tests/pipeline_test.swift" -o "$OUT/pipeline-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/tests/pipeline_test.swift" "$OUT/session.o" -lc++ -o "$OUT/pipeline-test"
 "$OUT/pipeline-test"
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/tests/recorder_test.swift" -framework AVFoundation -o "$OUT/recorder-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/tests/recorder_test.swift" "$OUT/session.o" -lc++ -framework AVFoundation -o "$OUT/recorder-test"
 "$OUT/recorder-test"
 APP="$OUT/LemonVox Prototype.app"
 mkdir -p "$APP/Contents/MacOS"
@@ -47,17 +47,17 @@ cat > "$FIXTURE/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/settings_test.swift" -o "$OUT/settings-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/settings_test.swift" "$OUT/session.o" -lc++ -o "$OUT/settings-test"
 "$OUT/settings-test"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" -framework AppKit -o "$OUT/settings-ui-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "$OUT/session.o" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/model_picker_test.swift" -framework AppKit -o "$OUT/model-picker-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/PasteTransaction.swift" "$ROOT/tests/paste_transaction_test.swift" -o "$OUT/paste-test"
 "$OUT/paste-test"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/system_clipboard_test.swift" -framework AppKit -framework ApplicationServices -framework Carbon -o "$OUT/system-clipboard-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/system_clipboard_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework ApplicationServices -framework Carbon -o "$OUT/system-clipboard-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/TriggerChoice.swift" "$ROOT/tests/trigger_test.swift" -o "$OUT/trigger-test"
 "$OUT/trigger-test"

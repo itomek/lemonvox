@@ -470,10 +470,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let original=originalPID
         let currentPolicy=useCurrentField
         let result=await paste.insert(text,validate:{
-            guard self.session.generation == generation, let current=focusedElement(),CFEqual(target,current),
-                  NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-                  insertionMetadata(current).editable else { return false }
-            return currentPolicy || original == pid
+            guard self.session.generation == generation, let current=focusedElement(),CFEqual(target,current) else { return false }
+            let metadata=insertionMetadata(current)
+            guard metadata.editable else { return false }
+            return canInsert(currentTarget: currentPolicy, originalMatches: original == pid,
+                frontmostMatches: NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+                secure: metadata.secure)
         },dispatch:{ postPaste(to:pid) })
         guard session.generation == generation, !Task.isCancelled else { return }
         clearTarget()
