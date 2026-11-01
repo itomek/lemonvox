@@ -4,7 +4,7 @@ The next release includes native update alerts and **Check for Updates…** in t
 
 Installation waits while dictation, paste, uninserted text or Settings are active. A manual update check holds new dictation and Settings until its window is dismissed. The updater preserves the app's identity and preferences.
 
-Existing installations need the first updater-enabled version through Homebrew or direct download. Homebrew remains supported. Signed older-to-newer installation is still awaiting verification; the current release and installed app have not been changed.
+Existing installations need the first updater-enabled version through Homebrew or direct download. Homebrew remains supported. The current published release does not include this updater.
 
 ## Release preparation
 
