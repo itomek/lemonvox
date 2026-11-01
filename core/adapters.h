@@ -143,6 +143,11 @@ enum class DiagnosticEvent : std::uint8_t {
     insertion_fallback,
     transport_failed,
     canceled,
+    // Terminal success; the Mac bridge maps this to its paste-dispatched log.
+    insertion_succeeded,
+    // Terminal non-cancel failure. WorkflowCore never pairs it with
+    // transport_failed for the same operation.
+    dictation_failed,
 };
 
 struct DiagnosticEntry {

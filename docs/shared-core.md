@@ -48,14 +48,26 @@ request/result values, workflow callbacks, and content-free diagnostics.
 - The native shell captures one `PreferencesSnapshot` at operation start.
   Settings edits apply to a later operation, which preserves the existing
   Settings-during-recording behavior until issue #6 changes it explicitly.
-- `WorkflowCallbacks` run on the core's serialized executor. Each native shell
-  separately dispatches them to its own UI thread before touching views. The
-  core never calls AppKit, WinUI, GTK, or a platform run loop. `text_ready`
-  carries owned private result text on that executor; it is never logged or
-  passed to `DiagnosticsSink`.
+- `WorkflowCoreCallbacks` in [`core/workflow.h`](../core/workflow.h) run on the
+  core's serialized executor. Each native shell separately dispatches them to
+  its own UI thread before touching views. The core never calls AppKit, WinUI,
+  GTK, or a platform run loop. `text_ready` carries owned private result text
+  on that executor; it is never logged or passed to `DiagnosticsSink`. A
+  terminal idle/failed, idle/text/outcome, or idle/outcome sequence is atomic:
+  `start()` from any callback in that sequence returns zero, and a later
+  explicit start creates the next operation.
+- `WorkflowOutcome` distinguishes an inserted result from copy fallback without
+  carrying text. `accessibility_unavailable` means target capture or inspection
+  could not run; `paste_unavailable` is reserved for a failed native paste
+  dispatch after a target was available. The native shell owns the resulting
+  message and pending-text lifecycle.
 - `DiagnosticEntry` carries only a fixed event, error category, and HTTP status.
   Audio, transcripts, prompts, URLs, credentials, and provider responses remain
   outside diagnostics.
+- Each workflow terminal path records exactly one content-free event:
+  `insertion_succeeded`, `insertion_fallback`, `canceled`, or
+  `dictation_failed`. Native shells map `insertion_succeeded` to their existing
+  paste-dispatched presentation; no terminal path also emits `transport_failed`.
 
 Mac keeps URLSession as the first `ByteTransport` implementation, including its
 loopback, no-redirect, proxy, cookie and credential-storage restrictions, plus
