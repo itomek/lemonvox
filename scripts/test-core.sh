@@ -13,14 +13,19 @@ if [[ -e "$OUT" || -L "$OUT" ]]; then
 fi
 
 CXX="${CXX:-c++}"
+CC="${CC:-cc}"
 AR="${AR:-ar}"
 mkdir -p "$OUT"
+"$CC" -std=c17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/third_party/yyjson" -c "$ROOT/third_party/yyjson/yyjson.c" -o "$OUT/yyjson.o"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" -c "$ROOT/core/session.cpp" -o "$OUT/session.o"
-"$AR" rcs "$OUT/liblemonvox_core.a" "$OUT/session.o"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" -c "$ROOT/core/protocol.cpp" -o "$OUT/protocol.o"
+"$AR" rcs "$OUT/liblemonvox_core.a" "$OUT/session.o" "$OUT/protocol.o" "$OUT/yyjson.o"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/session_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/session-test"
 "$OUT/session-test"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/trigger_core_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/trigger-core-test"
 "$OUT/trigger-core-test"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/contracts_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/contracts-test"
 "$OUT/contracts-test"
-echo 'PASS: portable core library and adapter contracts'
+"$CXX" -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" "$ROOT/tests/protocol_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/protocol-test"
+"$OUT/protocol-test"
+echo 'PASS: portable core library, protocol mapper and adapter contracts'

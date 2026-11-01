@@ -61,9 +61,69 @@ Mac keeps URLSession as the first `ByteTransport` implementation, including its
 loopback, no-redirect, proxy, cookie and credential-storage restrictions, plus
 the current 60-second request and 120-second resource timeouts. This contract
 neither selects a shared HTTP library nor changes that policy. This slice adds
-no JSON/HTTP dependency, so it adds no new dependency
-license, package size, or build burden. JSON and URL dependency selection and
-its license/package/build review remain part of the protocol extraction in #31.
+no shared HTTP dependency. URLSession remains responsible for byte delivery,
+timeouts, cancellation, and its ephemeral privacy configuration.
+
+## Protocol policy and JSON
+
+[`core/protocol.h`](../core/protocol.h) provides the protocol mapper in two
+forms: a direct C++17 `lemonvox::Protocol` facade that produces owned
+`TransportRequest` values for `ByteTransport`, and a narrow C-compatible Swift
+bridge. It owns configuration/model validation, fixed request paths, multipart
+WAV construction, cleanup JSON, inventory eligibility, response validation and
+safe error categories. It never implements HTTP or parses URLs.
+
+Native shells normalize an endpoint with their URL API and supply a canonical
+base URL plus `LVEndpointFacts`. The protocol verifies those facts and appends
+only its fixed paths. Mac uses `URLComponents`; another native shell must
+provide equivalent canonical URL and loopback/scheme/userinfo/query/fragment/
+`v1` facts before it can use the core.
+
+`LVProtocolSlice` inputs are borrowed only for each synchronous C call; a null
+data pointer is permitted only with zero size. Returned bytes, requests,
+results, and inventories are core-owned and must be released with their named
+`lv_protocol_*_free` function after the bridge copies them. The C bridge retains
+no callback or input storage. The direct C++ facade converts those values into
+the owned strings and vectors from [`adapters.h`](../core/adapters.h).
+
+The parser is vendored [yyjson 0.13.0 at
+`6447536015f3d600f3d65323b10976103b337ca7`](../third_party/yyjson/README.md),
+an MIT dependency with pinned checksums and unchanged attribution. It compiles
+as C17; C++ consumers compile as C++17. Both use
+`YYJSON_READER_DEPTH_LIMIT=513` and the default `YYJSON_READ_NOFLAG` mode—no
+relaxed syntax, feature stripping, or stop-when-done behavior is enabled. The
+only measured exception is `YYJSON_READ_BIGNUM_AS_RAW`: unknown valid JSON
+numbers outside yyjson's finite-double/integer range remain parseable, matching
+`JSONDecoder`'s ability to ignore them; a number in a typed protocol string
+field still rejects. `JSONSerialization` differs for some numeric overflow
+forms, so the shared policy follows typed-protocol behavior rather than claiming
+general numeric equivalence.
+
+Protocol fixtures preserve the observed Foundation rules: first duplicate key
+wins; trailing data, raw NUL, invalid UTF-8, NaN/Infinity and lone surrogates
+reject; valid surrogate pairs accept; 512 nested containers accept and 513
+reject. On the supported Mac toolchain, UTF-8 (with or without BOM), UTF-16
+LE/BE (with or without BOM), UTF-32 LE/BE without BOM, and UTF-32BE with BOM
+normalize before yyjson; UTF-32LE with `FF FE 00 00` remains rejected as it is
+by both Foundation APIs there. yyjson's configured depth guard excludes the
+root container, so the core performs a post-parse 512-container check solely to
+retain that Mac behavior. It adds no audio, response, transcript, or byte-size
+cap.
+
+### Measured dependency burden
+
+On the same local arm64/macOS machine, a fresh unoptimized extraction build
+measured the following baseline-to-protocol change:
+
+| Measure | Baseline | Protocol build | Change |
+| --- | ---: | ---: | ---: |
+| `scripts/build.sh` elapsed time | 58.13 s | 59.40 s | +1.27 s |
+| App executable | 1,191,984 B | 2,446,128 B | +1,254,144 B |
+| App bundle | 4,532 KiB | 5,764 KiB | +1,232 KiB |
+
+This is local extraction evidence, not a package-size or performance guarantee.
+The vendored yyjson source is 756,745 bytes across `yyjson.c`, `yyjson.h`, and
+its MIT license; runtime artifact size is the relevant shipping measure.
 
 ## Swift ABI boundary
 
@@ -88,8 +148,9 @@ Run the portable source target with a new absolute output directory:
 bash scripts/test-core.sh --output /absolute/new/core-build
 ```
 
-It compiles `core/session.cpp` into `liblemonvox_core.a` and runs the C++ session
-and fake-adapter contract tests with a C++17 compiler on the available Unix
-toolchain. The regular Mac build also compiles a Swift bridge parity test against
-the same header/object. This target proves source/library isolation there; a
-Windows build proof remains separate and is not implied.
+It compiles `core/session.cpp`, `core/protocol.cpp`, and yyjson into
+`liblemonvox_core.a`, then runs the C++ session, trigger, protocol, and
+fake-adapter contract tests with C++17/C17 compilers on the available Unix
+toolchain. The later Mac-adapter step compiles its Swift bridge parity tests
+against these headers/objects. This target proves source/library isolation
+there; a Windows build proof remains separate and is not implied.

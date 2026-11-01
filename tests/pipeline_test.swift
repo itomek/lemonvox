@@ -25,22 +25,35 @@ actor FakeHTTP: HTTPTransport {
         do { try await body(); fatalError("Expected rejection") } catch { }
     }
     static func main() async throws {
-        for endpoint in ["https://example.com/v1", "http://127.0.0.1.evil.test/v1", "http://user:pass@127.0.0.1/v1", "http://127.0.0.1/v1?x=1"] {
+        for endpoint in ["https://example.com/v1", "http://127.0.0.1.evil.test/v1", "http://user:pass@127.0.0.1/v1", "http://127.0.0.1/v1?x=1", "http://127.0.0.1/v1#fragment", "http://127.0.0.1/v2"] {
             await rejected { _ = try config(endpoint).baseURL() }
         }
-        _ = try config().baseURL()
+        for endpoint in ["http://127.0.0.1:13305/v1", "https://localhost/v1", "http://[::1]:13305/v1"] {
+            _ = try config(endpoint).baseURL()
+        }
+        await rejected { _ = try DictationConfig(endpoint: "http://127.0.0.1:13305/v1", asrModel: "asr\nnext", cleanupModel: "chat", cleanupPrompt: "prompt").baseURL() }
+        await rejected { _ = try DictationConfig(endpoint: "http://127.0.0.1:13305/v1", asrModel: "", cleanupModel: "chat", cleanupPrompt: "\n").baseURL() }
+        _ = try DictationConfig(endpoint: "http://127.0.0.1:13305/v1", asrModel: "asr\0id", cleanupModel: "chat", cleanupPrompt: "prompt").baseURL()
         let transport = FakeHTTP([(200, inventory), (200, #"{"text":"um send Alex 14 invoices"}"#),
             (200, #"{"choices":[{"message":{"content":"Send Alex 14 invoices."},"finish_reason":"stop"}]}"#)])
         let result = try await LemonadeClient(config: config(), transport: transport).process(wav: Data("RIFF-test-wave".utf8))
         precondition(result == "Send Alex 14 invoices.")
         let requests = await transport.requests
-        precondition(requests.count == 3 && requests[1].url!.path == "/v1/audio/transcriptions")
+        precondition(requests.count == 3 && requests[0].httpBody == nil && requests[0].httpMethod == "GET" && requests[1].url!.path == "/v1/audio/transcriptions")
         let multipart = String(data: requests[1].httpBody!, encoding: .utf8)!
         precondition(multipart.contains("audio/wav") && multipart.contains("RIFF-test-wave") && multipart.contains("name=\"model\""))
         let payload = try JSONSerialization.jsonObject(with: requests[2].httpBody!) as! [String: Any]
         let messages = payload["messages"] as! [[String: String]]
         precondition(messages[0]["role"] == "system" && messages[1]["content"] == "um send Alex 14 invoices")
         precondition(payload["tools"] == nil && payload["stream"] as? Bool == false)
+        let metadataIgnored = String(inventory.dropLast()) + #", "reason":"ok","message":123}"#
+        try await LemonadeClient(config: config(), transport: FakeHTTP([(200, metadataIgnored)])).validateModels()
+        let whitespaceTransport = FakeHTTP([(200, inventory), (200, #"{"text":"  exact transcript  "}"#),
+            (200, #"{"choices":[{"message":{"content":"Cleaned"},"finish_reason":"stop"}]}"#)])
+        _ = try await LemonadeClient(config: config(), transport: whitespaceTransport).process(wav: Data([1]))
+        let whitespaceRequests = await whitespaceTransport.requests
+        let whitespacePayload = try JSONSerialization.jsonObject(with: whitespaceRequests[2].httpBody!) as! [String: Any]
+        precondition((whitespacePayload["messages"] as! [[String: String]])[1]["content"] == "  exact transcript  ")
         for badInventory in [
             inventory.replacingOccurrences(of: "whispercpp", with: "cloud"),
             inventory.replacingOccurrences(of: "llamacpp", with: "collection.router"),
@@ -57,7 +70,8 @@ actor FakeHTTP: HTTPTransport {
             await rejected { _ = try await LemonadeClient(config: config(), transport: fake).process(wav: Data([1])) }
         }
         for content in [#"{"choices":[{"message":{"content":"Partial"},"finish_reason":"length"}]}"#,
-                        #"{"choices":[{"message":{"content":" "},"finish_reason":"stop"}]}"#] {
+                        #"{"choices":[{"message":{"content":" "},"finish_reason":"stop"}]}"#,
+                        #"{"choices":[{"message":{"content":"First"},"finish_reason":"stop"},{"message":{"content":7},"finish_reason":"stop"}]}"#] {
             let fake = FakeHTTP([(200, inventory), (200, #"{"text":"test"}"#), (200, content)])
             await rejected { _ = try await LemonadeClient(config: config(), transport: fake).process(wav: Data([1])) }
         }
