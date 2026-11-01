@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdio>
 int main() {
+    assert(lv_abi_version() == 1);
     LVSession s;
     lv_init(&s);
     assert(s.state == LV_IDLE);

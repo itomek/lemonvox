@@ -39,6 +39,8 @@ Audio and transcripts are transient in the first version. Keep them in memory wh
 
 The Mac prototype uses a native **Swift/AppKit shell and a small C++ core** exposed through a C-compatible interface. AppKit handles shortcuts, the nonactivating indicator, configuration, and text insertion. AVFoundation handles microphone capture; Foundation handles HTTP requests. The shared core owns session transitions and cancellation generations.
 
+The [shared-core boundary](shared-core.md) records the adapter ownership, callback, ABI and portable-build contract for the incremental extraction.
+
 Keep the shared boundary small. Windows and Ubuntu can provide native adapters around that core as their integration work begins. The current prototype accepts loopback Lemonade endpoints and already-downloaded local transcription models and local or remote-backed cleanup models exposed by Lemonade. Model loading remains with Lemonade.
 
 The documented Lemonade requests are multipart WAV audio to `POST /v1/audio/transcriptions` and transcript cleanup through `POST /v1/chat/completions`. Verify request formats, model selection, errors, and cancellation against the Lemonade version used for development. Validate each server/provider combination used for release.

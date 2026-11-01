@@ -1,4 +1,5 @@
 #include "session.h"
+uint32_t lv_abi_version(void) { return LV_ABI_VERSION; }
 void lv_init(LVSession *s) { s->state = LV_IDLE; s->generation = 0; }
 uint64_t lv_toggle(LVSession *s) {
     if (s->state == LV_IDLE) { ++s->generation; s->state = LV_RECORDING; }
