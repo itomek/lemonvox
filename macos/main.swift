@@ -174,7 +174,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if CommandLine.arguments.contains("--smoke-menu") {
             let menu=NSMenu(); menu.autoenablesItems=false
             menuNeedsUpdate(menu)
-            precondition(menu.items.map(\.title) == ["Start Dictation","","Settings…","","Quit LemonVox"])
+            precondition(menu.items.map(\.title) == ["Start Dictation","","Settings…","Check for Updates…","","Quit LemonVox"])
             precondition(statusItem.button?.image?.isTemplate == true)
             _=lv_toggle(&sampleSession); menuNeedsUpdate(menu)
             precondition(menu.items.first?.title == "Stop Dictation" && menu.item(withTitle:"Cancel") != nil)
