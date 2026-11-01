@@ -91,13 +91,24 @@ The parser is vendored [yyjson 0.13.0 at
 an MIT dependency with pinned checksums and unchanged attribution. It compiles
 as C17; C++ consumers compile as C++17. Both use
 `YYJSON_READER_DEPTH_LIMIT=513` and the default `YYJSON_READ_NOFLAG` mode—no
-relaxed syntax, feature stripping, or stop-when-done behavior is enabled.
+relaxed syntax, feature stripping, or stop-when-done behavior is enabled. The
+only measured exception is `YYJSON_READ_BIGNUM_AS_RAW`: unknown valid JSON
+numbers outside yyjson's finite-double/integer range remain parseable, matching
+`JSONDecoder`'s ability to ignore them; a number in a typed protocol string
+field still rejects. `JSONSerialization` differs for some numeric overflow
+forms, so the shared policy follows typed-protocol behavior rather than claiming
+general numeric equivalence.
+
 Protocol fixtures preserve the observed Foundation rules: first duplicate key
-wins; trailing data, raw NUL, invalid UTF-8, BOM, NaN/Infinity and lone
-surrogates reject; valid surrogate pairs accept; 512 nested containers accept
-and 513 reject. yyjson's configured depth guard excludes the root container, so
-the core performs a post-parse 512-container check solely to retain that Mac
-behavior. It adds no audio, response, transcript, or byte-size cap.
+wins; trailing data, raw NUL, invalid UTF-8, NaN/Infinity and lone surrogates
+reject; valid surrogate pairs accept; 512 nested containers accept and 513
+reject. On the supported Mac toolchain, UTF-8 (with or without BOM), UTF-16
+LE/BE (with or without BOM), UTF-32 LE/BE without BOM, and UTF-32BE with BOM
+normalize before yyjson; UTF-32LE with `FF FE 00 00` remains rejected as it is
+by both Foundation APIs there. yyjson's configured depth guard excludes the
+root container, so the core performs a post-parse 512-container check solely to
+retain that Mac behavior. It adds no audio, response, transcript, or byte-size
+cap.
 
 ## Swift ABI boundary
 

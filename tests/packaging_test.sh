@@ -32,13 +32,17 @@ if [[ $# -gt 0 ]]; then
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TASK_APP/Contents/Info.plist")" = com.itomek.lemonvox.prototype
     test -L "$TASK_APP/Contents/Frameworks/Sparkle.framework/Sparkle"
     test -s "$TASK_APP/Contents/Resources/Sparkle-LICENSE"
+    test -s "$TASK_APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+    test -s "$TASK_APP/Contents/Resources/yyjson-LICENSE"
     test "$(/usr/libexec/PlistBuddy -c 'Print :SUBundleName' "$TASK_APP/Contents/Info.plist")" = LemonVox
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$TASK_APP/Contents/Info.plist")" = LemonVox
     /usr/bin/codesign --verify --deep --strict "$TASK_APP"
     /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$TASK_APP/Contents/Info.plist" | /usr/bin/grep -Fx '6UhLm/9m1qTqT3LVvUUggD+MTcrny6HUWAdEHoDEShc='
     cmp "$ROOT/LICENSE" "$TASK_APP/Contents/Resources/LICENSE"
+    cmp "$ROOT/THIRD_PARTY_NOTICES.md" "$TASK_APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+    cmp "$ROOT/third_party/yyjson/LICENSE" "$TASK_APP/Contents/Resources/yyjson-LICENSE"
     test ! -e "$TASK_APP/Contents/Resources/LemonVox Keyboard Test.app"
     printf '\ntamper' >> "$TASK_APP/Contents/Resources/LemonVox.icns"
     if /usr/bin/codesign --verify --strict "$TASK_APP" >/dev/null 2>&1; then echo 'FAIL: tampered resource accepted'; exit 1; fi
 fi
-echo 'PASS: packaging rejects invalid/missing signing inputs before build; supplied archive signature/identity/fixture exclusion and tamper checks'
+echo 'PASS: packaging rejects invalid/missing signing inputs before build; supplied archive signature/identity/licenses/fixture exclusion and tamper checks'

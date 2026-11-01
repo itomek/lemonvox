@@ -18,20 +18,27 @@ xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROO
 "$OUT/session-test"
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/trigger_core_test.cpp" "$ROOT/core/session.cpp" -o "$OUT/trigger-core-test"
 "$OUT/trigger-core-test"
+xcrun clang -mmacosx-version-min=26.0 -std=c17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/third_party/yyjson" -c "$ROOT/third_party/yyjson/yyjson.c" -o "$OUT/yyjson.o"
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -c "$ROOT/core/session.cpp" -o "$OUT/session.o"
+xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" -c "$ROOT/core/protocol.cpp" -o "$OUT/protocol.o"
+CORE_OBJECTS=("$OUT/session.o" "$OUT/protocol.o" "$OUT/yyjson.o")
+xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" "$ROOT/tests/protocol_test.cpp" "${CORE_OBJECTS[@]}" -o "$OUT/protocol-test"
+"$OUT/protocol-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/tests/core_bridge_test.swift" "$OUT/session.o" -lc++ -o "$OUT/core-bridge-test"
 "$OUT/core-bridge-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/protocol_bridge_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/protocol-bridge-test"
+"$OUT/protocol-bridge-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/tests/insertion_policy_test.swift" "$OUT/session.o" -lc++ -o "$OUT/policy-test"
 "$OUT/policy-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/tests/hotkey_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework Carbon -o "$OUT/hotkey-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/IndicatorPanel.swift" "$ROOT/tests/overlay_test.swift" -framework AppKit -o "$OUT/overlay-test"
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/tests/pipeline_test.swift" "$OUT/session.o" -lc++ -o "$OUT/pipeline-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/tests/pipeline_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/pipeline-test"
 "$OUT/pipeline-test"
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/tests/recorder_test.swift" "$OUT/session.o" -lc++ -framework AVFoundation -o "$OUT/recorder-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/tests/recorder_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AVFoundation -o "$OUT/recorder-test"
 "$OUT/recorder-test"
 APP="$OUT/LemonVox Prototype.app"
 mkdir -p "$APP/Contents/MacOS"
-xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" -swift-version 5 -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/UpdateSafety.swift" "$ROOT/macos/UpdateCoordinator.swift" "$ROOT/macos/LemonIcon.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/main.swift" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/macos/IndicatorPanel.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/macos/ModelDiscovery.swift" "$OUT/session.o" -lc++ -framework AppKit -framework Carbon -framework ApplicationServices -framework AVFoundation -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$APP/Contents/MacOS/LemonVoxPrototype"
+xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" -swift-version 5 -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/UpdateSafety.swift" "$ROOT/macos/UpdateCoordinator.swift" "$ROOT/macos/LemonIcon.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/main.swift" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/macos/IndicatorPanel.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/macos/ModelDiscovery.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -framework Carbon -framework ApplicationServices -framework AVFoundation -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$APP/Contents/MacOS/LemonVoxPrototype"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
 printf 'Built %s\n' "$APP"
 
@@ -49,17 +56,17 @@ cat > "$FIXTURE/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/settings_test.swift" "$OUT/session.o" -lc++ -o "$OUT/settings-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/settings_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/settings-test"
 "$OUT/settings-test"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "$OUT/session.o" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/model_picker_test.swift" -framework AppKit -o "$OUT/model-picker-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/PasteTransaction.swift" "$ROOT/tests/paste_transaction_test.swift" -o "$OUT/paste-test"
 "$OUT/paste-test"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/system_clipboard_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework ApplicationServices -framework Carbon -o "$OUT/system-clipboard-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/system_clipboard_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -framework ApplicationServices -framework Carbon -o "$OUT/system-clipboard-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/tests/trigger_test.swift" "$OUT/session.o" -lc++ -o "$OUT/trigger-test"
 "$OUT/trigger-test"
@@ -69,6 +76,8 @@ xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" "$ROO
 mkdir -p "$APP/Contents/Resources"
 iconutil -c icns "$OUT/LemonVox.iconset" -o "$APP/Contents/Resources/LemonVox.icns"
 cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+cp "$ROOT/third_party/yyjson/LICENSE" "$APP/Contents/Resources/yyjson-LICENSE"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/tests/modifier_trigger_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework ApplicationServices -o "$OUT/modifier-trigger-test"
 "$OUT/modifier-trigger-test"

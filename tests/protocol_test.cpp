@@ -17,6 +17,38 @@ LVProtocolSlice slice(const std::string &value) {
     return {reinterpret_cast<const uint8_t *>(value.data()), value.size()};
 }
 
+LVProtocolSlice slice(const std::vector<uint8_t> &value) {
+    return {value.data(), value.size()};
+}
+
+std::vector<uint8_t> utf16(const std::string &value, bool littleEndian, bool bom) {
+    std::vector<uint8_t> bytes;
+    if (bom) {
+        bytes.push_back(littleEndian ? 0xFF : 0xFE);
+        bytes.push_back(littleEndian ? 0xFE : 0xFF);
+    }
+    for (const auto character : value) {
+        const auto codePoint = static_cast<uint8_t>(character);
+        if (littleEndian) { bytes.push_back(codePoint); bytes.push_back(0); }
+        else { bytes.push_back(0); bytes.push_back(codePoint); }
+    }
+    return bytes;
+}
+
+std::vector<uint8_t> utf32(const std::string &value, bool littleEndian, bool bom) {
+    std::vector<uint8_t> bytes;
+    if (bom) {
+        if (littleEndian) { bytes.insert(bytes.end(), {0xFF, 0xFE, 0, 0}); }
+        else { bytes.insert(bytes.end(), {0, 0, 0xFE, 0xFF}); }
+    }
+    for (const auto character : value) {
+        const auto codePoint = static_cast<uint8_t>(character);
+        if (littleEndian) { bytes.insert(bytes.end(), {codePoint, 0, 0, 0}); }
+        else { bytes.insert(bytes.end(), {0, 0, 0, codePoint}); }
+    }
+    return bytes;
+}
+
 LVProtocolConfig validConfig() {
     return {{slice("http://127.0.0.1:13305/v1"), 1, 1, 1, 1, 1},
         slice("asr"), slice("cleanup"), slice("prompt")};
@@ -153,6 +185,13 @@ int main() {
     expectResponse(lv_protocol_parse_cleanup(slice(R"({"choices":[{"message":{"content":"First"},"finish_reason":"stop"},{"message":{"content":7},"finish_reason":"stop"}]})")), LV_PROTOCOL_RESPONSE, nullptr);
     expectResponse(lv_protocol_parse_version(slice(R"({"version":"2026.44.1"})")), LV_PROTOCOL_OK, "2026.44.1");
     expectResponse(lv_protocol_classify_http(401, slice(R"({"error":{"message":"Authorization: Bearer sk-secretvalue api_key=hidden"}})")), LV_PROTOCOL_UPSTREAM, "[redacted] [redacted]");
+    const std::string nbsp = "\xC2\xA0";
+    const auto bearerWithNBSP = std::string("{\"error\":{\"message\":\"Bearer") + nbsp + "short-secret\"}}";
+    expectResponse(lv_protocol_classify_http(401, slice(bearerWithNBSP)), LV_PROTOCOL_UPSTREAM, "[redacted]");
+    const auto authorizationWithNBSP = std::string("{\"error\":{\"message\":\"Authorization") + nbsp + ":" + nbsp + "short-secret\"}}";
+    expectResponse(lv_protocol_classify_http(401, slice(authorizationWithNBSP)), LV_PROTOCOL_UPSTREAM, "[redacted]");
+    const auto keyWithNBSP = std::string("{\"error\":{\"message\":\"api") + nbsp + "key" + nbsp + "=" + nbsp + "short-secret\"}}";
+    expectResponse(lv_protocol_classify_http(401, slice(keyWithNBSP)), LV_PROTOCOL_UPSTREAM, "[redacted]");
     expectResponse(lv_protocol_classify_http(401, slice(R"({"error":{"message":7},"message":"fallback"})")), LV_PROTOCOL_UPSTREAM, "fallback");
     expectResponse(lv_protocol_classify_http(401, slice(R"({"error":"fallback error"})")), LV_PROTOCOL_UPSTREAM, "fallback error");
     expectResponse(lv_protocol_classify_http(500, slice("private server failure")), LV_PROTOCOL_HTTP, nullptr);
@@ -173,6 +212,10 @@ int main() {
     for (const auto &malformed : std::vector<std::string>{"{", "{\"text\":NaN}", "{\"text\":\"x\"} trailing", "{\"text\":\"\\uD83D\"}"}) {
         expectResponse(lv_protocol_parse_transcription(slice(malformed)), LV_PROTOCOL_RESPONSE, nullptr);
     }
+    for (const auto &number : std::vector<std::string>{"1e9999", "-1e9999", "1e-9999", "123456789012345678901"}) {
+        expectResponse(lv_protocol_parse_transcription(slice(std::string("{\"text\":\"x\",\"n\":") + number + "}")), LV_PROTOCOL_OK, "x");
+    }
+    expectResponse(lv_protocol_parse_transcription(slice(R"({"text":1e9999})")), LV_PROTOCOL_RESPONSE, nullptr);
     std::string rawNul = R"({"text":"x"})";
     rawNul.push_back('\0');
     rawNul += "trailing";
@@ -182,7 +225,16 @@ int main() {
     invalidUTF8 += "\"}";
     expectResponse(lv_protocol_parse_transcription(slice(invalidUTF8)), LV_PROTOCOL_RESPONSE, nullptr);
     const std::string bomJSON("\xEF\xBB\xBF{\"text\":\"x\"}");
-    expectResponse(lv_protocol_parse_transcription(slice(bomJSON)), LV_PROTOCOL_RESPONSE, nullptr);
+    expectResponse(lv_protocol_parse_transcription(slice(bomJSON)), LV_PROTOCOL_OK, "x");
+    const std::string encodedJSON = R"({"text":"x"})";
+    expectResponse(lv_protocol_parse_transcription(slice(utf16(encodedJSON, true, false))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf16(encodedJSON, false, false))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf16(encodedJSON, true, true))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf16(encodedJSON, false, true))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf32(encodedJSON, true, false))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf32(encodedJSON, false, false))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf32(encodedJSON, false, true))), LV_PROTOCOL_OK, "x");
+    expectResponse(lv_protocol_parse_transcription(slice(utf32(encodedJSON, true, true))), LV_PROTOCOL_RESPONSE, nullptr);
     const auto nested = [](size_t depth) { return std::string(depth, '[') + "0" + std::string(depth, ']'); };
     assert(lv_protocol_json_valid(slice(nested(512))));
     assert(!lv_protocol_json_valid(slice(nested(513))));

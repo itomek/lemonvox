@@ -7,7 +7,8 @@ exact commit `6447536015f3d600f3d65323b10976103b337ca7`.
 The dependency is MIT licensed; its unchanged license is adjacent in
 [`LICENSE`](LICENSE). It is compiled as C17. C++ consumers use C++17 and both
 compilation units define `YYJSON_READER_DEPTH_LIMIT=513`. LemonVox uses the
-default `YYJSON_READ_NOFLAG` reader configuration and does not enable relaxed
+default `YYJSON_READ_NOFLAG` syntax plus the measured
+`YYJSON_READ_BIGNUM_AS_RAW` range-preservation flag; it does not enable relaxed
 syntax or stop-when-done flags.
 
 | File | SHA-256 | Bytes |

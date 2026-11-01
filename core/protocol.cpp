@@ -127,6 +127,107 @@ std::string appendPath(LVProtocolSlice base, const char *path) {
     return value;
 }
 
+bool appendUTF8(uint32_t codePoint, std::string &output) {
+    if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) return false;
+    if (codePoint <= 0x7F) output.push_back(static_cast<char>(codePoint));
+    else if (codePoint <= 0x7FF) {
+        output.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+        output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else if (codePoint <= 0xFFFF) {
+        output.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+        output.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else {
+        output.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+        output.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    }
+    return true;
+}
+
+enum class JSONEncoding { utf8, utf16_le, utf16_be, utf32_le, utf32_be };
+
+std::optional<std::string> decodeUTF16(LVProtocolSlice json, size_t offset, bool littleEndian) {
+    if ((json.size - offset) % 2 != 0) return std::nullopt;
+    std::string output;
+    output.reserve(json.size - offset);
+    for (size_t index = offset; index < json.size; index += 2) {
+        const uint16_t unit = littleEndian
+            ? static_cast<uint16_t>(json.data[index] | (static_cast<uint16_t>(json.data[index + 1]) << 8))
+            : static_cast<uint16_t>((static_cast<uint16_t>(json.data[index]) << 8) | json.data[index + 1]);
+        uint32_t codePoint = unit;
+        if (unit >= 0xD800 && unit <= 0xDBFF) {
+            if (index + 3 >= json.size) return std::nullopt;
+            const uint16_t low = littleEndian
+                ? static_cast<uint16_t>(json.data[index + 2] | (static_cast<uint16_t>(json.data[index + 3]) << 8))
+                : static_cast<uint16_t>((static_cast<uint16_t>(json.data[index + 2]) << 8) | json.data[index + 3]);
+            if (low < 0xDC00 || low > 0xDFFF) return std::nullopt;
+            codePoint = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+            index += 2;
+        } else if (unit >= 0xDC00 && unit <= 0xDFFF) {
+            return std::nullopt;
+        }
+        if (!appendUTF8(codePoint, output)) return std::nullopt;
+    }
+    return output;
+}
+
+std::optional<std::string> decodeUTF32(LVProtocolSlice json, size_t offset, bool littleEndian) {
+    if ((json.size - offset) % 4 != 0) return std::nullopt;
+    std::string output;
+    output.reserve(json.size - offset);
+    for (size_t index = offset; index < json.size; index += 4) {
+        const uint32_t codePoint = littleEndian
+            ? static_cast<uint32_t>(json.data[index]) | (static_cast<uint32_t>(json.data[index + 1]) << 8) |
+                (static_cast<uint32_t>(json.data[index + 2]) << 16) | (static_cast<uint32_t>(json.data[index + 3]) << 24)
+            : (static_cast<uint32_t>(json.data[index]) << 24) | (static_cast<uint32_t>(json.data[index + 1]) << 16) |
+                (static_cast<uint32_t>(json.data[index + 2]) << 8) | static_cast<uint32_t>(json.data[index + 3]);
+        if (!appendUTF8(codePoint, output)) return std::nullopt;
+    }
+    return output;
+}
+
+std::optional<std::string> normalizeJSON(LVProtocolSlice json) {
+    if (!json.data) return json.size == 0 ? std::optional<std::string>(std::string()) : std::nullopt;
+    JSONEncoding encoding = JSONEncoding::utf8;
+    size_t offset = 0;
+    if (json.size >= 3 && json.data[0] == 0xEF && json.data[1] == 0xBB && json.data[2] == 0xBF) {
+        offset = 3;
+    } else if (json.size >= 4 && json.data[0] == 0 && json.data[1] == 0 && json.data[2] == 0xFE && json.data[3] == 0xFF) {
+        encoding = JSONEncoding::utf32_be;
+        offset = 4;
+    } else if (json.size >= 2 && json.data[0] == 0xFE && json.data[1] == 0xFF) {
+        encoding = JSONEncoding::utf16_be;
+        offset = 2;
+    } else if (json.size >= 2 && json.data[0] == 0xFF && json.data[1] == 0xFE) {
+        /* Foundation treats FF FE 00 00 as UTF-16LE here, matching its rejection of UTF-32LE BOM input. */
+        encoding = JSONEncoding::utf16_le;
+        offset = 2;
+    } else if (json.size >= 4 && json.data[0] == 0 && json.data[1] == 0 && json.data[2] == 0) {
+        encoding = JSONEncoding::utf32_be;
+    } else if (json.size >= 4 && json.data[1] == 0 && json.data[2] == 0 && json.data[3] == 0) {
+        encoding = JSONEncoding::utf32_le;
+    } else if (json.size >= 4 && json.data[0] == 0 && json.data[2] == 0) {
+        encoding = JSONEncoding::utf16_be;
+    } else if (json.size >= 4 && json.data[1] == 0 && json.data[3] == 0) {
+        encoding = JSONEncoding::utf16_le;
+    }
+    switch (encoding) {
+        case JSONEncoding::utf8:
+            return std::string(reinterpret_cast<const char *>(json.data + offset), json.size - offset);
+        case JSONEncoding::utf16_le:
+            return decodeUTF16(json, offset, true);
+        case JSONEncoding::utf16_be:
+            return decodeUTF16(json, offset, false);
+        case JSONEncoding::utf32_le:
+            return decodeUTF32(json, offset, true);
+        case JSONEncoding::utf32_be:
+            return decodeUTF32(json, offset, false);
+    }
+    return std::nullopt;
+}
+
 bool withinFoundationDepth(const yyjson_val *root) {
     struct PendingValue {
         const yyjson_val *value;
@@ -159,9 +260,12 @@ bool withinFoundationDepth(const yyjson_val *root) {
 }
 
 yyjson_doc *readJSON(LVProtocolSlice json) {
-    if ((!json.data && json.size != 0) || hasNul(json)) return nullptr;
-    auto *document = yyjson_read_opts(reinterpret_cast<char *>(const_cast<uint8_t *>(json.data)), json.size,
-        YYJSON_READ_NOFLAG, nullptr, nullptr);
+    const auto normalized = normalizeJSON(json);
+    if (!normalized || normalized->empty()) return nullptr;
+    const LVProtocolSlice utf8{reinterpret_cast<const uint8_t *>(normalized->data()), normalized->size()};
+    if (hasNul(utf8)) return nullptr;
+    auto *document = yyjson_read_opts(const_cast<char *>(normalized->data()), normalized->size(),
+        static_cast<yyjson_read_flag>(YYJSON_READ_NOFLAG | YYJSON_READ_BIGNUM_AS_RAW), nullptr, nullptr);
     if (!document || withinFoundationDepth(yyjson_doc_get_root(document))) return document;
     yyjson_doc_free(document);
     return nullptr;
@@ -214,6 +318,45 @@ bool readOptionalLabels(const yyjson_val *object, bool &transcription, bool &cha
     return true;
 }
 
+struct RegexView {
+    std::string characters;
+    std::vector<size_t> starts;
+    std::vector<size_t> ends;
+};
+
+bool makeRegexView(const std::string &value, RegexView &view) {
+    const LVProtocolSlice input{reinterpret_cast<const uint8_t *>(value.data()), value.size()};
+    size_t index = 0;
+    while (index < input.size) {
+        const auto start = index;
+        uint32_t codePoint = 0;
+        if (!readCodePoint(input, index, codePoint)) return false;
+        view.starts.push_back(start);
+        view.ends.push_back(index);
+        if (codePoint <= 0x7F) view.characters.push_back(static_cast<char>(codePoint));
+        else if (unicodeWhitespace(codePoint)) view.characters.push_back(' ');
+        else view.characters.push_back('\1');
+    }
+    return true;
+}
+
+void replaceUnicodeRegex(std::string &value, const std::regex &pattern) {
+    RegexView view;
+    if (!makeRegexView(value, view)) return;
+    std::vector<std::pair<size_t, size_t>> matches;
+    for (std::sregex_iterator iterator(view.characters.begin(), view.characters.end(), pattern), end;
+        iterator != end; ++iterator) {
+        const auto start = static_cast<size_t>(iterator->position());
+        const auto length = static_cast<size_t>(iterator->length());
+        if (length != 0 && start + length <= view.starts.size()) matches.push_back({start, start + length});
+    }
+    for (auto iterator = matches.rbegin(); iterator != matches.rend(); ++iterator) {
+        const auto start = view.starts[iterator->first];
+        const auto end = view.ends[iterator->second - 1];
+        value.replace(start, end - start, "[redacted]");
+    }
+}
+
 std::string redact(std::string value) {
     LVProtocolSlice input{reinterpret_cast<const uint8_t *>(value.data()), value.size()};
     size_t index = 0;
@@ -230,15 +373,13 @@ std::string redact(std::string value) {
     }
     if (index < input.size) value.resize(end);
     const auto insensitive = std::regex_constants::icase;
-    value = std::regex_replace(value,
-        std::regex(R"((authorization\s*[:=]\s*|bearer\s+)[^\s,;]+(?:\s+[^\s,;]+)?)", insensitive),
-        "[redacted]");
-    value = std::regex_replace(value,
-        std::regex(R"(([\"']?(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|secret)[\"']?\s*[:=]\s*)[\"']?[^\s,;\"'}]+)", insensitive),
-        "[redacted]");
-    value = std::regex_replace(value, std::regex(R"(\b(?:sk-|fw-)[A-Za-z0-9_-]+)"), "[redacted]");
-    value = std::regex_replace(value, std::regex(R"([A-Za-z0-9_+/=-]{32,})"), "[redacted]");
-    value = std::regex_replace(value, std::regex(R"(https?://[^\s<>\"']+)"), "[redacted]");
+    replaceUnicodeRegex(value,
+        std::regex(R"((authorization\s*[:=]\s*|bearer\s+)[^\s,;]+(?:\s+[^\s,;]+)?)", insensitive));
+    replaceUnicodeRegex(value,
+        std::regex(R"(([\"']?(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|secret)[\"']?\s*[:=]\s*)[\"']?[^\s,;\"'}]+)", insensitive));
+    replaceUnicodeRegex(value, std::regex(R"(\b(?:sk-|fw-)[A-Za-z0-9_-]+)"));
+    replaceUnicodeRegex(value, std::regex(R"([A-Za-z0-9_+/=-]{32,})"));
+    replaceUnicodeRegex(value, std::regex(R"(https?://[^\s<>\"']+)"));
     value.erase(std::remove(value.begin(), value.end(), '\0'), value.end());
     return value;
 }
