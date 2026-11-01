@@ -147,6 +147,8 @@ int main() {
     FakeDiagnostics diagnostics;
     diagnostics.record({DiagnosticEvent::transport_failed, AdapterError::network, 503});
     assert(diagnostics.last.event == DiagnosticEvent::transport_failed && diagnostics.last.http_status == 503);
+    diagnostics.record({DiagnosticEvent::dictation_failed, AdapterError::response, 500});
+    assert(diagnostics.last.event == DiagnosticEvent::dictation_failed && diagnostics.last.http_status == 500);
 
     WorkflowCallbacks callbacks;
     bool phase_notified = false;
