@@ -12,7 +12,7 @@ enum DictationError: Error, LocalizedError {
         case .response: return "Lemonade returned an unsupported response"
         case .emptyTranscript: return "No transcript returned; try another recording"
         case .emptyCleanup: return "Cleanup returned no text; try again"
-        case .microphone: return "Allow LemonVox Prototype in Privacy & Security → Microphone"
+        case .microphone: return "Allow LemonVox in Privacy & Security → Microphone"
         case .recording: return "Recording unavailable or empty; check microphone input"
         }
     }

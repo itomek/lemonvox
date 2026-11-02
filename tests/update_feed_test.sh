@@ -11,13 +11,13 @@ p=pathlib.Path(sys.argv[1])
 p.joinpath('fixture-key').write_bytes(base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')))
 PY
 ditto -x -k "$1" "$TEMP/app"
-python3 - "$TEMP/app/LemonVox Prototype.app/Contents/Info.plist" <<'PY'
+python3 - "$TEMP/app/LemonVox.app/Contents/Info.plist" <<'PY'
 import sys,plistlib
 p=sys.argv[1];v=plistlib.load(open(p,'rb'));v['SUPublicEDKey']='11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=';v['CFBundleVersion']='10';v['CFBundleShortVersionString']='0.2.0';plistlib.dump(v,open(p,'wb'))
 PY
-codesign --force --sign - --timestamp=none "$TEMP/app/LemonVox Prototype.app"
+codesign --force --sign - --timestamp=none "$TEMP/app/LemonVox.app"
 ARCHIVE="$TEMP/LemonVox-0.2.0-arm64.zip"
-ditto -c -k --sequesterRsrc --keepParent "$TEMP/app/LemonVox Prototype.app" "$ARCHIVE"
+ditto -c -k --sequesterRsrc --keepParent "$TEMP/app/LemonVox.app" "$ARCHIVE"
 bash "$ROOT/scripts/prepare-update-feed.sh" "$ARCHIVE" 0.2.0 9 "$TEMP/fixture-key"
 SIGNATURE=$(python3 - "$TEMP/appcast.xml" <<'PY'
 import sys,xml.etree.ElementTree as E

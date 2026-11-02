@@ -6,7 +6,7 @@ from pathlib import Path
 def validate(archive,feed,previous_build):
     namespace='{http://www.andymatuschak.org/xml-namespaces/sparkle}'
     with zipfile.ZipFile(archive) as z:
-        info=plistlib.loads(z.read('LemonVox Prototype.app/Contents/Info.plist'))
+        info=plistlib.loads(z.read('LemonVox.app/Contents/Info.plist'))
     build=int(info['CFBundleVersion']);version=info['CFBundleShortVersionString']
     assert build>previous_build, 'Release build number must increase'
     assert info['CFBundleIdentifier']=='com.itomek.lemonvox.prototype', 'Wrong application identity'

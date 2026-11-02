@@ -11,7 +11,9 @@ assert 0<a['size']<=209715200, 'Unexpected archive size'
 data=subprocess.check_output(['curl','--fail','--location','--silent','--show-error','--max-time','120','--max-filesize','209715200',url])
 assert 'sha256:'+hashlib.sha256(data).hexdigest()==digest, 'Previous archive digest mismatch'
 with zipfile.ZipFile(io.BytesIO(data)) as z:
-    entry=z.getinfo('LemonVox Prototype.app/Contents/Info.plist');assert entry.file_size<65536
+    entries=[z.getinfo(name) for name in ('LemonVox.app/Contents/Info.plist','LemonVox Prototype.app/Contents/Info.plist') if name in z.namelist()]
+    assert len(entries)==1, 'Expected exactly one recognized app bundle'
+    entry=entries[0];assert entry.file_size<65536
     info=plistlib.loads(z.read(entry))
 assert info['CFBundleIdentifier']=='com.itomek.lemonvox.prototype'
 print(int(info['CFBundleVersion']))

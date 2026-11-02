@@ -1,0 +1,26 @@
+# Staged reference only. Replace both placeholders after verifying the final
+# signed/notarized release ZIP; do not publish this template as a live cask.
+cask "lemonvox" do
+  version "RELEASE_VERSION"
+  sha256 "FINAL_RELEASE_ZIP_SHA256"
+
+  url "https://github.com/itomek/lemonvox/releases/download/v#{version}/LemonVox-#{version}-arm64.zip"
+  name "LemonVox"
+  desc "Native dictation client for Lemonade"
+  homepage "https://github.com/itomek/lemonvox"
+
+  auto_updates true
+  depends_on arch: :arm64
+  depends_on macos: :tahoe
+
+  app "LemonVox.app"
+
+  caveats <<~EOS
+    Requires Lemonade installed and running separately (tested with 2026.44.1).
+    Choose transcription and cleanup models in Settings.
+    Grant microphone access when requested. Enable the app manually in
+    System Settings > Privacy & Security > Accessibility, then relaunch.
+    Installs as LemonVox.app. Permission continuity across the rename requires
+    live verification with the signed release.
+  EOS
+end
