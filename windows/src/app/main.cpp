@@ -7,6 +7,7 @@
 #include "common/executor.h"
 #include "common/utf.h"
 #include "insertion/clipboard.h"
+#include "insertion/integrity.h"
 #include "insertion/win_insertion.h"
 #include "net/model_catalog.h"
 #include "net/winhttp_transport.h"
@@ -103,6 +104,8 @@ public:
     bool run(bool open_settings_at_launch, bool smoke);
 
 private:
+    static void CALLBACK foreground_changed(HWINEVENTHOOK, DWORD, HWND window, LONG object, LONG child, DWORD, DWORD);
+    void on_foreground(HWND window);
     void on_phase(WorkflowPhase phase);
     void show_failure(const UserMessage &message);
     void open_settings();
@@ -135,7 +138,40 @@ private:
     ui::TrayActivity activity_ = ui::TrayActivity::idle;
     std::wstring tray_detail_;
     bool quitting_ = false;
+    HWINEVENTHOOK foreground_hook_ = nullptr;
+    HWND elevated_noticed_ = nullptr;
+    static App *instance_app_;
 };
+
+App *App::instance_app_ = nullptr;
+
+void CALLBACK App::foreground_changed(HWINEVENTHOOK, DWORD, HWND window, LONG object, LONG child, DWORD, DWORD) {
+    if (object == OBJID_WINDOW && child == CHILDID_SELF && instance_app_) instance_app_->on_foreground(window);
+}
+
+// Windows does not deliver keystrokes aimed at higher-integrity windows to a
+// medium-integrity low-level hook (UIPI), so a modifier double tap cannot be
+// seen there. Say so once per window instead of silently doing nothing.
+// RegisterHotKey shortcuts and the tray command still work; insertion then
+// falls back to Copy.
+void App::on_foreground(HWND window) {
+    if (!window || window == elevated_noticed_ || controller_->busy()) return;
+    const auto binding = trigger_->active();
+    if (!binding || binding->kind != TriggerKind::double_tap) return;
+    if (indicator_->visible() && indicator_->state().mode != ui::IndicatorMode::notice) return;
+    DWORD process = 0;
+    GetWindowThreadProcessId(window, &process);
+    if (process == 0 || process == GetCurrentProcessId()) return;
+    // An unreadable token is typical for elevated processes of the same user.
+    if (input_integrity(process) == IntegrityDecision::allowed) return;
+    elevated_noticed_ = window;
+    ui::IndicatorState state;
+    state.mode = ui::IndicatorMode::notice;
+    state.message = L"Administrator window: " + describe_trigger(*binding)
+        + L" can't be detected here. Use Start dictation in the tray menu or a regular shortcut; "
+          L"the text will be offered to copy.";
+    indicator_->set_state(state);
+}
 
 bool App::run(bool open_settings_at_launch, bool smoke) {
     preferences_ = std::make_unique<SnapshotPreferences>(store_.load());
@@ -244,6 +280,9 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     settings_ = std::make_unique<SettingsWindow>(instance_, std::move(services), kDefaultCleanupPrompt);
 
     open_settings_signal_ = [this] { open_settings(); };
+    instance_app_ = this;
+    foreground_hook_ = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
+        &App::foreground_changed, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
     WNDCLASSEXW signal_class{};
     signal_class.cbSize = sizeof(signal_class);
     signal_class.lpfnWndProc = signal_proc;
@@ -277,6 +316,8 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
 
     // Orderly shutdown: stop input sources, then the workflow (which shuts down
     // every adapter), then the executor, then windows.
+    if (foreground_hook_) UnhookWinEvent(foreground_hook_);
+    instance_app_ = nullptr;
     trigger_->shutdown();
     controller_->shutdown();
     catalog_.reset();

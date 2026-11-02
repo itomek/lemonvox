@@ -24,7 +24,11 @@ bool is_processing(IndicatorMode mode) {
            mode == IndicatorMode::inserting;
 }
 
-bool is_message(IndicatorMode mode) { return mode == IndicatorMode::error || mode == IndicatorMode::copy_fallback; }
+bool is_message(IndicatorMode mode) {
+    return mode == IndicatorMode::error || mode == IndicatorMode::copy_fallback || mode == IndicatorMode::notice;
+}
+
+constexpr UINT kNoticeHideMs = 4500;
 
 bool reduced_motion() {
     BOOL animations = TRUE;
@@ -111,6 +115,7 @@ std::wstring indicator_status_text(const IndicatorState &state) {
     case IndicatorMode::cleaning: return L"Cleaning up\u2026";
     case IndicatorMode::inserting: return L"Inserting\u2026";
     case IndicatorMode::success: return state.message.empty() ? L"Inserted" : state.message;
+    case IndicatorMode::notice: return state.message;
     case IndicatorMode::error: return state.message.empty() ? L"Dictation failed." : state.message;
     case IndicatorMode::copy_fallback:
         return state.message.empty() ? L"Couldn\u2019t insert the text. Copy it instead." : state.message;
@@ -268,7 +273,8 @@ Layout IndicatorWindow::Impl::compute_layout(float k) const {
         right -= 8 * k;
     }
     out.width = static_cast<int>(std::ceil(width));
-    out.height = static_cast<int>(std::ceil(row + button_height + 14 * k));
+    out.height = static_cast<int>(std::ceil(ids.empty() ? out.text.Y + text_height + 14 * k
+                                                        : row + button_height + 14 * k));
     out.radius = 14 * k;
     return out;
 }
@@ -457,6 +463,7 @@ void IndicatorWindow::Impl::update_timers() {
     if (is_processing(state.mode) && !reduced_motion()) SetTimer(hwnd, kAnimationTimer, kAnimationIntervalMs, nullptr);
     if (state.mode == IndicatorMode::success)
         SetTimer(hwnd, kAutoHideTimer, static_cast<UINT>(std::max<long long>(1, auto_hide.count())), nullptr);
+    if (state.mode == IndicatorMode::notice) SetTimer(hwnd, kAutoHideTimer, kNoticeHideMs, nullptr);
 }
 
 std::optional<IndicatorButton> IndicatorWindow::Impl::hit_test(POINT client) const {

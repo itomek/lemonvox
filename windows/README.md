@@ -119,7 +119,9 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 | Pipeline | Synthesized "Um, send Alex the fourteen invoices on Friday." → "Send Alex the 14 invoices on Friday." through WinHTTP, Whisper-Base and Gemma cleanup |
 | Full app | `app_e2e_test`: Alt twice → real app → Lemonade → pasted into another process's field ("Note: Send Alex the 14 invoices on Friday."), focus kept, no Enter, clipboard restored |
 | Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, non-loopback endpoint, microphone denial/no device/device loss (fake device) |
-| Microphone | Endpoint enumeration and initialization (48 kHz stereo) verified without recording; live recording is owner-run via `lemonvox_mic_probe` |
+| Microphone | Endpoint enumeration and initialization (48 kHz stereo) verified without recording; owner-run `lemonvox_mic_probe --seconds 5`: 5.000 s at 16 kHz mono, RMS -27.2 dBFS, peak -2.1 dBFS |
+| Live dictation | Owner-verified with a real microphone and Alt twice |
+| Administrator window | Owner-verified: Alt twice is not detected in an elevated terminal (UIPI); detection of elevated foreground windows verified against the open desktop (only the elevated terminal matched) |
 | Package | Install, launch, update with settings retained, uninstall with and without settings; exe 922,624 bytes, zip 437,702 bytes |
 | Idle | 0 ms CPU over 30 s, 17.6 MB working set, 4.3 MB private bytes, 12 threads |
 
@@ -128,7 +130,11 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 - Google Chrome exposes page fields to UI Automation only after an MSAA client asks; LemonVox
   makes one MSAA focus query for Chromium windows, so the first dictation into a Chrome window can
   take up to 300 ms longer. A field Chrome still does not expose falls back to Copy.
-- Higher-integrity (administrator) target apps always fall back to Copy.
+- Higher-integrity (administrator) windows: Windows (UIPI) does not deliver their keystrokes to
+  LemonVox's keyboard hook, so a modifier double tap such as Alt twice does nothing there (confirmed
+  by the owner in an elevated terminal). When such a window becomes active, the bar briefly says so.
+  A regular shortcut (`RegisterHotKey`) or tray > Start dictation still works, and the result is
+  offered for Copy because input cannot be sent to elevated windows.
 - A lone Alt tap puts classic Win32 apps into menu mode; a double tap enters and leaves it, so the
   target is unchanged, but a menu bar may flash. Choose another trigger if that is distracting.
 - If Windows silently removes the keyboard hook (`LowLevelHooksTimeout`) a health check reinstalls it

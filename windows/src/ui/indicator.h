@@ -28,6 +28,7 @@ enum class IndicatorMode : std::uint8_t {
     cleaning,
     inserting,
     success,       // auto-hides after auto_hide_delay
+    notice,        // informational message, no buttons; auto-hides after a few seconds
     error,         // message + Dismiss + optional action
     copy_fallback, // insertion failed: message + Copy + Dismiss
 };

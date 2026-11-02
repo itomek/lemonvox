@@ -95,6 +95,11 @@ static void indicator_text() {
     assert(!indicator_status_text(state).empty());
     assert((indicator_buttons(state) == std::vector<IndicatorButton>{IndicatorButton::dismiss, IndicatorButton::copy}));
     assert(indicator_accessible_name(state).find(L"Copy") != std::wstring::npos);
+    state = IndicatorState{};
+    state.mode = IndicatorMode::notice;
+    state.message = L"Administrator window";
+    assert(indicator_status_text(state) == L"Administrator window" && indicator_buttons(state).empty());
+    assert(indicator_accessible_name(state) == L"LemonVox: Administrator window");
 }
 
 static void tray_text() {

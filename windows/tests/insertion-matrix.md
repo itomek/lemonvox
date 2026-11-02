@@ -94,7 +94,9 @@ medium-integrity LemonVox cannot read its UI Automation tree. To check the
 fallback by hand:
 
 1. Open an elevated Command Prompt or Windows Terminal ("Run as administrator").
-2. Run LemonVox normally (not elevated) and dictate into the elevated window.
+2. Run LemonVox normally (not elevated) and activate the elevated window. With a
+   double-tap trigger the bar shows an "Administrator window" notice; Alt twice
+   is not detected there. Start with tray > Start dictation or a regular shortcut.
 3. Expect no typed text and a copy fallback (`insertion_unavailable` from
    `WinInsertion::insert`, which the core reports as `paste_unavailable`). The
    clipboard keeps its previous content.
@@ -120,7 +122,7 @@ and the clipboard was restored.
 | Edge (Chromium, data: textarea) | Pass | Insert, changed focus (rejected) and password field (rejected) all pass. Exposes web content through UI Automation. |
 | Chrome (data: textarea) | Pass | Same three checks pass, including a cold browser where the adapter is the first accessibility client (2 full matrix runs plus 3 cold inserts and 1 cold password check). |
 | VS Code (Electron) | Pass | Monaco's input exposes an editable Edit; saved file identical. |
-| Elevated window | Not automated | Requires a UAC prompt; see the manual steps. The adapter refuses on integrity before any clipboard or input work. |
+| Elevated window | Owner-checked, see below | Requires a UAC prompt. The adapter refuses on integrity before any clipboard or input work. In an elevated terminal, Alt twice is not detected at all because UIPI hides its keystrokes from the low-level hook; LemonVox now shows a notice when such a window becomes active. |
 
 Earlier result (before the MSAA step): Chrome ended every dictation in the Copy
 fallback because its text fields were invisible to UI Automation.

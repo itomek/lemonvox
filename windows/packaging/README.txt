@@ -28,6 +28,9 @@ Use
 - If the field changed, is a password field, or belongs to an app running as
   administrator, LemonVox offers Copy instead so you can paste manually.
   Do not run LemonVox as administrator to work around this.
+- In administrator windows Windows hides key presses from LemonVox, so Alt
+  twice does nothing there; use the tray menu's Start dictation or a regular
+  shortcut set in Settings.
 - Microphone access: Settings > Privacy & security > Microphone > allow
   desktop apps to access your microphone.
 
