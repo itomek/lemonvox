@@ -9,7 +9,7 @@ open ".build/LemonVox.app"
 
 The app appears as a lemon-and-waveform icon in the menu bar. Its menu offers **Start/Stop Dictation**, **Settings…** and **Quit LemonVox**, with **Cancel** and **Copy Text** when relevant. The packaged app icon uses the same native vector geometry.
 
-The Mac default is **Command twice**: two complete taps of the same Command key, either left or right. Each hold can last at most 250 ms; the gap between taps can last at most 350 ms. Other keys/chords, modifiers, mouse actions and application changes reset detection. Ordinary typing passes through unchanged. Settings suspends dictation triggers.
+The Mac default is **Command twice**: two complete taps of the same Command key, either left or right. Each hold can last at most 250 ms; the gap between taps can last at most 350 ms. Other keys/chords, modifiers, mouse actions and application changes reset detection. Ordinary typing passes through unchanged. Settings blocks starting a new dictation; an active recording can still be finished or canceled.
 
 ## Setup and dictation
 
