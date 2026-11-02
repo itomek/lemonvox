@@ -120,20 +120,20 @@ enum RunningAppVersion {
         debugDiagnostics.setAccessibilityLabel("Enable Debug diagnostic traces")
         debugDiagnostics.toolTip=debugDiagnosticsDetail.stringValue
         view.addSubview(debugDiagnostics)
-        debugDiagnosticsDetail.frame=NSRect(x:24,y:140,width:592,height:26)
+        debugDiagnosticsDetail.frame=NSRect(x:24,y:124,width:592,height:42)
         debugDiagnosticsDetail.font = .systemFont(ofSize:11); debugDiagnosticsDetail.textColor = .secondaryLabelColor
         view.addSubview(debugDiagnosticsDetail)
         let openLog=NSButton(title:"Open Log",target:self,action:#selector(openLog))
-        openLog.frame=NSRect(x:24,y:104,width:110,height:30); view.addSubview(openLog)
-        accessibilityOpen.frame=NSRect(x:150,y:104,width:170,height:30)
-        accessibilityRetry.frame=NSRect(x:332,y:104,width:140,height:30)
+        openLog.frame=NSRect(x:24,y:86,width:110,height:30); view.addSubview(openLog)
+        accessibilityOpen.frame=NSRect(x:150,y:86,width:170,height:30)
+        accessibilityRetry.frame=NSRect(x:332,y:86,width:140,height:30)
         accessibilityOpen.target=self; accessibilityOpen.action=#selector(openAccessibilityPane)
         accessibilityRetry.target=self; accessibilityRetry.action=#selector(checkAccessibility)
         view.addSubview(accessibilityOpen); view.addSubview(accessibilityRetry)
-        accessibilityStatus.frame=NSRect(x:24,y:-200,width:592,height:250)
+        accessibilityStatus.frame=NSRect(x:24,y:-218,width:592,height:250)
         accessibilityStatus.isSelectable=true; accessibilityStatus.font = .systemFont(ofSize:11); accessibilityStatus.textColor = .secondaryLabelColor
         view.addSubview(accessibilityStatus)
-        logPath.frame=NSRect(x:24,y:62,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
+        logPath.frame=NSRect(x:24,y:42,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
         automaticChecks.frame=NSRect(x:24,y:1000,width:592,height:24)
         automaticInstallation.frame=NSRect(x:24,y:972,width:592,height:24)
         automaticChecks.isHidden=AppIdentity.running.isDebug; automaticInstallation.isHidden=AppIdentity.running.isDebug
@@ -220,9 +220,26 @@ enum RunningAppVersion {
     }
     func numberOfRows(in tableView: NSTableView) -> Int { categories.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let label = NSTextField(labelWithString:categories[row])
-        label.lineBreakMode = .byTruncatingTail
-        return label
+        let identifier = NSUserInterfaceItemIdentifier("SettingsCategoryCell")
+        let cell: NSTableCellView
+        if let reused = tableView.makeView(withIdentifier:identifier, owner:self) as? NSTableCellView {
+            cell = reused
+        } else {
+            cell = NSTableCellView()
+            cell.identifier = identifier
+            let label = NSTextField(labelWithString:"")
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.lineBreakMode = .byTruncatingTail
+            cell.textField = label
+            cell.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo:cell.leadingAnchor,constant:4),
+                label.trailingAnchor.constraint(equalTo:cell.trailingAnchor,constant:-4),
+                label.centerYAnchor.constraint(equalTo:cell.centerYAnchor)
+            ])
+        }
+        cell.textField?.stringValue = categories[row]
+        return cell
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
         showCategory(categoryList.selectedRow)
@@ -323,7 +340,7 @@ enum RunningAppVersion {
             window.close()
         }
         catch {
-            if error is SettingsPreferenceError {
+            if error is SettingsPreferenceError || error is TriggerError {
                 shortcutStatus.stringValue=SafeDisplay.error(error); shortcutStatus.toolTip=shortcutStatus.stringValue
                 categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
                 shortcutStatus.scrollToVisible(shortcutStatus.bounds)

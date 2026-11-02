@@ -119,6 +119,18 @@ import AppKit
         precondition(pane.shortcutStatus.frame.maxY < pane.currentField.frame.minY)
         precondition(pane.categoryList.enclosingScrollView?.contentInsets.top == 8,
                      "The Settings category list needs a native top inset")
+        let categoryCell = pane.tableView(pane.categoryList, viewFor: nil, row: 0) as? NSTableCellView
+        precondition(categoryCell?.textField?.stringValue == "General")
+        categoryCell?.frame = NSRect(x:0,y:0,width:164,height:30)
+        categoryCell?.layoutSubtreeIfNeeded()
+        if let label = categoryCell?.textField {
+            precondition(abs(label.frame.midY - categoryCell!.bounds.midY) < 0.5,
+                         "Settings category labels must be vertically centered")
+        }
+        let detailRequired = pane.debugDiagnosticsDetail.cell!.cellSize(forBounds:
+            NSRect(x:0,y:0,width:pane.debugDiagnosticsDetail.frame.width,height:1000)).height
+        precondition(detailRequired <= pane.debugDiagnosticsDetail.frame.height,
+                     "Debug diagnostics exclusions must fit without truncation")
         let expectedVersion=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unavailable"
         let expectedBuild=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unavailable"
         precondition(pane.appVersion.stringValue == "\(AppIdentity.running.name) \(expectedVersion) (build \(expectedBuild))")
@@ -161,6 +173,15 @@ import AppKit
         precondition(pane.shortcutStatus.stringValue.contains("must be different"))
         pane.cancellationTrigger.update(.defaultMacCancellation)
         precondition(pane.shortcutStatus.stringValue.isEmpty)
+        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { _,_,_,_ in
+            throw TriggerError.unavailable
+        }
+        pane.saveSettings()
+        precondition(pane.window.isVisible && pane.categoryList.selectedRow == 0)
+        precondition(pane.shortcutStatus.stringValue.contains("Shortcut unavailable"))
+        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
+            savedPreferences=(trigger,cancellation,appearance,current)
+        }
         pane.prompt.string = "Unsaved synthetic draft"
         pane.appearance.selectItem(at:2)
         pane.trigger.beginRecording()
