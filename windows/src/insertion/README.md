@@ -31,11 +31,16 @@ foreground window, process ID and process start time, focused child window
   (`insert_current_target`). A changed field gets its own token with
   `matches_original=false`, so the default policy falls back to Copy.
 
-Chromium builds its accessibility tree on first use. When focus reports
-Chromium's bare contents pane, the probe retries briefly (up to 300 ms). Chrome
-does not expose web content to UI Automation, so Chrome text fields end in the
-Copy fallback; Edge and Electron apps such as VS Code work. See
-`windows/tests/insertion-matrix.md`.
+Chromium apps report only a bare contents pane until their web accessibility
+is on. Edge turns it on for UI Automation clients; Chrome only for MSAA
+clients. When focus is that placeholder, the probe follows MSAA `accFocus`/
+`accRole`/`accState` from the top-level window once (which turns Chrome's tree on
+for the life of that browser process) and re-reads UI Automation for up to
+300 ms. UI Automation stays the source of editability and identity (runtime ID);
+MSAA only adds a secure signal (`STATE_SYSTEM_PROTECTED`). MSAA is used only for
+that placeholder, i.e. a process that just answered UI Automation, because
+`WM_GETOBJECT` has no timeout. If the field still cannot be read, the result is
+the Copy fallback. See `windows/tests/insertion-matrix.md`.
 
 ## Insertion
 

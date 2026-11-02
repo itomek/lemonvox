@@ -3,7 +3,7 @@ add_library(lv_insertion STATIC
     integrity.cpp
     target.cpp
     win_insertion.cpp)
-target_link_libraries(lv_insertion PUBLIC lv_common PRIVATE ole32 oleaut32 uiautomationcore user32 advapi32)
+target_link_libraries(lv_insertion PUBLIC lv_common PRIVATE ole32 oleaut32 oleacc uiautomationcore user32 advapi32)
 lemonvox_win_target(lv_insertion)
 
 set(LV_INSERTION_TESTS "${CMAKE_CURRENT_SOURCE_DIR}/../../tests")

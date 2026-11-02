@@ -3,8 +3,9 @@
 // window: the target must match --title (and --pids when given), must become
 // the foreground window, and is re-checked immediately before every SendInput.
 //
-//   insertion_matrix_probe insert --title <substring> [--pids 1,2] [--focus-name <UIA name>] [--no-lock]
-//   insertion_matrix_probe describe --title <substring> [--pids 1,2] [--no-lock]
+//   insertion_matrix_probe insert --title <substring> [--pids 1,2] [--focus-name <UIA name>]
+//       [--change-focus <UIA name> | --expect-secure] [--no-lock]
+//   insertion_matrix_probe describe --title <substring> [--pids 1,2] [--samples n] [--msaa] [--no-lock]
 //   insertion_matrix_probe keys --title <substring> [--pids 1,2] --combo ctrl+s|ctrl+w [--no-lock]
 //
 // --no-lock is for callers that already hold Local\LemonVoxInteractiveTestLock.
@@ -19,6 +20,7 @@
 #include <ole2.h>
 #include <oleauto.h>
 #include <UIAutomation.h>
+#include <oleacc.h>
 
 #include <array>
 #include <cstdio>
@@ -42,6 +44,9 @@ struct Args {
     std::wstring combo;
     bool lock = true;
     int samples = 3;
+    bool msaa = false;
+    std::wstring change_focus;
+    bool expect_secure = false;
     std::wstring focus_name;
 };
 
@@ -188,8 +193,43 @@ std::wstring target_text(HWND target, const std::wstring &name) {
     return text;
 }
 
+// Diagnostic (--msaa): prints the MSAA accFocus chain from the window's client
+// object. Note that this alone turns on Chrome's web accessibility tree.
+void print_msaa_focus(HWND target, int sample) {
+    IAccessible *accessible = nullptr;
+    const HRESULT hr = AccessibleObjectFromWindow(target, static_cast<DWORD>(OBJID_CLIENT), __uuidof(IAccessible),
+        reinterpret_cast<void **>(&accessible));
+    std::printf("msaa[%d] hr=0x%lx", sample, static_cast<unsigned long>(hr));
+    for (int hop = 0; accessible && hop < 8; ++hop) {
+        VARIANT self;
+        VariantInit(&self);
+        self.vt = VT_I4;
+        self.lVal = CHILDID_SELF;
+        VARIANT role, state, focus;
+        VariantInit(&role);
+        VariantInit(&state);
+        VariantInit(&focus);
+        accessible->get_accRole(self, &role);
+        accessible->get_accState(self, &state);
+        std::printf(" -> role=%ld state=0x%lx", role.vt == VT_I4 ? role.lVal : -1, state.vt == VT_I4 ? state.lVal : 0);
+        const HRESULT focus_hr = accessible->get_accFocus(&focus);
+        IAccessible *next = nullptr;
+        if (focus_hr == S_OK && focus.vt == VT_DISPATCH && focus.pdispVal) {
+            focus.pdispVal->QueryInterface(__uuidof(IAccessible), reinterpret_cast<void **>(&next));
+        } else {
+            std::printf(" [focus vt=%d hr=0x%lx val=%ld]", focus.vt, static_cast<unsigned long>(focus_hr),
+                focus.vt == VT_I4 ? focus.lVal : 0);
+        }
+        VariantClear(&focus);
+        accessible->Release();
+        accessible = next;
+    }
+    if (accessible) accessible->Release();
+    std::printf("\n");
+}
+
 // Prints the focused element (read-only) to diagnose an unexpected editable/secure fact.
-int run_describe(HWND target, int samples) {
+int run_describe(HWND target, int samples, bool msaa_samples = false) {
     IUIAutomation *automation = nullptr;
     if (FAILED(CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation),
             reinterpret_cast<void **>(&automation)))) {
@@ -203,6 +243,7 @@ int run_describe(HWND target, int samples) {
             pump_for(250);
             continue;
         }
+        if (msaa_samples) print_msaa_focus(target, sample);
         if (SUCCEEDED(automation->GetFocusedElement(&element)) && element) {
             CONTROLTYPEID type = 0;
             BSTR name = nullptr, class_name = nullptr, framework = nullptr;
@@ -340,7 +381,10 @@ bool focus_named_element(HWND target, const std::wstring &name) {
     std::printf("setup.focused_named_element=%d\n", focused);
     return focused && GetForegroundWindow() == target;
 }
-int run_insert(HWND target, const std::wstring &focus_name) {
+// change_focus: after capture, move focus to that named element and expect
+// a non-matching target and no paste. expect_secure: the focused field must be
+// reported secure and nothing may be pasted.
+int run_insert(HWND target, const std::wstring &focus_name, const std::wstring &change_focus, bool expect_secure) {
     ClipboardSnapshot saved;
     if (snapshot_clipboard(nullptr, saved) != ClipboardStatus::ok) {
         std::puts("error=clipboard-snapshot");
@@ -373,14 +417,21 @@ int run_insert(HWND target, const std::wstring &focus_name) {
         insertion.capture_original(1, [&](OperationId, TargetResult result) { original = result; --pending; });
         while (pending) pump_for(10);
         print_target("capture", original);
-        if (original.error != AdapterError::none || !original.target.editable) run_describe(target, 4);
+        if (!expect_secure && (original.error != AdapterError::none || !original.target.editable)) run_describe(target, 4);
+        if (!change_focus.empty()) {
+            std::printf("setup.changed_focus=%d\n", focus_named_element(target, change_focus));
+        }
         pending = 1;
         insertion.inspect(1, original.target.token, [&](OperationId, TargetResult result) { current = result; --pending; });
         while (pending) pump_for(10);
         print_target("inspect", current);
-        if (current.error == AdapterError::none && current.target.matches_original && current.target.token.value) {
+        const bool try_insert = !change_focus.empty()
+            ? original.target.token.value != 0
+            : current.error == AdapterError::none && current.target.matches_original && current.target.token.value;
+        if (try_insert) {
             pending = 1;
-            insertion.insert(1, current.target.token, kText, [&](OperationId, Completion result) {
+            // A changed focus must be refused with the original token.
+            insertion.insert(1, change_focus.empty() ? current.target.token : original.target.token, kText, [&](OperationId, Completion result) {
                 inserted = result.error;
                 --pending;
             });
@@ -406,7 +457,15 @@ int run_insert(HWND target, const std::wstring &focus_name) {
         std::wstring clip;
         const bool restored = read_clipboard_text(clip) && clip == sentinel_text && IsClipboardFormatAvailable(marker);
         std::printf("clipboard.restored=%d\n", restored);
-        status = inserted == AdapterError::none && count_of(content, expected) == 1 && !newline_after && restored ? 0 : 1;
+        if (expect_secure) {
+            status = original.error == AdapterError::none && original.target.secure && !original.target.token.value &&
+                    current.target.secure && sends == 0 && count_of(content, expected) == 0 && restored ? 0 : 1;
+        } else if (!change_focus.empty()) {
+            status = original.target.token.value && !current.target.matches_original &&
+                    inserted == AdapterError::target_changed && sends == 0 && restored ? 0 : 1;
+        } else {
+            status = inserted == AdapterError::none && count_of(content, expected) == 1 && !newline_after && restored ? 0 : 1;
+        }
     }
     restore_clipboard(nullptr, saved, nullptr);
     std::printf("result=%s\n", status == 0 ? "pass" : "fail");
@@ -448,6 +507,9 @@ int wmain(int argc, wchar_t **argv) {
         if (arg == L"--title" && i + 1 < argc) args.title = argv[++i];
         else if (arg == L"--combo" && i + 1 < argc) args.combo = argv[++i];
         else if (arg == L"--no-lock") args.lock = false;
+        else if (arg == L"--msaa") args.msaa = true;
+        else if (arg == L"--expect-secure") args.expect_secure = true;
+        else if (arg == L"--change-focus" && i + 1 < argc) args.change_focus = argv[++i];
         else if (arg == L"--samples" && i + 1 < argc) args.samples = _wtoi(argv[++i]);
         else if (arg == L"--focus-name" && i + 1 < argc) args.focus_name = argv[++i];
         else if (arg == L"--pids" && i + 1 < argc) {
@@ -483,8 +545,8 @@ int wmain(int argc, wchar_t **argv) {
         run_describe(target, 2);
         return 1;
     }
-    const int status = args.command == L"insert" ? run_insert(target, args.focus_name)
-        : args.command == L"describe"          ? run_describe(target, args.samples)
+    const int status = args.command == L"insert" ? run_insert(target, args.focus_name, args.change_focus, args.expect_secure)
+        : args.command == L"describe"          ? run_describe(target, args.samples, args.msaa)
                                                : run_keys(target, args.combo);
     CoUninitialize();
     return status;
