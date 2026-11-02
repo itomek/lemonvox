@@ -90,7 +90,10 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     lazy var paste = PasteTransaction(clipboard:SystemClipboard())
     lazy var workflowTargeting = SystemWorkflowTargeting(
         trusted: { AXIsProcessTrusted() },
-        focused: { focusedElement() },
+        focused: {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+            return focusedElement()
+        },
         metadata: { element in
             let metadata = insertionMetadata(element)
             return WorkflowNativeTargetMetadata(editable: metadata.editable, secure: metadata.secure)
@@ -119,7 +122,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     // Smoke-only staged facts enter the same production warmup path without
     // querying AX or starting a provider/capture request.
     var syntheticPreflight: (originalPID: pid_t?, frontmostPID: pid_t?)?
+    // Explicit smoke runs may inspect the configuration crossing the native
+    // preflight boundary without starting capture, transport or inference.
+    var syntheticWorkflowStart: ((WorkflowBridgeConfig) -> UInt64)?
     var configuring = false
+    var deferredTrigger: TriggerChoice?
     lazy var updater=UpdateCoordinator(safety:{ [weak self] in
         guard let self else { return UpdateSafety(sessionBusy:true) }
         return UpdateSafety(sessionBusy:self.workflowBusy || self.sampleSession.state != LV_IDLE,
@@ -273,6 +280,43 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             }
         } else if CommandLine.arguments.contains("--smoke-show") {
             runShowCheck()
+        } else if CommandLine.arguments.contains("--smoke-settings-snapshot") {
+            config = DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:"first-asr",cleanupModel:"first-cleanup",cleanupPrompt:"first synthetic prompt")
+            useCurrentField = false
+            syntheticPreflight = (originalPID:101,frontmostPID:101)
+            syntheticWorkflowStart = { [weak self] snapshot in
+                precondition(snapshot.asrModel == "first-asr" && snapshot.cleanupModel == "first-cleanup")
+                precondition(snapshot.cleanupPrompt == "first synthetic prompt" && !snapshot.insertCurrentTarget)
+                precondition(snapshot.preferenceEndpoint == "http://127.0.0.1:13305/v1")
+                precondition(self?.config.asrModel == "next-asr" && self?.useCurrentField == true)
+                print("PASS: preflight keeps the starting models, endpoint, prompt and target policy while Settings changes")
+                Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
+                return 0
+            }
+            beginWorkflow()
+            configure()
+            config = DictationConfig(endpoint:"http://127.0.0.1:13306/v1",asrModel:"next-asr",cleanupModel:"next-cleanup",cleanupPrompt:"next synthetic prompt")
+            useCurrentField = true
+            settings.window.close()
+        } else if CommandLine.arguments.contains("--smoke-settings-recording") {
+            sampleMode = true
+            toggle()
+            precondition(sampleSession.state == LV_RECORDING)
+            configure()
+            precondition(configuring && sampleSession.state == LV_RECORDING, "Settings stopped recording")
+            let menu = NSMenu(); menuNeedsUpdate(menu)
+            precondition(menu.items.first?.isEnabled == true, "Stop must remain available")
+            toggle()
+            precondition(sampleSession.state == LV_PROCESSING, "Settings blocked stop")
+            cancel()
+            toggle()
+            precondition(sampleSession.state == LV_IDLE, "Settings allowed a new recording")
+            settings.window.close()
+            toggle()
+            precondition(sampleSession.state == LV_RECORDING, "Trigger did not recover")
+            cancel()
+            print("PASS: Settings preserves recording, permits stop, blocks start, and restores trigger")
+            NSApp.terminate(nil)
         } else if CommandLine.arguments.contains("--smoke-config-guard") {
             sampleMode = true; configuring = true; toggle()
             let blocked = sampleSession.state == LV_IDLE && !workflowBusy
@@ -351,7 +395,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 return false
             }
             let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
-                guard let self else { return false }; return !self.configuring && !self.inserting
+                guard let self else { return false }; return (!self.configuring || self.isRecordingSession) && !self.inserting
             },fire:{ [weak self] in self?.toggle() })
             guard candidate.start() else { candidate.stop(); panel.show("Modifier trigger unavailable; previous trigger retained. Try again in Settings."); return false }
             modifierTrigger?.stop(); modifierTrigger=candidate; binding.clear()
@@ -402,7 +446,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let recording = sampleSession.state == LV_RECORDING || launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING
         let action=item(recording ? "Stop Dictation" : "Start Dictation",#selector(toggle))
         action.isEnabled = !configuring && !inserting && !workflowBusy && sampleSession.state != LV_PROCESSING
-        if recording { action.isEnabled = !configuring && !inserting }
+        if recording { action.isEnabled = !inserting }
         menu.addItem(action)
         if active { menu.addItem(item("Cancel",#selector(cancel))) }
         if pendingText != nil && !inserting { menu.addItem(item("Copy Text",#selector(copyPending))) }
@@ -436,13 +480,19 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             self?.updater.automaticChecks=checks;self?.updater.automaticInstallation=install
         }
         if configuring { settings.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
-        cancel(); modifierTrigger?.reset(); configuring=true
-        settings.showPreferences(trigger:triggerChoice,dark:UserDefaults.standard.bool(forKey:"overlayAlwaysDark"),current:useCurrentField) { [weak self] choice,dark,current in
+        modifierTrigger?.reset(); configuring=true
+        settings.trigger.record.isEnabled = !sessionActive
+        settings.showPreferences(trigger:deferredTrigger ?? triggerChoice,dark:UserDefaults.standard.bool(forKey:"overlayAlwaysDark"),current:useCurrentField) { [weak self] choice,dark,current in
             guard let self else { return }
-            if choice != self.triggerChoice || (self.binding.reference == nil && self.modifierTrigger == nil) {
-                guard self.installTrigger(choice) else { throw TriggerError.unavailable }
+            if self.sessionActive {
+                self.deferredTrigger = choice
+            } else {
+                if choice != self.triggerChoice || (self.binding.reference == nil && self.modifierTrigger == nil) {
+                    guard self.installTrigger(choice) else { throw TriggerError.unavailable }
+                }
+                self.deferredTrigger = nil
+                UserDefaults.standard.set(try JSONEncoder().encode(choice),forKey:"triggerChoice")
             }
-            UserDefaults.standard.set(try JSONEncoder().encode(choice),forKey:"triggerChoice")
             UserDefaults.standard.set(dark,forKey:"overlayAlwaysDark"); UserDefaults.standard.set(current,forKey:"currentField")
             self.useCurrentField=current; self.applyAppearance()
         }
@@ -453,6 +503,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }, close: { [weak self] in
             guard let self else { return }
             self.configuring=false
+            self.applyDeferredTriggerIfIdle()
             if self.binding.reference == nil && self.modifierTrigger == nil {
                 // Retry the configured trigger, never an unsaved Settings choice.
                 // Startup permission recovery must survive closing Settings.
@@ -464,7 +515,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         })
     }
     @objc func toggle() {
-        guard !configuring, !inserting, !updater.blocksNewDictation else { return }
+        guard !inserting else { return }
+        if !isRecordingSession && (configuring || updater.blocksNewDictation) { return }
         if sampleMode {
             toggleSample()
             return
@@ -475,6 +527,23 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         guard !workflowBusy else { return }
         beginWorkflow()
+    }
+
+    private var isRecordingSession: Bool {
+        sampleSession.state == LV_RECORDING || (launchTracker.activeOperation != nil && launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING)
+    }
+
+    private var sessionActive: Bool { workflowBusy || sampleSession.state != LV_IDLE }
+
+    private func applyDeferredTriggerIfIdle() {
+        guard !sessionActive, !configuring, let choice = deferredTrigger else { return }
+        deferredTrigger = nil
+        if (choice == triggerChoice && (binding.reference != nil || modifierTrigger != nil) || installTrigger(choice)),
+           let encoded = try? JSONEncoder().encode(choice) {
+            UserDefaults.standard.set(encoded, forKey:"triggerChoice")
+        } else {
+            panel.show("Shortcut unavailable · previous retained")
+        }
     }
 
     private var workflowBusy: Bool {
@@ -507,6 +576,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
 
     private func beginWorkflow() {
+        let sessionConfiguration = workflowConfiguration()
         let stagedPreflight = syntheticPreflight
         if stagedPreflight == nil {
             if let element = focusedElement(), insertionMetadata(element).secure {
@@ -540,6 +610,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 if self.pendingLaunchEpoch == epoch {
                     self.pendingLaunchEpoch = nil
                     self.preflightTask = nil
+                    self.applyDeferredTriggerIfIdle()
                 }
             }
             guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
@@ -567,9 +638,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             }
             guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
             self.workflowCreated = true
-            self.workflowAdapter.prepareForStart(original: original, originalPID: originalPID, useCurrentField: self.useCurrentField)
+            self.workflowAdapter.prepareForStart(original: original, originalPID: originalPID, useCurrentField: sessionConfiguration.insertCurrentTarget)
             handedOff = true
-            let operation = self.workflow.start(self.workflowConfiguration())
+            let operation: UInt64
+            if self.syntheticRun, let start = self.syntheticWorkflowStart { operation = start(sessionConfiguration) }
+            else { operation = self.workflow.start(sessionConfiguration) }
             let accepted = self.launchTracker.finishStart(operation: operation, epoch: epoch)
             if !accepted { self.workflowAdapter.finalizeOperation(operation) }
         }
@@ -584,6 +657,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         syntheticPreflight = nil
         diagnostics.record(.canceled)
         panel.show(message)
+        applyDeferredTriggerIfIdle()
     }
 
     private func workflowWaitingForMicrophone() {
@@ -657,6 +731,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         } else {
             panel.show(SafeDisplay.error(workflowError(failure)))
         }
+        applyDeferredTriggerIfIdle()
     }
 
     private func workflowCompleted(_ operation: UInt64, _ outcome: WorkflowBridgeOutcome) {
@@ -674,6 +749,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         default:
             panel.show("Target unavailable · text ready to copy")
         }
+        applyDeferredTriggerIfIdle()
     }
 
     private func workflowError(_ failure: WorkflowBridgeFailure) -> DictationError {
@@ -746,6 +822,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                         await Task.yield()
                         guard let self, !Task.isCancelled,
                             self.sampleSession.generation == generation else { return }
+                        self.applyDeferredTriggerIfIdle()
                         self.pendingText = self.sample
                         self.panel.show("Sample text ready to copy")
                     }
@@ -776,6 +853,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         // synthetic sample has no core callback, so record only those here.
         if (hadPreflight && !activeCore) || hadSample { diagnostics.record(.canceled) }
         inserting = false; pendingText = nil; panel.orderOut(nil)
+        applyDeferredTriggerIfIdle()
     }
     @objc func copyPending() {
         guard let pendingText else { panel.show("No pending text"); return }
