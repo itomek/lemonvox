@@ -1,0 +1,5 @@
+// Configured by src/ui/CMakeLists.txt; the icon is rendered at build time by lv_icongen.
+#include <windows.h>
+
+// Resource 1 is the app icon: LoadIconW(instance, MAKEINTRESOURCEW(1)).
+1 ICON "@LEMONVOX_APP_ICON@"
