@@ -10,12 +10,12 @@ The first milestone is a usable macOS app. Windows and Ubuntu are planned ports;
 
 1. A configurable global toggle shortcut starts recording from the microphone.
 2. A small indicator shows microphone activity and recording state while the target app keeps keyboard focus.
-3. Pressing the shortcut again stops recording. The indicator shows transcription, then cleanup progress.
+3. Pressing the dictation shortcut again finishes recording. The indicator shows transcription, then cleanup progress.
 4. LemonVox sends the recording to Lemonade's speech recognition endpoint using the selected ASR model.
 5. It sends the transcript and a configurable cleanup prompt to the selected language model through Lemonade.
 6. It inserts the cleaned text into the target field and returns to idle. Insertion leaves submission to the person dictating.
 
-Cancellation stops the current operation and discards its pending result. Each recording has one result; late responses from a canceled operation must be ignored.
+Cancellation stops the current operation and discards its pending result. The compact indicator has one direct control, **X**, which cancels and discards; a separately configurable cancellation shortcut does the same only while an operation is active. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
 
 ### Target field
 
@@ -29,7 +29,9 @@ For example, “um send Alex the 14 invoices on Friday” should become “Send 
 
 ## Configuration and data
 
-Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, and recording shortcut. The Mac default is Command twice, with configurable regular combinations and modifier double taps. Windows and Ubuntu are planned to default to Alt twice.
+Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, appearance, and target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Command-Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
+
+Appearance choices are Auto, Light, and Dark. Auto follows the OS setting; native shells use their platform semantic colors and controls rather than application-specific color treatments.
 
 Local inference is preferred. Lemonade manages model loading, inference, GPU acceleration, and provider routing. An explicitly configured provider can be reached through Lemonade; settings should make the selected endpoint and routing implications clear.
 
@@ -59,7 +61,7 @@ Capture audio, transcribe through Lemonade, apply configurable conservative clea
 
 ### 3. Bring the same workflow to Windows and Ubuntu
 
-Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
+Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. Each native shell must finish capture with the configured dictation shortcut, cancel/discard with X and its configurable cancellation shortcut, preserve idle keyboard delivery, expose Auto/Light/Dark in native settings, and use platform semantic styling. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
 
 ## Technical references
 
