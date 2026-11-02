@@ -68,6 +68,18 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var triggerChoice = UserDefaults.standard.data(forKey:"triggerChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
         ?? TriggerChoice.migrate(UserDefaults.standard.object(forKey:"shortcut") as? Int)
     var pendingPermissionTrigger:TriggerChoice?
+    var accessibilityFacts:() -> (trusted:Bool,canPost:Bool) = { (AXIsProcessTrusted(),CGPreflightPostEventAccess()) }
+    var requestAccessibility:() -> Void = {
+        _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String:true] as CFDictionary)
+    }
+    var requestEventPosting:() -> Void = { _ = CGRequestPostEventAccess() }
+    var showAccessibilityPane:() -> Bool = {
+        guard let url=URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return false }
+        return NSWorkspace.shared.open(url)
+    }
+    var didRequestAccessibilityDialog=false
+    var lastInsertionFallback:UInt32?
+
     var modifierTrigger:ModifierTrigger?
     let syntheticRun = CommandLine.arguments.contains("--sample") || CommandLine.arguments.contains(where: { $0.hasPrefix("--smoke-") })
     var sampleMode = CommandLine.arguments.contains("--smoke-cancel") || CommandLine.arguments.contains("--sample")
@@ -144,8 +156,6 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             guard let self, self.sampleSession.state == LV_RECORDING || self.launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING else { return }
             self.toggle()
         }
-        panel.onOpenSettings = { [weak self] in self?.openAccessibilitySettings() }
-        panel.onRetryPermission = { [weak self] in self?.retryPermissionTrigger() }
         applyAppearance()
     }
     func reportDebugState() {
@@ -162,6 +172,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             "modifierMonitoring":modifierTrigger?.isMonitoring == true,
             "configuredTrigger":String(describing:triggerChoice),
             "pendingTriggerRecovery":pendingPermissionTrigger != nil,
+            "lastInsertionFallback":lastInsertionFallback as Any? ?? NSNull(),
+            "insertAtCompletion":useCurrentField,
             "accessibilityTrusted":AXIsProcessTrusted(),
             "eventPostAllowed":CGPreflightPostEventAccess(),
             "microphoneAuthorization":AVCaptureDevice.authorizationStatus(for:.audio).rawValue
@@ -270,15 +282,22 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         } else if CommandLine.arguments.contains("--smoke-trigger-recovery") {
             modifierTrigger?.stop(); modifierTrigger=nil; binding.clear()
             triggerChoice = .defaultMac; pendingPermissionTrigger = .defaultMac
-            panel.showPermission("Synthetic startup trigger unavailable")
+            accessibilityFacts={ (false,false) }
+            refreshAccessibilityStatus()
             configure()
             precondition(configuring && !panel.isVisible)
             settings.window.close()
             precondition(!configuring)
             let installed = modifierTrigger != nil || binding.reference != nil
-            precondition(installed || (pendingPermissionTrigger == .defaultMac && panel.isVisible),
+            precondition(installed || (pendingPermissionTrigger == .defaultMac && !panel.isVisible && !settings.accessibilityStatus.stringValue.isEmpty),
                 "Closing Settings must restore startup trigger recovery")
-            print("PASS: Settings close restores configured trigger or visible permission recovery without saving preferences")
+            var requests=0, panes=0
+            requestEventPosting={ requests += 1 }
+            requestAccessibility={ preconditionFailure("Event-post native flow should be selected first") }
+            showAccessibilityPane={ panes += 1; return true }
+            openAccessibilitySettings(); openAccessibilitySettings(); retryPermissionTrigger()
+            precondition(requests == 1 && panes == 1 && !panel.isVisible && !capture.isRecording)
+            print("PASS: Settings close preserves trigger recovery in native Settings without a duplicate speech bar or preference save")
             Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
         } else if CommandLine.arguments.contains("--smoke-cancel") {
             toggle()
@@ -326,10 +345,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             guard result == noErr else { panel.show("Shortcut unavailable (\(result)); previous retained"); return false }
             modifierTrigger?.stop(); modifierTrigger=nil
         case .doubleTap(let key):
-            guard AXIsProcessTrusted() else {
+            guard accessibilityFacts().trusted else {
                 pendingPermissionTrigger=choice
-                let fallback = binding.reference != nil || modifierTrigger != nil ? "The previous trigger stays active." : "Start dictation from the menu meanwhile."
-                panel.showPermission("Enable LemonVox in Accessibility, then Check Again. " + fallback)
+                refreshAccessibilityStatus()
                 return false
             }
             let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
@@ -340,31 +358,34 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         pendingPermissionTrigger=nil; triggerChoice=choice; return true
     }
+    func refreshAccessibilityStatus() {
+        let facts=accessibilityFacts()
+        settings.accessibilityStatus.stringValue = !facts.trusted
+            ? "Accessibility is required for Command twice and field targeting. Use Accessibility… then Check Again."
+            : (!facts.canPost
+                ? "Accessibility is available; event posting is not. Use Accessibility… to enable automatic paste."
+                : "Accessibility and automatic paste are available.")
+    }
     func openAccessibilitySettings() {
-        // User action only. macOS owns the permission dialog and switch.
-        let options=[kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String:true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-        guard let url=URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"),
-              NSWorkspace.shared.open(url) else {
-            panel.showPermission("Open System Settings → Privacy & Security → Accessibility. Enable LemonVox, then Check Again.")
+        // Explicit button action only. Ask through one native system flow once;
+        // subsequent clicks open the pane rather than repeating system prompts.
+        let facts=accessibilityFacts()
+        if !didRequestAccessibilityDialog && (!facts.trusted || !facts.canPost) {
+            didRequestAccessibilityDialog=true
+            if !facts.canPost { requestEventPosting() } else { requestAccessibility() }
+        } else if !showAccessibilityPane() {
+            settings.accessibilityStatus.stringValue="Open System Settings → Privacy & Security → Accessibility."
             return
         }
+        refreshAccessibilityStatus()
     }
     func retryPermissionTrigger() {
-        guard !workflowBusy && sampleSession.state == LV_IDLE && !inserting, let choice=pendingPermissionTrigger else { return }
-        guard AXIsProcessTrusted() else {
-            panel.showPermission("Accessibility is still off. Enable the current LemonVox app; relaunch if macOS requires it.")
-            return
-        }
-        // A failed Settings save remains a draft. Permission recovery must not
-        // commit that draft independently of the Settings Save action.
-        if configuring {
-            panel.show("Accessibility available · return to Settings and Save")
-            return
-        }
-        guard installTrigger(choice) else { return }
-        if let data=try? JSONEncoder().encode(choice) { UserDefaults.standard.set(data,forKey:"triggerChoice") }
-        panel.show("Accessibility available · trigger ready")
+        refreshAccessibilityStatus()
+        guard !workflowBusy && sampleSession.state == LV_IDLE && !inserting,
+              accessibilityFacts().trusted else { return }
+        // Check Again never saves a failed draft; Save still owns draft changes.
+        if configuring { return }
+        if binding.reference == nil && modifierTrigger == nil { _ = installTrigger(triggerChoice) }
     }
     func item(_ title: String, _ action: Selector) -> NSMenuItem {
         let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -407,6 +428,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         // Finish the explicit updater interaction before opening another editor.
         // Normal Settings/dictation behavior remains unchanged.
         if updater.blocksNewDictation { updater.check(); return }
+        settings.openAccessibility={ [weak self] in self?.openAccessibilitySettings() }
+        settings.retryAccessibility={ [weak self] in self?.retryPermissionTrigger() }
+        refreshAccessibilityStatus()
         settings.updatePreferences={ [weak self] in (self?.updater.automaticChecks ?? true,self?.updater.automaticInstallation ?? false) }
         settings.saveUpdatePreferences={ [weak self] checks,install in
             self?.updater.automaticChecks=checks;self?.updater.automaticInstallation=install
@@ -640,6 +664,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         stopMeter()
         inserting = false
         workflowAdapter.finalizeOperation(operation)
+        lastInsertionFallback=outcome.fallbackReason.rawValue
         switch outcome.kind {
         case LV_WORKFLOW_OUTCOME_INSERTED:
             pendingText = nil
@@ -758,9 +783,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         NSPasteboard.general.setString(pendingText, forType: .string)
         self.pendingText = nil; panel.orderOut(nil)
     }
-    @objc func permissionStatus() {
-        panel.show(AXIsProcessTrusted() ? "Accessibility available" : "Allow LemonVox Prototype in Accessibility")
-    }
+    @objc func permissionStatus() { configure() }
     @objc func quit() { cancel(); NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender:NSApplication) -> NSApplication.TerminateReply {
         guard updater.canTerminate else { return .terminateCancel }
@@ -836,8 +859,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 print("AX selected-text write result=\(result.rawValue)")
                 try? await Task.sleep(nanoseconds:300_000_000)
             } else {
-                let result=await PasteTransaction(clipboard:SystemClipboard()).insert(synthetic,validate:validateProbe,dispatch:{ postPaste(to:pid) })
+                let clipboard=SystemClipboard()
+                let before=try? clipboard.snapshot() // Opaque bytes stay in-process only.
+                let result=await PasteTransaction(clipboard:clipboard).insert(synthetic,validate:validateProbe,dispatch:{ postPaste(to:pid) })
                 print("Paste probe dispatched=\(result == .dispatched)")
+                let restored=try? clipboard.snapshot()
+                print("Clipboard restored to opaque original: \(before != nil && before == restored)")
             }
             var after:CFTypeRef?
             AXUIElementCopyAttributeValue(target,kAXValueAttribute as CFString,&after)

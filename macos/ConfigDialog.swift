@@ -31,6 +31,11 @@ enum RunningAppVersion {
     let version = NSTextField(labelWithString: "Tested with Lemonade 2026.44.1")
     let retry = NSButton(title: "Refresh", target: nil, action: nil)
     let save = NSButton(title: "Save", target: nil, action: nil)
+    let accessibilityOpen=NSButton(title:"Accessibility…",target:nil,action:nil)
+    let accessibilityRetry=NSButton(title:"Check Again",target:nil,action:nil)
+    let accessibilityStatus=NSTextField(wrappingLabelWithString:"")
+    var openAccessibility:(() -> Void)?
+    var retryAccessibility:(() -> Void)?
     let logPath = NSTextField(wrappingLabelWithString: "")
     private let log: DiagnosticLog
     private let discover: (String) async throws -> DiscoveredModels
@@ -78,6 +83,14 @@ enum RunningAppVersion {
         label("Diagnostics", 198)
         let openLog=NSButton(title:"Open Log",target:self,action:#selector(openLog))
         openLog.frame=NSRect(x:24,y:150,width:110,height:30); view.addSubview(openLog)
+        accessibilityOpen.frame=NSRect(x:150,y:150,width:170,height:30)
+        accessibilityRetry.frame=NSRect(x:332,y:150,width:140,height:30)
+        accessibilityOpen.target=self; accessibilityOpen.action=#selector(openAccessibilityPane)
+        accessibilityRetry.target=self; accessibilityRetry.action=#selector(checkAccessibility)
+        view.addSubview(accessibilityOpen); view.addSubview(accessibilityRetry)
+        accessibilityStatus.frame=NSRect(x:24,y:56,width:592,height:40)
+        accessibilityStatus.font = .systemFont(ofSize:11); accessibilityStatus.textColor = .secondaryLabelColor
+        view.addSubview(accessibilityStatus)
         logPath.frame=NSRect(x:24,y:104,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
         automaticChecks.frame=NSRect(x:24,y:900,width:592,height:24)
         automaticInstallation.frame=NSRect(x:24,y:872,width:592,height:24)
@@ -165,6 +178,8 @@ enum RunningAppVersion {
     @objc func refreshLogs() {
         logPath.stringValue=(log.problem.map { $0 + " · " } ?? "") + log.file.path
     }
+    @objc func openAccessibilityPane() { openAccessibility?() }
+    @objc func checkAccessibility() { retryAccessibility?() }
     @objc func openLog() {
         if !NSWorkspace.shared.open(log.file) { status.stringValue="Could not open diagnostic log"; status.toolTip=status.stringValue }
     }
