@@ -115,7 +115,7 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 | Global trigger | Alt twice (left or right) fires once; Alt chords, holds, repeats, AltGr, intervening keys/mouse do not; typing passes through; hotkey conflict keeps previous binding; suspended while recording a shortcut |
 | Indicator | Never foreground/active/focused across all states, clicks and drags |
 | Fixed-text insertion | Native EDIT and RichEdit once, no newline; password field rejected; changed focus detected; clipboard restored; cancel inserts nothing |
-| Real apps | See [`tests/insertion-matrix.md`](tests/insertion-matrix.md): Notepad, Edge and VS Code (Electron) insert; elevated windows fall back to Copy (manual check steps documented) |
+| Real apps | See [`tests/insertion-matrix.md`](tests/insertion-matrix.md): Notepad, Edge, Chrome and VS Code (Electron) insert; changed focus and password fields in Edge/Chrome are refused; elevated windows fall back to Copy (manual check steps documented) |
 | Pipeline | Synthesized "Um, send Alex the fourteen invoices on Friday." → "Send Alex the 14 invoices on Friday." through WinHTTP, Whisper-Base and Gemma cleanup |
 | Full app | `app_e2e_test`: Alt twice → real app → Lemonade → pasted into another process's field ("Note: Send Alex the 14 invoices on Friday."), focus kept, no Enter, clipboard restored |
 | Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, non-loopback endpoint, microphone denial/no device/device loss (fake device) |
@@ -125,8 +125,9 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 
 ## Known limitations
 
-- Google Chrome page fields: see [`tests/insertion-matrix.md`](tests/insertion-matrix.md) for the
-  current result; when Chrome does not expose the focused field, LemonVox offers Copy.
+- Google Chrome exposes page fields to UI Automation only after an MSAA client asks; LemonVox
+  makes one MSAA focus query for Chromium windows, so the first dictation into a Chrome window can
+  take up to 300 ms longer. A field Chrome still does not expose falls back to Copy.
 - Higher-integrity (administrator) target apps always fall back to Copy.
 - A lone Alt tap puts classic Win32 apps into menu mode; a double tap enters and leaves it, so the
   target is unchanged, but a menu bar may flash. Choose another trigger if that is distracting.
