@@ -42,13 +42,22 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var identifier = EventHotKeyID()
     let result = GetEventParameter(event, EventParamName(kEventParamDirectObject),
         EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &identifier)
-    guard result == noErr, identifier.signature == 0x4c565850 else { return OSStatus(eventNotHandledErr) }
+    guard result == noErr, identifier.signature == HotKeyEventID.signature else { return OSStatus(eventNotHandledErr) }
     let controller = Unmanaged<Controller>.fromOpaque(context).takeUnretainedValue()
-    MainActor.assumeIsolated {
-        if GetEventKind(event) == UInt32(kEventHotKeyReleased) { controller.binding.release() }
-        else if controller.binding.press() { controller.toggle() }
+    let handled = MainActor.assumeIsolated { () -> Bool in
+        if controller.binding.matches(identifier) {
+            if GetEventKind(event) == UInt32(kEventHotKeyReleased) { controller.binding.release() }
+            else if controller.binding.press() { controller.toggle() }
+            return true
+        }
+        if controller.cancellationBinding.matches(identifier) {
+            if GetEventKind(event) == UInt32(kEventHotKeyReleased) { controller.cancellationBinding.release() }
+            else if controller.cancellationBinding.press() { controller.cancel() }
+            return true
+        }
+        return false
     }
-    return noErr
+    return handled ? noErr : OSStatus(eventNotHandledErr)
 }
 
 @MainActor final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -58,6 +67,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     let panel = IndicatorPanel()
     var statusItem: NSStatusItem!
     let binding = HotKeyBinding()
+    let cancellationBinding = HotKeyBinding(eventID: HotKeyEventID.cancellation)
     var handler: EventHandlerRef?
     var debugTimer: Timer?
     var lastDebugState: String?
@@ -67,6 +77,10 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var useCurrentField = UserDefaults.standard.bool(forKey: "currentField")
     var triggerChoice = UserDefaults.standard.data(forKey:"triggerChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
         ?? TriggerChoice.migrate(UserDefaults.standard.object(forKey:"shortcut") as? Int)
+    var cancellationChoice = UserDefaults.standard.data(forKey:"cancellationChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
+        ?? .defaultMacCancellation
+    var appearanceChoice = AppearanceChoice.migrate(stored: UserDefaults.standard.string(forKey:"appearanceChoice"),
+        legacyAlwaysDark: UserDefaults.standard.bool(forKey:"overlayAlwaysDark"))
     var pendingPermissionTrigger:TriggerChoice?
     var accessibilityFacts:() -> (trusted:Bool,canPost:Bool) = { (AXIsProcessTrusted(),CGPreflightPostEventAccess()) }
     var requestAccessibility:() -> Void = {
@@ -127,7 +141,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     // preflight boundary without starting capture, transport or inference.
     var syntheticWorkflowStart: ((WorkflowBridgeConfig) -> UInt64)?
     var configuring = false
-    var deferredTrigger: TriggerChoice?
+    var settingsLoaded = false
+    var deferredPreferences: (trigger: TriggerChoice, cancellation: TriggerChoice, appearance: AppearanceChoice, current: Bool)?
     lazy var updater=UpdateCoordinator(safety:{ [weak self] in
         guard let self else { return UpdateSafety(sessionBusy:true) }
         return UpdateSafety(sessionBusy:self.workflowBusy || self.sampleSession.state != LV_IDLE,
@@ -160,10 +175,6 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             if !self.workflowBusy && self.sampleSession.state == LV_IDLE && !self.inserting { self.pendingPermissionTrigger=nil; self.panel.orderOut(nil) }
             else { self.cancel() }
         }
-        panel.onStop = { [weak self] in
-            guard let self, self.sampleSession.state == LV_RECORDING || self.launchTracker.phase == LV_WORKFLOW_PHASE_RECORDING else { return }
-            self.toggle()
-        }
         applyAppearance()
     }
     func reportDebugState() {
@@ -177,8 +188,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             "inserting":inserting, "pasteActive":workflowCreated && workflowAdapter.pasteActive,
             "updaterHoldsDictation":updater.blocksNewDictation, "handlerInstalled":handler != nil,
             "combinationRegistered":binding.reference != nil,
+            "cancellationCombinationRegistered":cancellationBinding.reference != nil,
             "modifierMonitoring":modifierTrigger?.isMonitoring == true,
             "configuredTrigger":String(describing:triggerChoice),
+            "configuredCancellation":String(describing:cancellationChoice),
+            "appearance":appearanceChoice.rawValue,
             "pendingTriggerRecovery":pendingPermissionTrigger != nil,
             "lastInsertionFallback":lastInsertionFallback as Any? ?? NSNull(),
             "insertAtCompletion":useCurrentField,
@@ -195,12 +209,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         print("DEBUG_STATE " + text); fflush(stdout)
     }
     func applyAppearance() {
-        panel.appearance = UserDefaults.standard.bool(forKey: "overlayAlwaysDark") ? NSAppearance(named: .darkAqua) : nil
-    }
-    @objc func changeAppearance() {
-        let dark = !UserDefaults.standard.bool(forKey: "overlayAlwaysDark")
-        UserDefaults.standard.set(dark, forKey: "overlayAlwaysDark")
-        applyAppearance(); refreshMenu()
+        let appearance = appearanceChoice.appKitAppearance
+        NSApp.appearance = appearance
+        panel.appearance = appearance
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.prohibited)
@@ -310,10 +321,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             precondition(sampleSession.state == LV_RECORDING)
             configure()
             precondition(configuring && sampleSession.state == LV_RECORDING, "Settings stopped recording")
+            precondition(!settings.trigger.record.isEnabled && !settings.cancellationTrigger.record.isEnabled,
+                "Shortcut recorders must not consume an active session's cancellation shortcut")
+            precondition(!settings.trigger.recording && !settings.cancellationTrigger.recording,
+                "An armed shortcut recorder must be canceled while dictation is active")
             let menu = NSMenu(); menuNeedsUpdate(menu)
-            precondition(menu.items.first?.isEnabled == true, "Stop must remain available")
+            precondition(menu.items.first?.isEnabled == true, "Finish must remain available")
             toggle()
-            precondition(sampleSession.state == LV_PROCESSING, "Settings blocked stop")
+            precondition(sampleSession.state == LV_PROCESSING, "Settings blocked finishing capture")
             cancel()
             toggle()
             precondition(sampleSession.state == LV_IDLE, "Settings allowed a new recording")
@@ -321,7 +336,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             toggle()
             precondition(sampleSession.state == LV_RECORDING, "Trigger did not recover")
             cancel()
-            print("PASS: Settings preserves recording, permits stop, blocks start, and restores trigger")
+            print("PASS: Settings preserves recording, permits finishing capture, blocks start, and restores trigger")
             NSApp.terminate(nil)
         } else if CommandLine.arguments.contains("--smoke-config-guard") {
             sampleMode = true; configuring = true; toggle()
@@ -349,19 +364,52 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             precondition(requests == 1 && panes == 1 && !panel.isVisible && !capture.isRecording)
             print("PASS: Settings close preserves trigger recovery in native Settings without a duplicate speech bar or preference save")
             Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
+        } else if CommandLine.arguments.contains("--smoke-cancellation-shortcut") {
+            let originalTrigger = triggerChoice
+            let originalCancellation = cancellationChoice
+            let originalBinding = binding.reference
+            let conflicting = TriggerChoice.combo(key: UInt16(kVK_Space), modifiers: UInt32(cmdKey | shiftKey))
+            var competitor: EventHotKeyRef?
+            precondition(RegisterEventHotKey(UInt32(kVK_Space), UInt32(cmdKey | shiftKey),
+                EventHotKeyID(signature: 0x54455354, id: 52), GetApplicationEventTarget(), 0, &competitor) == noErr,
+                "Cancellation collision fixture unavailable")
+            var rejected = false
+            do {
+                try commitGeneralPreferences(trigger: originalTrigger, cancellation: conflicting,
+                                             appearance: appearanceChoice, current: useCurrentField)
+            } catch {
+                rejected = true
+            }
+            if let competitor { UnregisterEventHotKey(competitor) }
+            precondition(rejected && triggerChoice == originalTrigger && cancellationChoice == originalCancellation &&
+                binding.reference == originalBinding, "A rejected cancellation shortcut changed an existing preference or binding")
+            sampleMode = true
+            cancellationChoice = .combo(key: UInt16(kVK_ANSI_B), modifiers: UInt32(cmdKey | optionKey | controlKey))
+            toggle()
+            precondition(sampleSession.state == LV_RECORDING && cancellationBinding.reference != nil,
+                "The cancellation binding must exist only for an active session")
+            precondition(dispatchHotKeyForSmoke(HotKeyEventID.cancellation) == noErr)
+            precondition(sampleSession.state == LV_IDLE && cancellationBinding.reference == nil,
+                "Cancellation event ID must discard rather than finish or start dictation")
+            precondition(dispatchHotKeyForSmoke(HotKeyEventID.cancellation) == OSStatus(eventNotHandledErr) &&
+                sampleSession.state == LV_IDLE, "Idle cancellation shortcut must not be consumed")
+            print("PASS: cancellation event ID routes only while active; idle keys and rejected bindings remain safe")
+            Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
         } else if CommandLine.arguments.contains("--smoke-cancel") {
             toggle()
             panel.overlay.cancelButton.performClick(nil)
             precondition(sampleSession.state == LV_IDLE)
             toggle()
-            panel.overlay.stopButton.performClick(nil)
+            // Repeating the dictation trigger commits capture. X remains the
+            // one in-bar action and discards an active operation.
+            toggle()
             precondition(sampleSession.state == LV_PROCESSING)
             panel.overlay.cancelButton.performClick(nil)
             Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { fatalError("Controller released early") }
                     precondition(self.sampleSession.state == LV_IDLE && self.pendingText == nil && !self.workflowBusy)
-                    print("PASS: overlay cancel in recording and processing; no late completion")
+                    print("PASS: X cancels recording and processing; repeated dictation trigger finishes capture; no late completion")
                     NSApp.terminate(nil)
                 }
             }
@@ -387,6 +435,16 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 NSApp.terminate(nil)
             }
         }
+    }
+    private func dispatchHotKeyForSmoke(_ id: UInt32) -> OSStatus {
+        var event: EventRef?
+        guard CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyPressed), 0,
+                          EventAttributes(kEventAttributeNone), &event) == noErr, let event else { return OSStatus(paramErr) }
+        defer { ReleaseEvent(event) }
+        var identifier = EventHotKeyID(signature: HotKeyEventID.signature, id: id)
+        guard SetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                MemoryLayout<EventHotKeyID>.size, &identifier) == noErr else { return OSStatus(paramErr) }
+        return hotKeyHandler(nil, event, Unmanaged.passUnretained(self).toOpaque())
     }
     func installTrigger(_ choice:TriggerChoice) -> Bool {
         switch choice {
@@ -474,6 +532,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         // Finish the explicit updater interaction before opening another editor.
         // Normal Settings/dictation behavior remains unchanged.
         if updater.blocksNewDictation { updater.check(); return }
+        settingsLoaded = true
         settings.openAccessibility={ [weak self] in self?.openAccessibilitySettings() }
         settings.retryAccessibility={ [weak self] in self?.retryPermissionTrigger() }
         refreshAccessibilityStatus()
@@ -486,20 +545,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         if configuring { settings.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
         modifierTrigger?.reset(); configuring=true
-        settings.trigger.record.isEnabled = !sessionActive
-        settings.showPreferences(trigger:deferredTrigger ?? triggerChoice,dark:UserDefaults.standard.bool(forKey:"overlayAlwaysDark"),current:useCurrentField) { [weak self] choice,dark,current in
+        let draft = deferredPreferences ?? (trigger: triggerChoice, cancellation: cancellationChoice,
+                                            appearance: appearanceChoice, current: useCurrentField)
+        settings.window.appearance = draft.appearance.appKitAppearance
+        settings.showPreferences(trigger:draft.trigger, cancellation:draft.cancellation,
+                                 appearance:draft.appearance, current:draft.current) { [weak self] trigger,cancellation,appearance,current in
             guard let self else { return }
-            if self.sessionActive {
-                self.deferredTrigger = choice
-            } else {
-                if choice != self.triggerChoice || (self.binding.reference == nil && self.modifierTrigger == nil) {
-                    guard self.installTrigger(choice) else { throw TriggerError.unavailable }
-                }
-                self.deferredTrigger = nil
-                UserDefaults.standard.set(try JSONEncoder().encode(choice),forKey:"triggerChoice")
-            }
-            UserDefaults.standard.set(dark,forKey:"overlayAlwaysDark"); UserDefaults.standard.set(current,forKey:"currentField")
-            self.useCurrentField=current; self.applyAppearance()
+            try self.commitGeneralPreferences(trigger:trigger, cancellation:cancellation,
+                                              appearance:appearance, current:current)
         }
         settings.show(config:config, save: { [weak self] updated in
             guard let self else { return }
@@ -508,7 +561,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }, close: { [weak self] in
             guard let self else { return }
             self.configuring=false
-            self.applyDeferredTriggerIfIdle()
+            self.setShortcutEditingEnabled(!self.sessionActive)
+            self.applyDeferredPreferencesIfIdle()
             if self.binding.reference == nil && self.modifierTrigger == nil {
                 // Retry the configured trigger, never an unsaved Settings choice.
                 // Startup permission recovery must survive closing Settings.
@@ -518,6 +572,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 self.pendingPermissionTrigger=nil
             }
         })
+        setShortcutEditingEnabled(!sessionActive)
     }
     @objc func toggle() {
         guard !inserting else { return }
@@ -540,13 +595,80 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
 
     private var sessionActive: Bool { workflowBusy || sampleSession.state != LV_IDLE }
 
-    private func applyDeferredTriggerIfIdle() {
-        guard !sessionActive, !configuring, let choice = deferredTrigger else { return }
-        deferredTrigger = nil
-        if (choice == triggerChoice && (binding.reference != nil || modifierTrigger != nil) || installTrigger(choice)),
-           let encoded = try? JSONEncoder().encode(choice) {
-            UserDefaults.standard.set(encoded, forKey:"triggerChoice")
-        } else {
+    private func validateCancellationCandidate(_ choice: TriggerChoice) -> Bool {
+        guard case let .combo(key, modifiers) = choice else { return false }
+        let probe = HotKeyBinding(eventID: HotKeyEventID.cancellation)
+        defer { probe.clear() }
+        return probe.replace(key: key, modifiers: modifiers) == noErr
+    }
+
+    private func activateCancellationBinding() {
+        guard cancellationBinding.reference == nil else { return }
+        guard handler != nil, case let .combo(key, modifiers) = cancellationChoice,
+              cancellationBinding.replace(key: key, modifiers: modifiers) == noErr else {
+            cancellationBinding.clear()
+            panel.showNotice("Cancellation shortcut unavailable · use X or menu")
+            return
+        }
+    }
+
+    private func deactivateCancellationBinding() {
+        cancellationBinding.clear()
+        panel.clearNotice()
+    }
+
+    private func setShortcutEditingEnabled(_ enabled: Bool) {
+        guard settingsLoaded else { return }
+        settings.trigger.cancelRecording()
+        settings.cancellationTrigger.cancelRecording()
+        for control in [settings.trigger.mode, settings.trigger.modifier, settings.trigger.record,
+                        settings.cancellationTrigger.mode, settings.cancellationTrigger.modifier,
+                        settings.cancellationTrigger.record] {
+            control.isEnabled = enabled
+        }
+    }
+
+    private func persistGeneralPreferences() throws {
+        let encoder = JSONEncoder()
+        let trigger = try encoder.encode(triggerChoice)
+        let cancellation = try encoder.encode(cancellationChoice)
+        UserDefaults.standard.set(trigger, forKey: "triggerChoice")
+        UserDefaults.standard.set(cancellation, forKey: "cancellationChoice")
+        UserDefaults.standard.set(appearanceChoice.rawValue, forKey: "appearanceChoice")
+        UserDefaults.standard.set(useCurrentField, forKey: "currentField")
+    }
+
+    private func commitGeneralPreferences(trigger: TriggerChoice, cancellation: TriggerChoice,
+                                          appearance: AppearanceChoice, current: Bool) throws {
+        guard trigger != cancellation, case .combo = cancellation else { throw TriggerError.unavailable }
+        if sessionActive {
+            deferredPreferences = (trigger, cancellation, appearance, current)
+            return
+        }
+        guard validateCancellationCandidate(cancellation) else { throw TriggerError.unavailable }
+        let triggerInstalled = binding.reference != nil || modifierTrigger != nil
+        let previousPending = pendingPermissionTrigger
+        if trigger != triggerChoice || !triggerInstalled {
+            guard installTrigger(trigger) else {
+                pendingPermissionTrigger = previousPending
+                throw TriggerError.unavailable
+            }
+        }
+        cancellationChoice = cancellation
+        appearanceChoice = appearance
+        useCurrentField = current
+        try persistGeneralPreferences()
+        applyAppearance()
+        settings.window.appearance = appearanceChoice.appKitAppearance
+    }
+
+    private func applyDeferredPreferencesIfIdle() {
+        guard !sessionActive, !configuring, let deferred = deferredPreferences else { return }
+        deferredPreferences = nil
+        do {
+            try commitGeneralPreferences(trigger: deferred.trigger, cancellation: deferred.cancellation,
+                                         appearance: deferred.appearance, current: deferred.current)
+        } catch {
             panel.show("Shortcut unavailable · previous retained")
         }
     }
@@ -606,7 +728,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         panel.overlay.isSample = false
         panel.overlay.progressLabel = "CHECKING LOCAL MODELS"
+        setShortcutEditingEnabled(false)
         panel.present(.processing)
+        activateCancellationBinding()
         preflightTask = Task { [weak self] in
             guard let self else { return }
             var original = initialOriginal
@@ -618,7 +742,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 if self.pendingLaunchEpoch == epoch {
                     self.pendingLaunchEpoch = nil
                     self.preflightTask = nil
-                    self.applyDeferredTriggerIfIdle()
+                    if !handedOff {
+                        self.deactivateCancellationBinding()
+                        self.setShortcutEditingEnabled(true)
+                    }
+                    self.applyDeferredPreferencesIfIdle()
                 }
             }
             guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
@@ -652,6 +780,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 self.targetPreflight.abandon()
                 self.workflowAdapter.discardPreparedStart()
                 original = nil
+                self.deactivateCancellationBinding()
+                self.setShortcutEditingEnabled(true)
                 return
             }
             self.workflowCreated = true
@@ -663,6 +793,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             let accepted = self.launchTracker.finishStart(operation: operation, epoch: epoch)
             if !accepted {
                 self.workflowAdapter.finalizeOperation(operation)
+                self.deactivateCancellationBinding()
+                self.setShortcutEditingEnabled(true)
             }
         }
     }
@@ -676,8 +808,10 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         preflightTask = nil
         syntheticPreflight = nil
         diagnostics.record(.canceled)
+        deactivateCancellationBinding()
+        setShortcutEditingEnabled(true)
         panel.show(message)
-        applyDeferredTriggerIfIdle()
+        applyDeferredPreferencesIfIdle()
     }
 
     private func workflowWaitingForMicrophone() {
@@ -745,13 +879,15 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         inserting = false
         pendingText = nil
         workflowAdapter.finalizeOperation(operation)
+        deactivateCancellationBinding()
+        setShortcutEditingEnabled(!sessionActive)
         if failure.source == LV_WORKFLOW_FAILURE_ADAPTER,
             failure.adapterError == LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE {
             panel.show("Secure field · dictation unavailable")
         } else {
             panel.show(SafeDisplay.error(workflowError(failure)))
         }
-        applyDeferredTriggerIfIdle()
+        applyDeferredPreferencesIfIdle()
     }
 
     private func workflowCompleted(_ operation: UInt64, _ outcome: WorkflowBridgeOutcome) {
@@ -759,6 +895,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         stopMeter()
         inserting = false
         workflowAdapter.finalizeOperation(operation)
+        deactivateCancellationBinding()
+        setShortcutEditingEnabled(!sessionActive)
         lastInsertionFallback=outcome.fallbackReason.rawValue
         switch outcome.kind {
         case LV_WORKFLOW_OUTCOME_INSERTED:
@@ -769,7 +907,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         default:
             panel.show("Target unavailable · text ready to copy")
         }
-        applyDeferredTriggerIfIdle()
+        applyDeferredPreferencesIfIdle()
     }
 
     private func workflowError(_ failure: WorkflowBridgeFailure) -> DictationError {
@@ -831,7 +969,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let generation = lv_toggle(&sampleSession)
         panel.overlay.isSample = true
         if sampleSession.state == LV_RECORDING {
+            setShortcutEditingEnabled(false)
             panel.present(.recording)
+            activateCancellationBinding()
         } else if previous == LV_RECORDING {
             panel.overlay.progressLabel = "PROCESSING SAMPLE"
             panel.present(.processing)
@@ -842,7 +982,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                         await Task.yield()
                         guard let self, !Task.isCancelled,
                             self.sampleSession.generation == generation else { return }
-                        self.applyDeferredTriggerIfIdle()
+                        self.deactivateCancellationBinding()
+                        self.setShortcutEditingEnabled(!self.sessionActive)
+                        self.applyDeferredPreferencesIfIdle()
                         self.pendingText = self.sample
                         self.panel.show("Sample text ready to copy")
                     }
@@ -857,6 +999,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let operation = launchTracker.activeOperation
         let activeCore = operation != nil && workflowCreated
         launchTracker.cancel()
+        deactivateCancellationBinding()
         pendingLaunchEpoch = nil
         syntheticPreflight = nil
         preflightTask?.cancel(); preflightTask = nil
@@ -874,7 +1017,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         // synthetic sample has no core callback, so record only those here.
         if (hadPreflight && !activeCore) || hadSample { diagnostics.record(.canceled) }
         inserting = false; pendingText = nil; panel.orderOut(nil)
-        applyDeferredTriggerIfIdle()
+        setShortcutEditingEnabled(!sessionActive)
+        applyDeferredPreferencesIfIdle()
     }
     @objc func copyPending() {
         guard let pendingText else { panel.show("No pending text"); return }
@@ -907,6 +1051,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             transport.close()
         }
         binding.clear()
+        cancellationBinding.clear()
         if let handler { RemoveEventHandler(handler) }
     }
 }
