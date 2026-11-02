@@ -116,14 +116,14 @@ jobs:
           log=json.load(open(root+'/notary-log.json'))
           assert log['status']=='Accepted' and not log['issues'], 'Inspect Apple notarization report before release'
           PY
-          xcrun stapler staple "$RUNNER_TEMP/signed/LemonVox Prototype.app"
-          xcrun stapler validate "$RUNNER_TEMP/signed/LemonVox Prototype.app"
-          codesign --verify --deep --strict "$RUNNER_TEMP/signed/LemonVox Prototype.app"
-          spctl --assess --type execute "$RUNNER_TEMP/signed/LemonVox Prototype.app"
+          xcrun stapler staple "$RUNNER_TEMP/signed/LemonVox.app"
+          xcrun stapler validate "$RUNNER_TEMP/signed/LemonVox.app"
+          codesign --verify --deep --strict "$RUNNER_TEMP/signed/LemonVox.app"
+          spctl --assess --type execute "$RUNNER_TEMP/signed/LemonVox.app"
       - name: Prepare final distribution
         run: |
           mkdir "$RUNNER_TEMP/distribution"
-          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/signed/LemonVox Prototype.app" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/signed/LemonVox.app" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip"
           bash tests/packaging_test.sh "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip"
           cd "$RUNNER_TEMP/distribution"
           shasum -a 256 "LemonVox-$RELEASE_VERSION-arm64.zip" > SHA256SUMS
@@ -142,7 +142,7 @@ jobs:
           # Create the tag atomically. An existing/concurrently created tag
           # fails here instead of silently releasing a different source commit.
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$SOURCE_COMMIT" >/dev/null
-          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox Prototype.app. Built from $SOURCE_COMMIT."
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox.app. Built from $SOURCE_COMMIT."
       - name: Remove temporary signing material
         if: ${{ always() }}
         run: |

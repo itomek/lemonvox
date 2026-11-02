@@ -30,8 +30,8 @@ mkdir -p "$OUTPUT"
 WORK=$(mktemp -d "$OUTPUT/.work.XXXXXX")
 BUILD_OUT="$WORK/build"
 bash "$ROOT/scripts/build.sh" --output "$BUILD_OUT"
-APP="$OUTPUT/LemonVox Prototype.app"
-/usr/bin/ditto "$BUILD_OUT/LemonVox Prototype.app" "$APP"
+APP="$OUTPUT/LemonVox.app"
+/usr/bin/ditto "$BUILD_OUT/LemonVox.app" "$APP"
 # The nested keyboard-test app is a development fixture, not a shipped component.
 /usr/bin/python3 - "$APP" "$VERSION" "$BUILD_NUMBER" <<'PY'
 import pathlib,plistlib,shutil,sys

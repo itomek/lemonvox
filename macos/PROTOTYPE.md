@@ -4,7 +4,7 @@ Build for macOS 26 or later with the installed Apple command-line tools:
 
 ```sh
 bash scripts/build.sh
-open ".build/LemonVox Prototype.app"
+open ".build/LemonVox.app"
 ```
 
 The app appears as a lemon-and-waveform icon in the menu bar. Its menu offers **Start/Stop Dictation**, **Settings…** and **Quit LemonVox**, with **Cancel** and **Copy Text** when relevant. The packaged app icon uses the same native vector geometry.
@@ -16,7 +16,7 @@ The Mac default is **Command twice**: two complete taps of the same Command key,
 1. Install and run Lemonade. The tested local baseline is **2026.44.1**; the connected version is reported without an exact-version gate. Make a compatible transcription model and cleanup model available in Lemonade. LemonVox checks metadata; model loading, downloads, provider routing and credentials stay with Lemonade.
 2. Open **Settings…** from the menu-bar icon. The window opens immediately and discovers models asynchronously, with loading, error and Refresh states. The default endpoint is `http://127.0.0.1:13305/v1`; this prototype accepts loopback endpoints. Choose transcription and cleanup independently. Local downloaded transcription and local/cloud chat models exposed by Lemonade are supported. A remote cleanup choice sends dictated text through Lemonade to that provider. Remote audio-transcription routing is not advertised by the tested cloud catalog.
 3. Configure the trigger, appearance and target policy in Settings. A regular combination recorder and left/right modifier double-tap choices are available; Escape cancels shortcut recording. Each model selector opens a searchable, scrollable native popover. Arrow keys, Return and Escape navigate, choose and dismiss. Saved choices survive offline/loading states or absence from the latest catalog. The conservative cleanup prompt can be edited there. Save applies the choices; a failed trigger replacement retains the previous working binding.
-4. For modifier monitoring and automatic insertion, manually allow the built app in **System Settings → Privacy & Security → Accessibility**. Use the add (+) button to select `.build/LemonVox Prototype.app` if necessary. Rebuilding or moving this development app can invalidate its permission identity. The app checks trust without requesting or changing permission; it makes no Input Monitoring request. After granting Accessibility, restart LemonVox or save its trigger again so modifier monitoring is installed.
+4. For modifier monitoring and automatic insertion, manually allow the built app in **System Settings → Privacy & Security → Accessibility**. Use the add (+) button to select `.build/LemonVox.app` if necessary. Rebuilding or moving this development app can invalidate its permission identity. The app checks trust without requesting or changing permission; it makes no Input Monitoring request. After granting Accessibility, restart LemonVox or save its trigger again so modifier monitoring is installed.
 5. Place the caret in a disposable text field and press the trigger. The client checks models, then requests microphone access if needed. Grant that permission manually. Speak while the overlay says **Listening…**, then press the trigger again or click Stop. Capture stops after at most 120 seconds. Transcription and cleanup run through Lemonade, followed by guarded insertion.
 
 Cancel stops capture or processing and discards late results. Denied microphone access, unavailable server/devices, incompatible models, failed/empty responses and truncated cleanup produce an error instead of insertion. Upstream errors are displayed with credential patterns redacted. Provider wire-format compatibility is checked by Lemonade when a request is made; compatibility of every provider/model combination has not been established.
@@ -45,9 +45,9 @@ The build script runs session, policy, pipeline, recorder, Settings/model-discov
 .build/overlay-test
 .build/settings-ui-test
 .build/model-picker-test
-".build/LemonVox Prototype.app/Contents/MacOS/LemonVoxPrototype" --diagnose
-".build/LemonVox Prototype.app/Contents/MacOS/LemonVoxPrototype" --smoke-menu
-".build/LemonVox Prototype.app/Contents/MacOS/LemonVoxPrototype" --smoke-cancel
+".build/LemonVox.app/Contents/MacOS/LemonVoxPrototype" --diagnose
+".build/LemonVox.app/Contents/MacOS/LemonVoxPrototype" --smoke-menu
+".build/LemonVox.app/Contents/MacOS/LemonVoxPrototype" --smoke-cancel
 ```
 
 Tests use fake model discovery, fake permission responses or in-memory synthetic events. They capture no microphone audio and invoke no real models. The hotkey test temporarily registers its two test combinations, checks collisions/repeats and releases them. The clipboard test uses a private named pasteboard. `--diagnose` checks the calling app's permission identity without prompting. Shell diagnostic trust can differ from a normal Launch Services app launch.
@@ -55,8 +55,8 @@ Tests use fake model discovery, fake permission responses or in-memory synthetic
 Developer fixtures remain available outside the everyday menu:
 
 ```sh
-open ".build/LemonVox Prototype.app" --args --show
-open ".build/LemonVox Prototype.app" --args --sample
+open ".build/LemonVox.app" --args --show
+open ".build/LemonVox.app" --args --sample
 ```
 
 `--show` opens the existing Field A / Field B keyboard test app. `--sample` enables fixed-text recording states labeled **SAMPLE**, with a short processing delay for cancellation/focus tests. These are explicit development launches; quit an existing instance first when switching launch modes. Sample mode uses no microphone.

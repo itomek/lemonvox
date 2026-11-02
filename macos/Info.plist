@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.itomek.lemonvox.prototype</string>
-<key>CFBundleName</key><string>LemonVox Prototype</string>
+<key>CFBundleName</key><string>LemonVox</string>
 <key>CFBundleExecutable</key><string>LemonVoxPrototype</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>LemonVox</string>
