@@ -11,7 +11,9 @@ param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [switch]$SkipTests,
     # Interactive tests inject input or open windows; they need an unlocked desktop.
-    [switch]$Interactive
+    [switch]$Interactive,
+    # ctest label regex excluded from the run; hosted CI also excludes local-resource tests.
+    [string]$ExcludeLabels = 'interactive'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -24,7 +26,7 @@ $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
 
 $source = Join-Path $root 'windows'
 $outputPath = [System.IO.Path]::GetFullPath($Output)
-$testArgs = if ($Interactive) { '' } else { '-LE interactive' }
+$testArgs = if ($Interactive) { '' } elseif ($ExcludeLabels) { "-LE `"$ExcludeLabels`"" } else { '' }
 $steps = @(
     "call `"$vcvars`" >nul",
     "cmake -S `"$source`" -B `"$outputPath`" -G Ninja -DCMAKE_BUILD_TYPE=$Configuration",

@@ -1,0 +1,33 @@
+name: Windows checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify runner and toolchain
+        shell: pwsh
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          "$($os.Caption) $($os.Version) $env:PROCESSOR_ARCHITECTURE"
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property catalog_productDisplayVersion
+      - name: Build and run hosted-safe tests without signing credentials
+        shell: pwsh
+        # Interactive desktop, real Lemonade and microphone tests run only on owner machines.
+        run: |
+          windows\scripts\build.ps1 -Output "$env:RUNNER_TEMP\lemonvox-windows" -ExcludeLabels 'interactive|lemonade|audio-device'
