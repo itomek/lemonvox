@@ -13,6 +13,7 @@ if [[ $# -gt 0 ]]; then
 fi
 SWIFT_TARGET="$(uname -m)-apple-macos26.0"
 mkdir -p "$OUT"
+bash "$ROOT/tests/debug_wrapper_test.sh"
 SPARKLE=$(bash "$ROOT/scripts/prepare-sparkle.sh")
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/session_test.cpp" "$ROOT/core/session.cpp" -o "$OUT/session-test"
 "$OUT/session-test"
@@ -51,7 +52,7 @@ xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-
 "$OUT/workflow-native-adapter-test"
 APP="$OUT/LemonVox.app"
 mkdir -p "$APP/Contents/MacOS"
-xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" -swift-version 5 -warnings-as-errors -import-objc-header "$ROOT/core/workflow_bridge.h" "$ROOT/macos/UpdateSafety.swift" "$ROOT/macos/UpdateCoordinator.swift" "$ROOT/macos/LemonIcon.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/WorkflowLaunchTracker.swift" "$ROOT/macos/WorkflowBridge.swift" "$ROOT/macos/WorkflowNativeAdapter.swift" "$ROOT/macos/main.swift" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/macos/IndicatorPanel.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/macos/ModelDiscovery.swift" "${WORKFLOW_OBJECTS[@]}" -lc++ -framework AppKit -framework Carbon -framework ApplicationServices -framework AVFoundation -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$APP/Contents/MacOS/LemonVoxPrototype"
+xcrun swiftc -target "$SWIFT_TARGET" -module-cache-path "$OUT/ModuleCache" -swift-version 5 -warnings-as-errors -import-objc-header "$ROOT/core/workflow_bridge.h" "$ROOT/macos/UpdateSafety.swift" "$ROOT/macos/UpdateCoordinator.swift" "$ROOT/macos/LemonIcon.swift" "$ROOT/macos/ModifierTrigger.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/WorkflowLaunchTracker.swift" "$ROOT/macos/WorkflowBridge.swift" "$ROOT/macos/WorkflowNativeAdapter.swift" "$ROOT/macos/main.swift" "$ROOT/macos/TextInsertion.swift" "$ROOT/macos/PasteTransaction.swift" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/macos/IndicatorPanel.swift" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/TransientAudio.swift" "$ROOT/macos/Recorder.swift" "$ROOT/macos/AppIdentity.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/macos/ModelDiscovery.swift" "${WORKFLOW_OBJECTS[@]}" -lc++ -framework AppKit -framework Carbon -framework ApplicationServices -framework AVFoundation -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$APP/Contents/MacOS/LemonVoxPrototype"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
 printf 'Built %s\n' "$APP"
 
@@ -69,10 +70,13 @@ cat > "$FIXTURE/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/AppIdentity.swift" "$ROOT/tests/app_identity_test.swift" -o "$OUT/app-identity-test"
+"$OUT/app-identity-test"
+
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/settings_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/settings-test"
 "$OUT/settings-test"
 
-xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/AppIdentity.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
 "$OUT/settings-ui-test" --metadata-only
 "$OUT/settings-ui-test" --diagnostics-only
 "$OUT/settings-ui-test"

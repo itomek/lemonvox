@@ -85,11 +85,22 @@ import AppKit
         let footer=pane.window.contentView?.subviews.compactMap { $0 as? NSTextField }.first
         precondition(footer != nil, "Settings must show the running LemonVox version in its fixed footer")
         precondition(footer === pane.appVersion && pane.appVersion.isSelectable)
-        precondition(pane.appVersion.accessibilityLabel() == "Running LemonVox version and build")
+        precondition(pane.appVersion.accessibilityLabel() == "Running \(AppIdentity.running.name) version and build")
         precondition(!pane.appVersion.frame.intersects(pane.save.frame))
         let expectedVersion=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unavailable"
         let expectedBuild=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unavailable"
-        precondition(footer?.stringValue == "LemonVox \(expectedVersion) (build \(expectedBuild))")
+        precondition(footer?.stringValue == "\(AppIdentity.running.name) \(expectedVersion) (build \(expectedBuild))")
+        let guidance = AppIdentity(info:["CFBundleDisplayName":"LemonVox Debug"], path:"/Users/example/Applications/LemonVox Debug.app").accessibilityGuidance(trusted:false, canPost:false)
+        pane.setAccessibilityStatus(guidance)
+        precondition(pane.accessibilityStatus.toolTip == guidance && pane.accessibilityStatus.isSelectable)
+        precondition(pane.accessibilityStatus.frame.maxY <= pane.logPath.frame.minY)
+        let required = pane.accessibilityStatus.cell!.cellSize(forBounds: NSRect(x:0,y:0,width:pane.accessibilityStatus.frame.width,height:1000)).height
+        precondition(required <= pane.accessibilityStatus.frame.height, "Accessibility guidance must fit")
+        pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
+        pane.categoryList.selectRowIndexes(IndexSet(integer:2), byExtendingSelection:false)
+        pane.accessibilityStatus.scrollToVisible(pane.accessibilityStatus.bounds)
+        precondition(pane.accessibilityStatus.visibleRect.contains(pane.accessibilityStatus.bounds), "Accessibility guidance must be visible at minimum height")
+        pane.categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
         let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:asr.id,cleanupModel:gemma.id,cleanupPrompt:"Preserved prompt")
         pane.showPreferences(trigger:.defaultMac,dark:true,current:false) { _,_,_ in }
         precondition(pane.trigger.choice == .defaultMac && pane.dark.state == .on && pane.currentField.state == .off)
