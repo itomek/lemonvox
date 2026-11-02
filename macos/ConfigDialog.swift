@@ -11,10 +11,13 @@ enum RunningAppVersion {
     }
 }
 
-@MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate {
+@MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     let window: NSWindow
     let appVersion = NSTextField(labelWithString: RunningAppVersion.display(info: Bundle.main.infoDictionary ?? [:]))
     let scroll = NSScrollView()
+    let categoryList = NSTableView()
+    var scrolls: [NSScrollView] = []
+    private let categories = ["General", "Models & Providers", "Diagnostics"]
     let trigger = TriggerControl(frame:.zero)
     let dark = NSButton(checkboxWithTitle:"Always use dark overlay",target:nil,action:nil)
     let automaticChecks=NSButton(checkboxWithTitle:"Check for updates automatically",target:nil,action:nil)
@@ -56,13 +59,13 @@ enum RunningAppVersion {
     init(log: DiagnosticLog = .shared, discover: @escaping (String) async throws -> DiscoveredModels,
          readVersion: @escaping (String) async -> String? = { _ in nil }) {
         self.log = log; self.discover = discover; self.readVersion = readVersion
-        window = NSWindow(contentRect: NSRect(x:0,y:0,width:640,height:690),
+        window = NSWindow(contentRect: NSRect(x:0,y:0,width:820,height:690),
             styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
         super.init()
         window.title = "LemonVox Settings"; window.isReleasedWhenClosed = false; window.delegate = self
-        window.minSize=NSSize(width:640,height:480)
+        window.minSize=NSSize(width:820,height:480)
         guard let root = window.contentView else { return }
-        scroll.frame=NSRect(x:0,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
+        scroll.frame=NSRect(x:180,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
         scroll.hasVerticalScroller=true; scroll.drawsBackground=false
         let view=NSView(frame:NSRect(x:0,y:0,width:640,height:930)); scroll.documentView=view; root.addSubview(scroll)
         func label(_ text: String, _ y: CGFloat) {
@@ -111,13 +114,50 @@ enum RunningAppVersion {
         trigger.frame=NSRect(x:24,y:752,width:592,height:62); view.addSubview(trigger)
         dark.frame=NSRect(x:24,y:720,width:280,height:24); view.addSubview(dark)
         currentField.frame=NSRect(x:24,y:692,width:592,height:24); view.addSubview(currentField)
-        appVersion.frame=NSRect(x:24,y:22,width:486,height:18)
+        // Keep all category views mounted so drafts and asynchronous discovery survive navigation.
+        let generalView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
+        let modelsView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
+        let diagnosticsView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
+        for control in view.subviews {
+            let y = control.frame.minY
+            let destination: NSView
+            let offset: CGFloat
+            if y >= 680 { destination = generalView; offset = 292 }
+            else if y >= 228 { destination = modelsView; offset = 32 }
+            else { destination = diagnosticsView; offset = -418 }
+            control.removeFromSuperview()
+            control.frame.origin.y -= offset
+            if control === retry { control.autoresizingMask = [.minXMargin] }
+            else { control.autoresizingMask = [.width] }
+            destination.addSubview(control)
+        }
+        scroll.removeFromSuperview()
+        for document in [generalView, modelsView, diagnosticsView] {
+            let pane = NSScrollView(frame:NSRect(x:180,y:52,width:640,height:638))
+            pane.autoresizingMask = [.width,.height]; pane.hasVerticalScroller = true; pane.drawsBackground = false
+            document.autoresizingMask = [.width]; pane.documentView = document
+            root.addSubview(pane); scrolls.append(pane)
+        }
+        let sidebar = NSScrollView(frame:NSRect(x:0,y:52,width:180,height:638))
+        sidebar.autoresizingMask = [.height]; sidebar.drawsBackground = false
+        let categoryColumn = NSTableColumn(identifier:NSUserInterfaceItemIdentifier("category"))
+        categoryColumn.width = 180
+        categoryList.addTableColumn(categoryColumn)
+        categoryList.headerView = nil; categoryList.delegate = self; categoryList.dataSource = self
+        categoryList.style = .sourceList
+        categoryList.rowHeight = 30
+        categoryList.setAccessibilityLabel("Settings categories")
+        sidebar.documentView = categoryList; root.addSubview(sidebar)
+        categoryList.reloadData()
+        categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
+        showCategory(0)
+        appVersion.frame=NSRect(x:24,y:22,width:666,height:18)
         appVersion.font = .systemFont(ofSize:11); appVersion.textColor = .secondaryLabelColor
         appVersion.isSelectable=true; appVersion.lineBreakMode = .byTruncatingMiddle
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
         appVersion.setAccessibilityLabel("Running LemonVox version and build")
         root.addSubview(appVersion)
-        save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:526,y:16,width:90,height:30); root.addSubview(save)
+        save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:706,y:16,width:90,height:30); save.autoresizingMask = [.minXMargin]; root.addSubview(save)
     }
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
         if window.isVisible { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
@@ -131,9 +171,27 @@ enum RunningAppVersion {
         populate(cleanup, models:[], selected:config.cleanupModel)
         previousMenu=NSApp.mainMenu; installEditingMenu()
         NSApp.setActivationPolicy(.accessory)
-        scroll.contentView.scroll(to:NSPoint(x:0,y:max(0,930-scroll.contentView.bounds.height))); scroll.reflectScrolledClipView(scroll.contentView)
+        for pane in scrolls {
+            guard let document = pane.documentView else { continue }
+            pane.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-pane.contentView.bounds.height)))
+            pane.reflectScrolledClipView(pane.contentView)
+        }
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true)
         log.record(.settingsOpened); refreshLogs(); refresh()
+    }
+    func numberOfRows(in tableView: NSTableView) -> Int { categories.count }
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let label = NSTextField(labelWithString:categories[row])
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        showCategory(categoryList.selectedRow)
+    }
+    private func showCategory(_ row: Int) {
+        guard scrolls.indices.contains(row) else { return }
+        if row != 0 { trigger.cancelRecording() }
+        for (index, pane) in scrolls.enumerated() { pane.isHidden = index != row }
     }
     private func selected(_ picker:ModelPicker) -> String { picker.selectedID }
     private func populate(_ picker:ModelPicker, models:[LocalModel], selected:String) {
@@ -196,7 +254,11 @@ enum RunningAppVersion {
             log.record(.configSaved)
             window.close()
         }
-        catch { status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue }
+        catch {
+            status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue
+            categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
+            status.scrollToVisible(status.bounds)
+        }
     }
     @objc func refreshLogs() {
         logPath.stringValue=(log.problem.map { $0 + " · " } ?? "") + log.file.path
@@ -204,7 +266,7 @@ enum RunningAppVersion {
     @objc func openAccessibilityPane() { openAccessibility?() }
     @objc func checkAccessibility() { retryAccessibility?() }
     @objc func openLog() {
-        if !NSWorkspace.shared.open(log.file) { status.stringValue="Could not open diagnostic log"; status.toolTip=status.stringValue }
+        if !NSWorkspace.shared.open(log.file) { logPath.stringValue="Could not open diagnostic log · " + log.file.path }
     }
     func windowDidResignKey(_ notification:Notification) { trigger.cancelRecording() }
     func windowWillClose(_ notification: Notification) {
