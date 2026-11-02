@@ -3,6 +3,19 @@ import AppKit
 @main struct SettingsUITests {
     @MainActor static func main() {
         setbuf(stdout,nil)
+        for (info,expected) in [
+            (["CFBundleShortVersionString":"1.2.3", "CFBundleVersion":"42"], "LemonVox 1.2.3 (build 42)"),
+            (["CFBundleVersion":"1"], "LemonVox unavailable (build 1)"),
+            (["CFBundleShortVersionString":"1.2.3"], "LemonVox 1.2.3 (build unavailable)"),
+            ([:], "LemonVox unavailable (build unavailable)"),
+            (["CFBundleShortVersionString":" ", "CFBundleVersion":42], "LemonVox unavailable (build unavailable)")
+        ] as [([String:Any],String)] {
+            precondition(RunningAppVersion.display(info:info) == expected)
+        }
+        if CommandLine.arguments.contains("--metadata-only") {
+            print("PASS: running app version formats complete, missing, partial and malformed bundle metadata")
+            return
+        }
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let log=DiagnosticLog(directory:directory)
         let asr=LocalModel(id:"Whisper-Base",downloaded:true,recipe:"whispercpp",labels:["transcription"],cloud_provider:nil)
@@ -14,6 +27,14 @@ import AppKit
             if endpoint.contains("13306") { throw DictationError.upstream(401,"api_key=private-secret denied") }
             return DiscoveredModels(transcription:[asr],cleanup:[gemma,remote],reason:nil,version:nil)
         })
+        let footer=pane.window.contentView?.subviews.compactMap { $0 as? NSTextField }.first
+        precondition(footer != nil, "Settings must show the running LemonVox version in its fixed footer")
+        precondition(footer === pane.appVersion && pane.appVersion.isSelectable)
+        precondition(pane.appVersion.accessibilityLabel() == "Running LemonVox version and build")
+        precondition(!pane.appVersion.frame.intersects(pane.save.frame))
+        let expectedVersion=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unavailable"
+        let expectedBuild=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unavailable"
+        precondition(footer?.stringValue == "LemonVox \(expectedVersion) (build \(expectedBuild))")
         let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:asr.id,cleanupModel:gemma.id,cleanupPrompt:"Preserved prompt")
         pane.showPreferences(trigger:.defaultMac,dark:true,current:false) { _,_,_ in }
         precondition(pane.trigger.choice == .defaultMac && pane.dark.state == .on && pane.currentField.state == .off)

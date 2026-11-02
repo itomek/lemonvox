@@ -1,7 +1,19 @@
 import AppKit
 
+enum RunningAppVersion {
+    static func display(info: [String: Any]) -> String {
+        func value(_ key: String) -> String {
+            guard let text=info[key] as? String,
+                  !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return "unavailable" }
+            return text.trimmingCharacters(in:.whitespacesAndNewlines)
+        }
+        return "LemonVox \(value("CFBundleShortVersionString")) (build \(value("CFBundleVersion")))"
+    }
+}
+
 @MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     let window: NSWindow
+    let appVersion = NSTextField(labelWithString: RunningAppVersion.display(info: Bundle.main.infoDictionary ?? [:]))
     let scroll = NSScrollView()
     let trigger = TriggerControl(frame:.zero)
     let dark = NSButton(checkboxWithTitle:"Always use dark overlay",target:nil,action:nil)
@@ -74,6 +86,12 @@ import AppKit
         trigger.frame=NSRect(x:24,y:752,width:592,height:62); view.addSubview(trigger)
         dark.frame=NSRect(x:24,y:720,width:280,height:24); view.addSubview(dark)
         currentField.frame=NSRect(x:24,y:692,width:592,height:24); view.addSubview(currentField)
+        appVersion.frame=NSRect(x:24,y:22,width:486,height:18)
+        appVersion.font = .systemFont(ofSize:11); appVersion.textColor = .secondaryLabelColor
+        appVersion.isSelectable=true; appVersion.lineBreakMode = .byTruncatingMiddle
+        appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
+        appVersion.setAccessibilityLabel("Running LemonVox version and build")
+        root.addSubview(appVersion)
         save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:526,y:16,width:90,height:30); root.addSubview(save)
     }
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
