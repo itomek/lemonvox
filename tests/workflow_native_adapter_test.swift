@@ -157,6 +157,28 @@ import Foundation
     }
 
     static func main() async {
+        // Distinguish an original target never captured from a completion-time
+        // lookup failure. These are synthetic adapter facts, not an AX repro.
+        let missingTargeting = TargetingFake()
+        let missingPaste = PasteFake()
+        let missingAdapter = WorkflowNativeAdapter(capture: CaptureFake(), transport: TransportFake(),
+            paste: missingPaste, targeting: missingTargeting)
+        let missingCompletion = CompletionSpy()
+        missingAdapter.attach(missingCompletion)
+        missingAdapter.prepareForStart(original: nil, originalPID: 77, useCurrentField: true)
+        missingAdapter.captureOriginal(operation: 70, requestID: 71)
+        precondition(missingCompletion.originals.last?.2 == LV_WORKFLOW_ADAPTER_UNAVAILABLE)
+        missingAdapter.inspectTarget(operation: 70, requestID: 72, originalToken: 0)
+        precondition(missingCompletion.inspects.last?.2 == LV_WORKFLOW_ADAPTER_UNAVAILABLE)
+        precondition(missingPaste.inserts == 0 && missingTargeting.posts.isEmpty)
+        missingTargeting.focused = WorkflowNativeTarget(identity: 42, pid: 77, editable: true, secure: false)
+        missingAdapter.inspectTarget(operation: 70, requestID: 73, originalToken: 0)
+        precondition(missingCompletion.inspects.last?.2 == LV_WORKFLOW_ADAPTER_NONE)
+        precondition(missingCompletion.inspects.last?.3.token != 0)
+        precondition(missingPaste.inserts == 0 && missingTargeting.posts.isEmpty)
+        missingAdapter.finalizeOperation(70)
+        precondition(missingTargeting.released == Set([42]))
+
         let capture = CaptureFake()
         let transport = TransportFake()
         let (adapter, completion) = makeAdapter(capture: capture, transport: transport)
