@@ -44,3 +44,35 @@ foreach(test_name session trigger_core contracts protocol workflow_core)
     target_compile_options(${test_name}_test PRIVATE ${LEMONVOX_WARNINGS} /wd4805)
     add_test(NAME core_${test_name} COMMAND ${test_name}_test)
 endforeach()
+
+# Windows host modules. Each module directory owns its own CMakeLists.txt so
+# native adapters stay separable from presentation and from each other.
+function(lemonvox_win_target target)
+    target_compile_options(${target} PRIVATE ${LEMONVOX_WARNINGS})
+    target_compile_definitions(${target} PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+        _WIN32_WINNT=0x0A00 WINVER=0x0A00 ${LEMONVOX_RELEASE_DEFINES})
+endfunction()
+
+# Tests keep assert() active and may run headless unless they are labeled interactive.
+function(lemonvox_win_test target)
+    target_compile_options(${target} PRIVATE ${LEMONVOX_WARNINGS})
+    target_compile_definitions(${target} PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+        _WIN32_WINNT=0x0A00 WINVER=0x0A00)
+    add_test(NAME ${target} COMMAND ${target})
+endfunction()
+
+add_library(lv_common STATIC src/common/executor.cpp src/common/utf.cpp src/common/trigger_binding.cpp)
+target_include_directories(lv_common PUBLIC src)
+target_link_libraries(lv_common PUBLIC lemonvox_core)
+lemonvox_win_target(lv_common)
+
+add_executable(common_test tests/common_test.cpp)
+target_link_libraries(common_test PRIVATE lv_common)
+target_include_directories(common_test PRIVATE tests)
+lemonvox_win_test(common_test)
+
+foreach(module prefs net capture insertion trigger ui app)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/${module}/CMakeLists.txt")
+        add_subdirectory(src/${module})
+    endif()
+endforeach()
