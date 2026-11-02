@@ -67,6 +67,7 @@ import AppKit
             panel.present(.processing)
             precondition(panel.frame.origin == movedOrigin, "A new phase must retain the moved bar position")
             precondition(!panel.overlay.stopButton.isEnabled)
+            assertControlIsNotDragHandle(panel.overlay.stopButton)
             panel.overlay.stopButton.performClick(nil)
             precondition(stops == 1)
             panel.overlay.cancelButton.performClick(nil)
@@ -95,9 +96,19 @@ import AppKit
             precondition(!panel.overlay.retryPermissionButton.isHidden)
             precondition(panel.overlay.openSettingsButton.frame.maxY < panel.messageLabel.frame.minY)
             precondition(panel.overlay.retryPermissionButton.frame.maxX < panel.messagePanel.contentView!.bounds.maxX)
+            assertControlIsNotDragHandle(panel.overlay.openSettingsButton)
+            assertControlIsNotDragHandle(panel.overlay.retryPermissionButton)
             panel.overlay.openSettingsButton.performClick(nil)
             panel.overlay.retryPermissionButton.performClick(nil)
             precondition(opened == 1 && retried == 1)
+            // The move observer clamps first; posting the screen notification exercises its delivery,
+            // without emulating display removal or independently proving screen-change recovery.
+            panel.setFrameOrigin(NSPoint(x: 1_000_000, y: 1_000_000))
+            NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            precondition(NSScreen.screens.contains { $0.visibleFrame.contains(panel.frame) },
+                "Move/screen notifications left the bar unreachable")
+            precondition(NSScreen.screens.contains { $0.visibleFrame.contains(panel.messagePanel.frame) },
+                "Move/screen notifications left permission controls unreachable")
             let retainedOrigin = panel.frame.origin
             panel.setPhase(.recording)
             precondition(panel.frame.origin == retainedOrigin && !panel.messagePanel.isVisible)
@@ -111,6 +122,12 @@ import AppKit
         if CommandLine.arguments.contains("--render") { try renderComparison() }
         if CommandLine.arguments.contains("--render-only") { try renderComparison(); return }
         focusCheck()
+    }
+    static func assertControlIsNotDragHandle(_ button: OverlayButton) {
+        precondition(!button.mouseDownCanMoveWindow, "A control became a drag handle")
+        let root = button.window!.contentView!
+        let center = root.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), from: button)
+        precondition(root.hitTest(center) === button, "A control lost its mouse hit target")
     }
     static func focusCheck() {
         NSApp.setActivationPolicy(.regular)
@@ -131,9 +148,16 @@ import AppKit
                 let panel = IndicatorPanel()
                 for dark in [false, true] {
                     panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                    for phase in [OverlayPhase.recording, .processing,
+                                  .message("Disposable message"), .permission("Disposable permission")] {
+                        panel.present(phase)
+                        // Exercise programmatic repositioning; this is not a physical pointer drag.
+                        panel.setFrameOrigin(NSPoint(x: panel.frame.minX + 8, y: panel.frame.minY + 8))
+                        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+                        precondition(NSApp.keyWindow === window && window.firstResponder === responder,
+                            "A visible phase or reposition stole disposable text focus")
+                    }
                     panel.present(.recording)
-                    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-                    precondition(NSApp.keyWindow === window && window.firstResponder === responder)
                     panel.overlay.cancelButton.performClick(nil)
                     precondition(window.firstResponder === responder)
                     panel.orderOut(nil)
@@ -143,7 +167,7 @@ import AppKit
                     precondition(panel.overlay.tick == tick, "Hidden overlay restarted animation")
                 }
                 window.close()
-                print("PASS: live glass preserves disposable field/key window; hidden animation stays stopped")
+                print("PASS: all phases and synthetic reposition preserve disposable field/key window; hidden animation stays stopped")
                 NSApp.terminate(nil)
             }
         }
