@@ -1,5 +1,32 @@
 import AppKit
 
+enum AppearanceChoice: String, Codable, CaseIterable, Equatable {
+    case automatic = "auto"
+    case light
+    case dark
+
+    static func migrate(stored: String?, legacyAlwaysDark: Bool) -> AppearanceChoice {
+        if let stored, let choice = AppearanceChoice(rawValue: stored) { return choice }
+        return legacyAlwaysDark ? .dark : .automatic
+    }
+
+    var appKitAppearance: NSAppearance? {
+        switch self {
+        case .automatic: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+private enum SettingsPreferenceError: LocalizedError {
+    case matchingShortcuts
+
+    var errorDescription: String? {
+        "Dictation and cancellation shortcuts must be different."
+    }
+}
+
 enum RunningAppVersion {
     static func display(info: [String: Any]) -> String {
         AppIdentity(info: info, path: "").version
@@ -14,13 +41,16 @@ enum RunningAppVersion {
     var scrolls: [NSScrollView] = []
     private let categories = ["General", "Models & Providers", "Diagnostics"]
     let trigger = TriggerControl(frame:.zero)
-    let dark = NSButton(checkboxWithTitle:"Always use dark overlay",target:nil,action:nil)
+    let cancellationTrigger = TriggerControl(frame:.zero, allowsDoubleTap:false, initialChoice:.defaultMacCancellation)
+    let appearance = NSPopUpButton()
+    let shortcutStatus = NSTextField(wrappingLabelWithString: "")
     let automaticChecks=NSButton(checkboxWithTitle:"Check for updates automatically",target:nil,action:nil)
     let automaticInstallation=NSButton(checkboxWithTitle:"Download and install updates automatically",target:nil,action:nil)
     var updatePreferences:(() -> (Bool,Bool))?
     var saveUpdatePreferences:((Bool,Bool) -> Void)?
     let currentField = NSButton(checkboxWithTitle:"Insert into field selected at completion",target:nil,action:nil)
-    var savePreferences: ((TriggerChoice,Bool,Bool) throws -> Void)?
+    private var saveGeneralPreferences: ((TriggerChoice,TriggerChoice,AppearanceChoice,Bool) throws -> Void)?
+    private var saveLegacyPreferences: ((TriggerChoice,Bool,Bool) throws -> Void)?
     let endpoint = NSTextField()
     let transcription = ModelPicker()
     let cleanup = ModelPicker()
@@ -59,10 +89,12 @@ enum RunningAppVersion {
         super.init()
         window.title = "\(AppIdentity.running.name) Settings"; window.isReleasedWhenClosed = false; window.delegate = self
         window.minSize=NSSize(width:820,height:480)
+        trigger.onChange = { [weak self] in self?.shortcutStatus.stringValue="" }
+        cancellationTrigger.onChange = { [weak self] in self?.shortcutStatus.stringValue="" }
         guard let root = window.contentView else { return }
         scroll.frame=NSRect(x:180,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
         scroll.hasVerticalScroller=true; scroll.drawsBackground=false
-        let view=NSView(frame:NSRect(x:0,y:0,width:640,height:930)); scroll.documentView=view; root.addSubview(scroll)
+        let view=NSView(frame:NSRect(x:0,y:0,width:640,height:1024)); scroll.documentView=view; root.addSubview(scroll)
         func label(_ text: String, _ y: CGFloat) {
             let label = NSTextField(labelWithString:text); label.frame = NSRect(x:24,y:y,width:592,height:20)
             label.font = .systemFont(ofSize:13,weight:.medium); view.addSubview(label)
@@ -102,14 +134,24 @@ enum RunningAppVersion {
         accessibilityStatus.isSelectable=true; accessibilityStatus.font = .systemFont(ofSize:11); accessibilityStatus.textColor = .secondaryLabelColor
         view.addSubview(accessibilityStatus)
         logPath.frame=NSRect(x:24,y:62,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
-        automaticChecks.frame=NSRect(x:24,y:900,width:592,height:24)
-        automaticInstallation.frame=NSRect(x:24,y:872,width:592,height:24)
+        automaticChecks.frame=NSRect(x:24,y:1000,width:592,height:24)
+        automaticInstallation.frame=NSRect(x:24,y:972,width:592,height:24)
         automaticChecks.isHidden=AppIdentity.running.isDebug; automaticInstallation.isHidden=AppIdentity.running.isDebug
         view.addSubview(automaticChecks);view.addSubview(automaticInstallation)
-        label("Dictation trigger", 820)
-        trigger.frame=NSRect(x:24,y:752,width:592,height:62); view.addSubview(trigger)
-        dark.frame=NSRect(x:24,y:720,width:280,height:24); view.addSubview(dark)
-        currentField.frame=NSRect(x:24,y:692,width:592,height:24); view.addSubview(currentField)
+        label("Dictation shortcut", 920)
+        trigger.frame=NSRect(x:24,y:852,width:592,height:62); view.addSubview(trigger)
+        label("Cancellation shortcut", 820)
+        cancellationTrigger.frame=NSRect(x:24,y:752,width:592,height:62); view.addSubview(cancellationTrigger)
+        label("Appearance", 715)
+        appearance.addItems(withTitles:["Auto", "Light", "Dark"])
+        appearance.frame=NSRect(x:24,y:681,width:180,height:26)
+        appearance.setAccessibilityLabel("Appearance")
+        appearance.toolTip="Auto follows the current macOS appearance."
+        view.addSubview(appearance)
+        currentField.frame=NSRect(x:24,y:640,width:592,height:24); view.addSubview(currentField)
+        shortcutStatus.frame=NSRect(x:24,y:592,width:592,height:30)
+        shortcutStatus.font = .systemFont(ofSize:11); shortcutStatus.textColor = .secondaryLabelColor
+        view.addSubview(shortcutStatus)
         // Keep all category views mounted so drafts and asynchronous discovery survive navigation.
         let generalView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
         let modelsView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
@@ -118,7 +160,7 @@ enum RunningAppVersion {
             let y = control.frame.minY
             let destination: NSView
             let offset: CGFloat
-            if y >= 680 { destination = generalView; offset = 292 }
+            if y >= 680 || control === currentField || control === shortcutStatus { destination = generalView; offset = 430 }
             else if y >= 228 { destination = modelsView; offset = 32 }
             else { destination = diagnosticsView; offset = -418 }
             control.removeFromSuperview()
@@ -136,8 +178,9 @@ enum RunningAppVersion {
         }
         let sidebar = NSScrollView(frame:NSRect(x:0,y:52,width:180,height:638))
         sidebar.autoresizingMask = [.height]; sidebar.drawsBackground = false
+        sidebar.contentInsets = NSEdgeInsets(top:8,left:8,bottom:8,right:8)
         let categoryColumn = NSTableColumn(identifier:NSUserInterfaceItemIdentifier("category"))
-        categoryColumn.width = 180
+        categoryColumn.width = 164
         categoryList.addTableColumn(categoryColumn)
         categoryList.headerView = nil; categoryList.delegate = self; categoryList.dataSource = self
         categoryList.style = .sourceList
@@ -147,12 +190,12 @@ enum RunningAppVersion {
         categoryList.reloadData()
         categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
         showCategory(0)
-        appVersion.frame=NSRect(x:24,y:22,width:666,height:18)
+        appVersion.frame=NSRect(x:24,y:122,width:592,height:18)
         appVersion.font = .systemFont(ofSize:11); appVersion.textColor = .secondaryLabelColor
         appVersion.isSelectable=true; appVersion.lineBreakMode = .byTruncatingMiddle
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
         appVersion.setAccessibilityLabel("Running \(AppIdentity.running.name) version and build")
-        root.addSubview(appVersion)
+        generalView.addSubview(appVersion)
         save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:706,y:16,width:90,height:30); save.autoresizingMask = [.minXMargin]; root.addSubview(save)
     }
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
@@ -186,7 +229,7 @@ enum RunningAppVersion {
     }
     private func showCategory(_ row: Int) {
         guard scrolls.indices.contains(row) else { return }
-        if row != 0 { trigger.cancelRecording() }
+        if row != 0 { trigger.cancelRecording(); cancellationTrigger.cancelRecording() }
         for (index, pane) in scrolls.enumerated() { pane.isHidden = index != row }
     }
     private func selected(_ picker:ModelPicker) -> String { picker.selectedID }
@@ -232,17 +275,46 @@ enum RunningAppVersion {
             self.version.stringValue="Tested with Lemonade 2026.44.1 · connected: " + (actual ?? "unavailable")
         }
     }
-    func showPreferences(trigger choice:TriggerChoice,dark:Bool,current:Bool,save:@escaping (TriggerChoice,Bool,Bool) throws -> Void) {
-        trigger.update(choice); self.dark.state=dark ? .on : .off; currentField.state=current ? .on : .off
-        savePreferences=save
+    private var selectedAppearance: AppearanceChoice {
+        switch appearance.indexOfSelectedItem {
+        case 1: return .light
+        case 2: return .dark
+        default: return .automatic
+        }
+    }
+    private func selectAppearance(_ choice: AppearanceChoice) {
+        switch choice {
+        case .automatic: appearance.selectItem(at:0)
+        case .light: appearance.selectItem(at:1)
+        case .dark: appearance.selectItem(at:2)
+        }
+    }
+    func showPreferences(trigger choice:TriggerChoice, cancellation:TriggerChoice,
+                         appearance choiceAppearance:AppearanceChoice, current:Bool,
+                         save:@escaping (TriggerChoice,TriggerChoice,AppearanceChoice,Bool) throws -> Void) {
+        trigger.update(choice); cancellationTrigger.update(cancellation); selectAppearance(choiceAppearance)
+        currentField.state=current ? .on : .off; shortcutStatus.stringValue=""
+        saveGeneralPreferences=save; saveLegacyPreferences=nil
+    }
+    func showPreferences(trigger choice:TriggerChoice,dark:Bool,current:Bool,
+                         save:@escaping (TriggerChoice,Bool,Bool) throws -> Void) {
+        trigger.update(choice); cancellationTrigger.update(.defaultMacCancellation)
+        selectAppearance(dark ? .dark : .automatic); currentField.state=current ? .on : .off
+        shortcutStatus.stringValue=""; saveLegacyPreferences=save; saveGeneralPreferences=nil
     }
     @objc func saveSettings() {
         let config=DictationConfig(endpoint:endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines),
             asrModel:selected(transcription),cleanupModel:selected(cleanup),cleanupPrompt:prompt.string)
         let debugEnabled=debugDiagnostics.state == .on
         do {
-            trigger.cancelRecording(); _ = try config.baseURL()
-            try savePreferences?(trigger.choice,dark.state == .on,currentField.state == .on)
+            trigger.cancelRecording(); cancellationTrigger.cancelRecording()
+            guard trigger.choice != cancellationTrigger.choice else { throw SettingsPreferenceError.matchingShortcuts }
+            _ = try config.baseURL()
+            if let saveGeneralPreferences {
+                try saveGeneralPreferences(trigger.choice,cancellationTrigger.choice,selectedAppearance,currentField.state == .on)
+            } else {
+                try saveLegacyPreferences?(trigger.choice,selectedAppearance == .dark,currentField.state == .on)
+            }
             try saveConfig?(config)
             if !AppIdentity.running.isDebug { saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on) }
             log.debugEnabled=debugEnabled
@@ -251,9 +323,15 @@ enum RunningAppVersion {
             window.close()
         }
         catch {
-            status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue
-            categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
-            status.scrollToVisible(status.bounds)
+            if error is SettingsPreferenceError {
+                shortcutStatus.stringValue=SafeDisplay.error(error); shortcutStatus.toolTip=shortcutStatus.stringValue
+                categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
+                shortcutStatus.scrollToVisible(shortcutStatus.bounds)
+            } else {
+                status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue
+                categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
+                status.scrollToVisible(status.bounds)
+            }
         }
     }
     @objc func refreshLogs() {
@@ -267,9 +345,10 @@ enum RunningAppVersion {
     @objc func openLog() {
         if !NSWorkspace.shared.open(log.file) { logPath.stringValue="Could not open diagnostic log · " + log.file.path }
     }
-    func windowDidResignKey(_ notification:Notification) { trigger.cancelRecording() }
+    func windowDidResignKey(_ notification:Notification) { trigger.cancelRecording(); cancellationTrigger.cancelRecording() }
     func windowWillClose(_ notification: Notification) {
-        trigger.cancelRecording(); savePreferences=nil
+        trigger.cancelRecording(); cancellationTrigger.cancelRecording()
+        saveGeneralPreferences=nil; saveLegacyPreferences=nil
         transcription.popover.close(); cleanup.popover.close()
         generation += 1; refreshTask?.cancel(); versionTask?.cancel(); loading=false
         NSApp.mainMenu=previousMenu; NSApp.setActivationPolicy(.prohibited)

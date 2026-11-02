@@ -49,6 +49,32 @@ import AppKit
     print("PASS: Debug diagnostics is quiet by default, documents exclusions, and persists only after Save")
 }
 
+@MainActor private func generalPreferencesTest() {
+    _ = NSApplication.shared
+    precondition(AppearanceChoice.migrate(stored: nil, legacyAlwaysDark: false) == .automatic)
+    precondition(AppearanceChoice.migrate(stored: nil, legacyAlwaysDark: true) == .dark)
+    precondition(AppearanceChoice.migrate(stored: "light", legacyAlwaysDark: true) == .light)
+    precondition(AppearanceChoice.migrate(stored: "invalid", legacyAlwaysDark: true) == .dark)
+    precondition(AppearanceChoice.automatic.appKitAppearance == nil)
+    precondition(AppearanceChoice.light.appKitAppearance?.name == .aqua)
+    precondition(AppearanceChoice.dark.appKitAppearance?.name == .darkAqua)
+
+    let cancellation = TriggerControl(frame: .zero, allowsDoubleTap: false,
+                                      initialChoice: .defaultMacCancellation)
+    precondition(cancellation.choice == .defaultMacCancellation)
+    precondition(cancellation.mode.isHidden && cancellation.modifier.isHidden && !cancellation.record.isHidden)
+    precondition(cancellation.record.accessibilityLabel() == "Record cancellation shortcut")
+    cancellation.beginRecording()
+    precondition(cancellation.capture(key: 53, flags: [.command], repeating: false))
+    precondition(!cancellation.recording && cancellation.choice == .defaultMacCancellation,
+                 "Command-Escape must be recordable as the default cancellation shortcut")
+    cancellation.beginRecording()
+    precondition(cancellation.capture(key: 53, flags: [], repeating: false))
+    precondition(!cancellation.recording && cancellation.choice == .defaultMacCancellation,
+                 "Bare Escape must still cancel shortcut recording")
+    print("PASS: General preference migration and cancellation shortcut recording")
+}
+
 @main struct SettingsUITests {
     @MainActor static func main() {
         setbuf(stdout,nil)
@@ -69,6 +95,7 @@ import AppKit
             debugDiagnosticsPreferenceTest()
             return
         }
+        generalPreferencesTest()
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let log=DiagnosticLog(directory:directory)
         let asr=LocalModel(id:"Whisper-Base",downloaded:true,recipe:"whispercpp",labels:["transcription"],cloud_provider:nil)
@@ -82,14 +109,19 @@ import AppKit
             if endpoint.contains("13306") { throw DictationError.upstream(401,"api_key=private-secret denied") }
             return DiscoveredModels(transcription:[asr],cleanup:[gemma,remote],reason:nil,version:nil)
         })
-        let footer=pane.window.contentView?.subviews.compactMap { $0 as? NSTextField }.first
-        precondition(footer != nil, "Settings must show the running LemonVox version in its fixed footer")
-        precondition(footer === pane.appVersion && pane.appVersion.isSelectable)
+        precondition(pane.appVersion.superview === pane.scrolls[0].documentView,
+                     "Settings must show the running LemonVox version in General")
+        precondition(pane.appVersion.isSelectable)
         precondition(pane.appVersion.accessibilityLabel() == "Running \(AppIdentity.running.name) version and build")
-        precondition(!pane.appVersion.frame.intersects(pane.save.frame))
+        precondition(!pane.appVersion.frame.intersects(pane.shortcutStatus.frame))
+        precondition(pane.appearance.frame.maxY < pane.cancellationTrigger.frame.minY)
+        precondition(pane.currentField.frame.maxY < pane.appearance.frame.minY)
+        precondition(pane.shortcutStatus.frame.maxY < pane.currentField.frame.minY)
+        precondition(pane.categoryList.enclosingScrollView?.contentInsets.top == 8,
+                     "The Settings category list needs a native top inset")
         let expectedVersion=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unavailable"
         let expectedBuild=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unavailable"
-        precondition(footer?.stringValue == "\(AppIdentity.running.name) \(expectedVersion) (build \(expectedBuild))")
+        precondition(pane.appVersion.stringValue == "\(AppIdentity.running.name) \(expectedVersion) (build \(expectedBuild))")
         let guidance = AppIdentity(info:["CFBundleDisplayName":"LemonVox Debug"], path:"/Users/example/Applications/LemonVox Debug.app").accessibilityGuidance(trusted:false, canPost:false)
         pane.setAccessibilityStatus(guidance)
         precondition(pane.accessibilityStatus.toolTip == guidance && pane.accessibilityStatus.isSelectable)
@@ -102,8 +134,12 @@ import AppKit
         precondition(pane.accessibilityStatus.visibleRect.contains(pane.accessibilityStatus.bounds), "Accessibility guidance must be visible at minimum height")
         pane.categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
         let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:asr.id,cleanupModel:gemma.id,cleanupPrompt:"Preserved prompt")
-        pane.showPreferences(trigger:.defaultMac,dark:true,current:false) { _,_,_ in }
-        precondition(pane.trigger.choice == .defaultMac && pane.dark.state == .on && pane.currentField.state == .off)
+        var savedPreferences: (TriggerChoice,TriggerChoice,AppearanceChoice,Bool)?
+        pane.showPreferences(trigger:.defaultMac,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
+            savedPreferences=(trigger,cancellation,appearance,current)
+        }
+        precondition(pane.trigger.choice == .defaultMac && pane.cancellationTrigger.choice == .defaultMacCancellation)
+        precondition(pane.appearance.indexOfSelectedItem == 2 && pane.currentField.state == .off)
         pane.trigger.mode.selectItem(at:1); pane.trigger.modeChanged(); pane.trigger.beginRecording()
         precondition(pane.trigger.capture(key:9,flags:[.command,.option],repeating:false))
         precondition(pane.trigger.choice == .combo(key:9,modifiers:2304) && !pane.trigger.recording)
@@ -119,8 +155,14 @@ import AppKit
         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
         precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && pane.save.isEnabled)
         precondition(pane.categoryList.numberOfRows == 3)
+        pane.cancellationTrigger.update(pane.trigger.choice)
+        pane.saveSettings()
+        precondition(pane.window.isVisible && pane.categoryList.selectedRow == 0)
+        precondition(pane.shortcutStatus.stringValue.contains("must be different"))
+        pane.cancellationTrigger.update(.defaultMacCancellation)
+        precondition(pane.shortcutStatus.stringValue.isEmpty)
         pane.prompt.string = "Unsaved synthetic draft"
-        pane.dark.state = .on
+        pane.appearance.selectItem(at:2)
         pane.trigger.beginRecording()
         let triggerBeforeSwitch = pane.trigger.choice
         pane.categoryList.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
@@ -130,7 +172,7 @@ import AppKit
         pane.categoryList.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
         pane.debugDiagnostics.state = .on
         pane.categoryList.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        precondition(pane.dark.state == .on && pane.prompt.string == "Unsaved synthetic draft")
+        precondition(pane.appearance.indexOfSelectedItem == 2 && pane.prompt.string == "Unsaved synthetic draft")
         precondition(pane.debugDiagnostics.state == .on && pane.loading)
         precondition(discoveries <= 1, "Switching categories must not restart discovery")
         pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
@@ -204,6 +246,9 @@ import AppKit
                                 pane.window.close()
                         precondition(closed && !pane.window.isVisible)
                         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
+                        pane.showPreferences(trigger:.combo(key:9,modifiers:2304),cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
+                            savedPreferences=(trigger,cancellation,appearance,current)
+                        }
                         Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
                             MainActor.assumeIsolated {
                                 pane.prompt.string = "Saved across categories"
@@ -212,6 +257,8 @@ import AppKit
                                 precondition(updateSaved?.0 == false && updateSaved?.1 == true)
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
                                 precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
+                                precondition(savedPreferences?.0 == .combo(key:9,modifiers:2304))
+                                precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark && savedPreferences?.3 == false)
                                 try? FileManager.default.removeItem(at:directory)
                                 print("PASS: Settings opens during delayed discovery; selectors independent; offline/retry preserves choices; close/reopen and save preserve config; errors redacted")
                                 NSApp.terminate(nil)
