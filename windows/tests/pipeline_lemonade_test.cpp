@@ -4,6 +4,7 @@
 // then WinHTTP transcription and cleanup, and a fake insertion target.
 // Exits 77 (skipped) when Lemonade or the required models are unavailable.
 #include "app/dictation_controller.h"
+#include "app/file_capture.h"
 #include "capture/wav.h"
 #include "common/executor.h"
 #include "net/winhttp_transport.h"
@@ -48,58 +49,6 @@ TransportResponse send_now(UiThreadExecutor &executor, WinHttpTransport &transpo
     (void)executor;
     return result;
 }
-
-std::uint32_t read_u32(const std::vector<std::uint8_t> &b, size_t at) {
-    return b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (static_cast<std::uint32_t>(b[at + 3]) << 24);
-}
-
-std::uint16_t read_u16(const std::vector<std::uint8_t> &b, size_t at) {
-    return static_cast<std::uint16_t>(b[at] | (b[at + 1] << 8));
-}
-
-// Parses a RIFF/WAVE file with PCM or IEEE-float samples and converts it like live capture.
-bool convert_like_capture(const std::vector<std::uint8_t> &wav, std::vector<std::uint8_t> &out) {
-    if (wav.size() < 12 || std::memcmp(wav.data(), "RIFF", 4) != 0 || std::memcmp(wav.data() + 8, "WAVE", 4) != 0) {
-        return false;
-    }
-    audio::PcmFormat format;
-    bool have_format = false;
-    size_t at = 12;
-    while (at + 8 <= wav.size()) {
-        const std::uint32_t size = read_u32(wav, at + 4);
-        const size_t body = at + 8;
-        if (std::memcmp(wav.data() + at, "fmt ", 4) == 0 && size >= 16 && body + 16 <= wav.size()) {
-            const std::uint16_t tag = read_u16(wav, body);
-            const std::uint16_t bits = read_u16(wav, body + 14);
-            format.channels = read_u16(wav, body + 2);
-            format.sample_rate = read_u32(wav, body + 4);
-            if (tag == 3 && bits == 32) format.sample = audio::SampleFormat::float32;
-            else if ((tag == 1 || tag == 0xFFFE) && bits == 16) format.sample = audio::SampleFormat::int16;
-            else if ((tag == 1 || tag == 0xFFFE) && bits == 32) format.sample = audio::SampleFormat::int32;
-            else if (tag == 0xFFFE && bits == 32) format.sample = audio::SampleFormat::float32;
-            else return false;
-            have_format = true;
-        } else if (std::memcmp(wav.data() + at, "data", 4) == 0 && have_format) {
-            const size_t available = std::min<size_t>(size, wav.size() - body);
-            out = audio::convert_to_wav(wav.data() + body, available, format);
-            return !out.empty();
-        }
-        at = body + size + (size & 1);
-    }
-    return false;
-}
-
-struct FileCapture final : CaptureAdapter {
-    Executor &executor;
-    std::vector<std::uint8_t> wav;
-    explicit FileCapture(Executor &e) : executor(e) {}
-    void start(OperationId op, VoidCompletion done) override { executor.post([op, done] { done(op, {}); }); }
-    void stop(OperationId op, BytesCompletion done) override {
-        executor.post([op, done, bytes = wav] { done(op, {AdapterError::none, bytes}); });
-    }
-    void cancel(OperationId) override {}
-    void shutdown() override {}
-};
 
 struct RecordingInsertion final : InsertionAdapter {
     Executor &executor;
@@ -174,10 +123,11 @@ int main() {
         return 77;
     }
 
-    FileCapture capture(executor);
-    assert(convert_like_capture(tts.bytes, capture.wav));
-    assert(std::memcmp(capture.wav.data(), "RIFF", 4) == 0);
-    assert(read_u32(capture.wav, 24) == 16000 && read_u16(capture.wav, 22) == 1 && read_u16(capture.wav, 34) == 16);
+    std::vector<std::uint8_t> upload;
+    assert(convert_wav_for_upload(tts.bytes, upload));
+    assert(std::memcmp(upload.data(), "RIFF", 4) == 0);
+    assert(upload[22] == 1 && upload[24] == 0x80 && upload[25] == 0x3E && upload[34] == 16); // mono, 16000 Hz, 16-bit
+    FileCapture capture(executor, std::move(upload));
 
     WinHttpTransport transport(executor);
     RecordingInsertion insertion(executor);

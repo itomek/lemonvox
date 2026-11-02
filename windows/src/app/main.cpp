@@ -1,6 +1,7 @@
 // LemonVox for Windows: tray utility that binds the global trigger, the
 // nonactivating indicator, Settings and the shared dictation workflow.
 #include "app/dictation_controller.h"
+#include "app/file_capture.h"
 #include "capture/device_list.h"
 #include "capture/wasapi_capture.h"
 #include "common/executor.h"
@@ -24,6 +25,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 using namespace lemonvox;
 using namespace lemonvox::win;
@@ -33,7 +35,7 @@ namespace {
 constexpr wchar_t kInstanceMutex[] = L"Local\\LemonVox.Windows.SingleInstance";
 constexpr wchar_t kSignalClass[] = L"LemonVoxInstanceSignal";
 constexpr UINT kOpenSettings = WM_APP + 40;
-constexpr wchar_t kRegistryKey[] = L"Software\\LemonVox";
+
 
 CaptureProblem capture_problem(CaptureFailureReason reason) {
     switch (reason) {
@@ -59,13 +61,15 @@ SettingsCatalogResult::Status catalog_status(CatalogStatus status) {
     return SettingsCatalogResult::Status::response;
 }
 
+std::wstring g_registry_key = L"Software\\LemonVox";
+
 std::optional<POINT> load_anchor() {
     DWORD x = 0, y = 0, size = sizeof(DWORD);
-    if (RegGetValueW(HKEY_CURRENT_USER, kRegistryKey, L"IndicatorX", RRF_RT_REG_DWORD, nullptr, &x, &size) != ERROR_SUCCESS) {
+    if (RegGetValueW(HKEY_CURRENT_USER, g_registry_key.c_str(), L"IndicatorX", RRF_RT_REG_DWORD, nullptr, &x, &size) != ERROR_SUCCESS) {
         return std::nullopt;
     }
     size = sizeof(DWORD);
-    if (RegGetValueW(HKEY_CURRENT_USER, kRegistryKey, L"IndicatorY", RRF_RT_REG_DWORD, nullptr, &y, &size) != ERROR_SUCCESS) {
+    if (RegGetValueW(HKEY_CURRENT_USER, g_registry_key.c_str(), L"IndicatorY", RRF_RT_REG_DWORD, nullptr, &y, &size) != ERROR_SUCCESS) {
         return std::nullopt;
     }
     return POINT{static_cast<LONG>(x), static_cast<LONG>(y)};
@@ -74,8 +78,8 @@ std::optional<POINT> load_anchor() {
 void save_anchor(POINT point) {
     const DWORD x = static_cast<DWORD>(point.x);
     const DWORD y = static_cast<DWORD>(point.y);
-    RegSetKeyValueW(HKEY_CURRENT_USER, kRegistryKey, L"IndicatorX", REG_DWORD, &x, sizeof(x));
-    RegSetKeyValueW(HKEY_CURRENT_USER, kRegistryKey, L"IndicatorY", REG_DWORD, &y, sizeof(y));
+    RegSetKeyValueW(HKEY_CURRENT_USER, g_registry_key.c_str(), L"IndicatorX", REG_DWORD, &x, sizeof(x));
+    RegSetKeyValueW(HKEY_CURRENT_USER, g_registry_key.c_str(), L"IndicatorY", REG_DWORD, &y, sizeof(y));
 }
 
 void open_uri(const wchar_t *uri) {
@@ -93,7 +97,8 @@ LRESULT CALLBACK signal_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
 
 class App {
 public:
-    explicit App(HINSTANCE instance) : instance_(instance) {}
+    App(HINSTANCE instance, std::wstring registry_key, std::vector<std::uint8_t> sample_wav)
+        : instance_(instance), store_(std::move(registry_key)), sample_wav_(std::move(sample_wav)) {}
 
     bool run(bool open_settings_at_launch, bool smoke);
 
@@ -110,7 +115,10 @@ private:
     PreferencesStore store_;
     UiThreadExecutor executor_;
     std::unique_ptr<SnapshotPreferences> preferences_;
+    std::vector<std::uint8_t> sample_wav_;
     std::unique_ptr<WasapiCapture> capture_;
+    // Debug/test source that replays a WAV instead of recording the microphone.
+    std::unique_ptr<FileCapture> sample_capture_;
     std::unique_ptr<WinHttpTransport> transport_;
     std::unique_ptr<WinHttpTransport> catalog_transport_;
     std::unique_ptr<ModelCatalog> catalog_;
@@ -187,7 +195,9 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
         refresh_tray();
     };
     events.finished = [this](OperationId operation) { insertion_->release(operation); };
-    controller_ = std::make_unique<DictationController>(*capture_, *transport_, *insertion_, *preferences_,
+    if (!sample_wav_.empty()) sample_capture_ = std::make_unique<FileCapture>(executor_, sample_wav_);
+    CaptureAdapter &capture_source = sample_capture_ ? static_cast<CaptureAdapter &>(*sample_capture_) : *capture_;
+    controller_ = std::make_unique<DictationController>(capture_source, *transport_, *insertion_, *preferences_,
         std::move(events), [this] { return capture_problem(capture_->last_failure_reason()); });
     capture_->set_level_callback([this](float level) {
         if (controller_->phase() != WorkflowPhase::recording) return;
@@ -362,11 +372,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     bool smoke = false;
     bool settings = false;
+    std::wstring registry_key = L"Software\\LemonVox";
+    std::wstring sample_path;
     for (int index = 1; argv && index < argc; ++index) {
-        if (wcscmp(argv[index], L"--smoke") == 0) smoke = true;
-        if (wcscmp(argv[index], L"--settings") == 0) settings = true;
+        const std::wstring arg = argv[index];
+        if (arg == L"--smoke") smoke = true;
+        else if (arg == L"--settings") settings = true;
+        // Isolated HKCU profile for automated tests, e.g. Software\LemonVoxTest\e2e.
+        else if (arg == L"--settings-key" && index + 1 < argc) registry_key = argv[++index];
+        // Debug/test: replay a WAV instead of recording the microphone.
+        else if (arg == L"--sample-wav" && index + 1 < argc) sample_path = argv[++index];
     }
     if (argv) LocalFree(argv);
+    if (registry_key.rfind(L"Software\\", 0) != 0) return 2;
+    g_registry_key = registry_key;
+    std::vector<std::uint8_t> sample_wav;
+    if (!sample_path.empty() && !FileCapture::load(sample_path, sample_wav)) return 2;
     if (smoke) {
         AttachConsole(ATTACH_PARENT_PROCESS);
         FILE *stream = nullptr;
@@ -389,7 +410,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     bool ok = false;
     {
-        App app(instance);
+        App app(instance, registry_key, std::move(sample_wav));
         ok = app.run(settings, smoke);
     }
     if (SUCCEEDED(com)) CoUninitialize();
