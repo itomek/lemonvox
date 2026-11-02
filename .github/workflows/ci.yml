@@ -34,5 +34,7 @@ jobs:
           bash scripts/package-macos.sh --ad-hoc --output "$RUNNER_TEMP/lemonvox-check" --version 0.0.0 --build-number "$GITHUB_RUN_NUMBER"
           bash tests/packaging_test.sh "$RUNNER_TEMP/lemonvox-check/LemonVox-0.0.0-$GITHUB_RUN_NUMBER-arm64-ad-hoc.zip"
           "$RUNNER_TEMP/lemonvox-check/LemonVox.app/Contents/MacOS/LemonVoxPrototype" --smoke-trigger-recovery
+          "$RUNNER_TEMP/lemonvox-check/LemonVox.app/Contents/MacOS/LemonVoxPrototype" --smoke-settings-recording
+          "$RUNNER_TEMP/lemonvox-check/LemonVox.app/Contents/MacOS/LemonVoxPrototype" --smoke-settings-snapshot
           bash tests/sparkle_dependency_test.sh
           bash tests/update_feed_test.sh "$RUNNER_TEMP/lemonvox-check/LemonVox-0.0.0-$GITHUB_RUN_NUMBER-arm64-ad-hoc.zip"
