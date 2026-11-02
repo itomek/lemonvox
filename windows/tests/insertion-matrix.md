@@ -55,14 +55,31 @@ session restore has no unsaved tab to bring back.
 
 ### Edge and Chrome
 
-The page is `data:text/html,<title>…</title><textarea aria-label=LemonVoxMatrixField
-autofocus>` plus a script that keeps the textarea focused and appends `true` to
-the title once it is. A browser window activated after its page loaded may keep
-focus on the address bar or the document body, so the probe additionally waits
-until UI Automation reports the named field as focused (via `SetFocus`, never
-via input). Read-back uses that named element. Edge runs `--inprivate` to avoid
-the implicit sign-in and first-run panes of a fresh profile.
+The page is `data:text/html,` with a `<textarea aria-label=LemonVoxMatrixField
+autofocus>`, an `<input type=password aria-label=LemonVoxMatrixSecret>` and a
+script that focuses the textarea once and then appends `ready` to the title. A
+browser window activated after its page loaded may keep focus on the address bar
+or the document body, so the probe can additionally wait until UI Automation
+reports a named field as focused (moving focus with UIA `SetFocus`, never with
+input). Each browser gets three probe runs in the same window:
 
+1. insert into the textarea (exactly once, no newline, clipboard restored);
+2. capture the textarea, move focus to the password field, then inspect and
+   insert with the original token: `matches_original=false`, `target_changed`,
+   no input;
+3. focus the password field: captured `secure`, no token, no input.
+
+Edge runs `--inprivate` to avoid the implicit sign-in and first-run panes of a
+fresh profile. Chrome runs `-Cold`: its first insertion skips the probe's UIA
+focus step, so the adapter is the first accessibility client of that browser
+and must make the field visible itself.
+
+Chrome exposes only a placeholder pane to UI Automation until a client uses
+MSAA; `--force-renderer-accessibility` and `--enable-features=UiaProvider` did
+not change that, while walking MSAA `accFocus` from the top-level window turned
+the tree on at once (UI Automation then reported the focused textarea with a
+runtime ID and `IsPassword` for the password field). The adapter does that walk
+only when focus is that placeholder, then re-reads UI Automation.
 ### VS Code (Electron)
 
 The script launches `Code.exe` with temporary `--user-data-dir` and
@@ -89,23 +106,21 @@ tools. The integrity comparison itself is covered by `insertion_unit_test`.
 ## Results
 
 Windows 11 Enterprise 26H2, build 26300.9711 (`ver`: 10.0.26300.9711), x64,
-Notepad 11.2607.14.0, 2026-11-02. "Pass" means: captured as editable and not
+Notepad 11.2607.14.0, Chrome and Edge current stable, 2026-11-02. "Pass" means: captured as editable and not
 secure, inspect matched the original target, exactly one paste, the field (or
 saved file) contains `LemonVox fixed text ✓ 123` exactly once with no newline,
 and the clipboard was restored.
 
 | Target | Result | Notes |
 | --- | --- | --- |
-| Native EDIT, RichEdit (test window) | Pass | `insertion_interactive_test`, 4 consecutive runs. |
+| Native EDIT, RichEdit (test window) | Pass | `insertion_interactive_test`. |
 | Password EDIT (test window) | Pass (rejected) | Reported `secure`, no token, nothing typed. |
 | Changed control / changed window | Pass (rejected) | `matches_original=false`; insert returns `target_changed`, nothing typed. |
-| Notepad (Windows 11) | Pass | Saved file identical; 3 of 3 runs. |
-| Edge (Chromium, data: textarea) | Pass | Exposes web content through UI Automation. 3 of 4 `--inprivate` runs passed; the other stopped safely with `target-lost-foreground` before any input. |
-| Chrome (data: textarea) | Copy fallback (expected) | The textarea has DOM focus, but Chrome exposes only a placeholder pane to UI Automation (also with `--force-renderer-accessibility` and `--enable-features=UiaProvider`). Capture reports unavailable, nothing is sent and the core offers Copy. |
+| Notepad (Windows 11) | Pass | Saved file identical. |
+| Edge (Chromium, data: textarea) | Pass | Insert, changed focus (rejected) and password field (rejected) all pass. Exposes web content through UI Automation. |
+| Chrome (data: textarea) | Pass | Same three checks pass, including a cold browser where the adapter is the first accessibility client (2 full matrix runs plus 3 cold inserts and 1 cold password check). |
 | VS Code (Electron) | Pass | Monaco's input exposes an editable Edit; saved file identical. |
 | Elevated window | Not automated | Requires a UAC prompt; see the manual steps. The adapter refuses on integrity before any clipboard or input work. |
 
-Follow-up: Chrome insertion needs a different target identification (for
-example MSAA/IAccessible2), which is out of scope for this proof; until then
-Chrome dictation ends in the manual Copy fallback rather than an unchecked paste
-that could land in a password field.
+Earlier result (before the MSAA step): Chrome ended every dictation in the Copy
+fallback because its text fields were invisible to UI Automation.

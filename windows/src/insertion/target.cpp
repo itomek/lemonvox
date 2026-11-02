@@ -3,6 +3,7 @@
 #include <ole2.h>
 #include <oleauto.h>
 #include <UIAutomation.h>
+#include <oleacc.h>
 
 #include <cwchar>
 #include <iterator>
@@ -14,6 +15,7 @@ namespace {
 constexpr DWORD kUiaTimeoutMs = 2000;
 constexpr int kChromiumTreeAttempts = 3;
 constexpr DWORD kChromiumTreeDelayMs = 100;
+constexpr int kMsaaFocusHops = 8;
 
 void wait_dispatching(DWORD milliseconds) {
     const ULONGLONG deadline = GetTickCount64() + milliseconds;
@@ -39,6 +41,48 @@ bool is_chromium_placeholder(IUIAutomationElement *element) {
     }
     SysFreeString(framework);
     return placeholder;
+}
+
+// Follows MSAA accFocus from the window's client object down to the focused
+// object. Chrome enables its web accessibility tree for MSAA clients, which
+// also makes the field visible to UI Automation. Only called for a Chromium
+// placeholder, i.e. a process that just answered UI Automation, because
+// WM_GETOBJECT has no timeout. Returns whether the focused object is protected
+// (a password field).
+bool msaa_focus_protected(HWND window) {
+    IAccessible *accessible = nullptr;
+    if (FAILED(AccessibleObjectFromWindow(window, static_cast<DWORD>(OBJID_CLIENT), __uuidof(IAccessible),
+            reinterpret_cast<void **>(&accessible))) || !accessible) {
+        return false;
+    }
+    bool is_protected = false;
+    for (int hop = 0; accessible && hop < kMsaaFocusHops; ++hop) {
+        VARIANT self;
+        VariantInit(&self);
+        self.vt = VT_I4;
+        self.lVal = CHILDID_SELF;
+        VARIANT state;
+        VariantInit(&state);
+        if (SUCCEEDED(accessible->get_accState(self, &state)) && state.vt == VT_I4) {
+            is_protected = (state.lVal & STATE_SYSTEM_PROTECTED) != 0;
+        }
+        // Chrome treats role/name queries as assistive-technology use.
+        VARIANT role;
+        VariantInit(&role);
+        accessible->get_accRole(self, &role);
+        VariantClear(&role);
+        VARIANT focus;
+        VariantInit(&focus);
+        IAccessible *next = nullptr;
+        if (accessible->get_accFocus(&focus) == S_OK && focus.vt == VT_DISPATCH && focus.pdispVal) {
+            focus.pdispVal->QueryInterface(__uuidof(IAccessible), reinterpret_cast<void **>(&next));
+        }
+        VariantClear(&focus);
+        accessible->Release();
+        accessible = next;
+    }
+    if (accessible) accessible->Release();
+    return is_protected;
 }
 
 template <typename T>
@@ -218,14 +262,20 @@ bool TargetProbe::probe(ProbedTarget &target) {
 
     const Win32FocusFacts win32 = win32_focus_facts(focus, caret);
     UiaFacts uia;
+    bool msaa_protected = false;
     IUIAutomationElement *element = focused_element(process_id, focus);
-    // Chromium and Electron build their accessibility tree only after the
-    // first UI Automation query; until then focus reports the bare contents
-    // view. Give the tree a bounded moment to appear (first use per process).
-    for (int attempt = 0; element && attempt < kChromiumTreeAttempts && is_chromium_placeholder(element); ++attempt) {
-        element->Release();
-        wait_dispatching(kChromiumTreeDelayMs);
-        element = focused_element(process_id, focus);
+    // Chromium apps report only a bare contents pane until their web
+    // accessibility is on. Edge turns it on for UI Automation clients after a
+    // moment; Chrome only for MSAA clients, so follow MSAA accFocus once
+    // (which enables it for the life of that browser process) and re-read.
+    if (element && is_chromium_placeholder(element)) {
+        msaa_protected = msaa_focus_protected(foreground);
+        for (int attempt = 0; element && attempt < kChromiumTreeAttempts && is_chromium_placeholder(element);
+             ++attempt) {
+            element->Release();
+            wait_dispatching(kChromiumTreeDelayMs);
+            element = focused_element(process_id, focus);
+        }
     }
     if (element) {
         target.identity.runtime_id = runtime_id(element);
@@ -234,7 +284,9 @@ bool TargetProbe::probe(ProbedTarget &target) {
     }
     const bool win32_editable = win32.edit_class && !win32.read_only;
     target.facts.editable = uia.available ? (uia.editable || win32_editable) : (win32_editable || win32.caret);
-    target.facts.secure = uia.secure || win32.password;
+    // MSAA only ever adds a secure signal; UI Automation stays the source of
+    // editability and identity.
+    target.facts.secure = uia.secure || win32.password || msaa_protected;
     return true;
 }
 

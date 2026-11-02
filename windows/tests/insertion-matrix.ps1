@@ -107,17 +107,20 @@ function Test-VSCode {
     }
 }
 
-function Test-Browser([string]$label, [string]$exe, [string[]]$extra = @(), [switch]$ExpectFallback) {
+# -Cold: the first insertion runs before anything else queried the browser's
+# accessibility, so the adapter itself must make the field visible.
+function Test-Browser([string]$label, [string]$exe, [string[]]$extra = @(), [switch]$Cold) {
     if (-not (Test-Path $exe)) { return "skipped ($label not installed)" }
     $title = 'LVMatrix' + [guid]::NewGuid().ToString('N').Substring(0, 8)
     $profileDir = Join-Path $work "$label-profile"
     # A window activated after its page loaded may keep focus on the address
-    # bar or the document body. The page re-focuses its textarea (its title
-    # reports that it did) and the probe waits until UI Automation reports
-    # that named field as focused.
-    $page = "<title>$title</title><textarea id=t aria-label=LemonVoxMatrixField rows=4 autofocus></textarea>" +
-        "<script>setInterval(()=>{if(document.activeElement!==t)t.focus();" +
-        "document.title='$title '+(document.activeElement===t)},200)</script>"
+    # bar or the document body. The page focuses its textarea once (the title
+    # then ends in 'ready'); the probe also waits until UI Automation reports
+    # the named field as focused, moving focus with UIA SetFocus, not input.
+    $page = "<title>$title</title><textarea aria-label=LemonVoxMatrixField id=t rows=4 autofocus></textarea>" +
+        "<input type=password aria-label=LemonVoxMatrixSecret>" +
+        "<script>let ready=false;setInterval(()=>{if(!ready&&document.activeElement!==t)t.focus();" +
+        "if(document.activeElement===t)ready=true;document.title='$title '+(ready?'ready':'loading')},200)</script>"
     $url = 'data:text/html,' + [Uri]::EscapeDataString($page)
     $arguments = @("--user-data-dir=`"$profileDir`"", '--no-first-run', '--no-default-browser-check',
         '--new-window') + $extra + @($url)
@@ -125,18 +128,18 @@ function Test-Browser([string]$label, [string]$exe, [string[]]$extra = @(), [swi
     Start-Sleep -Seconds 5
     try {
         $ids = @(Get-ProfileProcessIds $profileDir $exe) + $process.Id
-        if ($ExpectFallback) {
-            # The textarea has DOM focus (title ends in 'true') but the browser
-            # does not expose it to UI Automation, so LemonVox must not paste.
-            $run = Invoke-Probe @('insert', '--title', "$title true", '--pids', ($ids -join ','), '--no-lock')
-            $fallback = $run.Output -match 'capture.error=unavailable' -and $run.Output -match 'sends=0' -and
-                $run.Output -match 'clipboard.restored=1'
-            if ($fallback) { 'pass (copy fallback: web content not exposed to UI Automation)' } else { 'fail' }
-        } else {
-            $run = Invoke-Probe @('insert', '--title', "$title true", '--pids', ($ids -join ','), '--focus-name',
-                'LemonVoxMatrixField', '--no-lock')
-            if ($run.Code -eq 0) { 'pass' } else { 'fail' }
-        }
+        $common = @('--title', "$title ready", '--pids', ($ids -join ','), '--no-lock')
+        $focus = if ($Cold) { @() } else { @('--focus-name', 'LemonVoxMatrixField') }
+        $insert = Invoke-Probe (@('insert') + $focus + $common)
+        $changed = Invoke-Probe (@('insert', '--focus-name', 'LemonVoxMatrixField', '--change-focus',
+            'LemonVoxMatrixSecret') + $common)
+        $secure = Invoke-Probe (@('insert', '--focus-name', 'LemonVoxMatrixSecret', '--expect-secure') + $common)
+        $parts = @(
+            "insert=$(if ($insert.Code -eq 0) { 'pass' } else { 'fail' })",
+            "changed-focus=$(if ($changed.Code -eq 0) { 'pass' } else { 'fail' })",
+            "secure=$(if ($secure.Code -eq 0) { 'pass' } else { 'fail' })")
+        if ($insert.Code -eq 0 -and $changed.Code -eq 0 -and $secure.Code -eq 0) { "pass ($($parts -join ', '))" }
+        else { "fail ($($parts -join ', '))" }
     } finally {
         Stop-Owned (@(Get-ProfileProcessIds $profileDir $exe) + $process.Id)
         Start-Sleep -Seconds 2
@@ -155,7 +158,7 @@ try {
             'vscode' { $results.vscode = Test-VSCode }
             # InPrivate avoids the implicit sign-in and first-run panes of a fresh profile.
             'edge' { $results.edge = Test-Browser 'edge' "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" @('--inprivate') }
-            'chrome' { $results.chrome = Test-Browser 'chrome' "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" -ExpectFallback }
+            'chrome' { $results.chrome = Test-Browser 'chrome' "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" -Cold }
             default { $results[$target] = 'unknown target' }
         }
     }
