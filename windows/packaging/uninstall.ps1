@@ -21,7 +21,9 @@ if ($RemoveSettings) { Remove-Item 'HKCU:\Software\LemonVox' -Recurse -Force -Er
 
 # The script may be running from the install directory; remove it after exit.
 if (Test-Path $target) {
-    $cleanup = "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$target' -Recurse -Force -ErrorAction SilentlyContinue"
+    # Escape for a single-quoted PowerShell literal (profile paths may contain apostrophes).
+    $quoted = $target -replace "'", "''"
+    $cleanup = "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$quoted' -Recurse -Force -ErrorAction SilentlyContinue"
     Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile', '-Command', $cleanup
 }
 if (-not $Quiet) {
