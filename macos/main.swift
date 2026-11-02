@@ -206,9 +206,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         NSApp.setActivationPolicy(.prohibited)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = LemonIcon.image(size:20,template:true)
-        statusItem.button?.setAccessibilityLabel("LemonVox")
-        statusItem.button?.toolTip="LemonVox"
-        if !CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--") }) { updater.start() }
+        statusItem.button?.setAccessibilityLabel(AppIdentity.running.name)
+        statusItem.button?.toolTip=AppIdentity.running.name
+        if !AppIdentity.running.isDebug && !CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--") }) { updater.start() }
         var specs = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
@@ -228,7 +228,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if CommandLine.arguments.contains("--smoke-menu") {
             let menu=NSMenu(); menu.autoenablesItems=false
             menuNeedsUpdate(menu)
-            precondition(menu.items.map(\.title) == ["Start Dictation","","Settings…","Check for Updates…","","Quit LemonVox"])
+            let expectedMenu = ["Start Dictation", "", "Settings…"] + (AppIdentity.running.isDebug ? [] : ["Check for Updates…"]) + ["", "Quit \(AppIdentity.running.name)"]
+            precondition(menu.items.map(\.title) == expectedMenu)
             precondition(statusItem.button?.image?.isTemplate == true)
             _=lv_toggle(&sampleSession); menuNeedsUpdate(menu)
             precondition(menu.items.first?.title == "Stop Dictation" && menu.item(withTitle:"Cancel") != nil)
@@ -409,11 +410,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
     func refreshAccessibilityStatus() {
         let facts=accessibilityFacts()
-        settings.accessibilityStatus.stringValue = !facts.trusted
-            ? "Accessibility is required for Command twice and field targeting. Use Accessibility… then Check Again."
-            : (!facts.canPost
-                ? "Accessibility is available; event posting is not. Use Accessibility… to enable automatic paste."
-                : "Accessibility and automatic paste are available.")
+        settings.setAccessibilityStatus(AppIdentity.running.accessibilityGuidance(trusted:facts.trusted, canPost:facts.canPost))
     }
     func openAccessibilitySettings() {
         // Explicit button action only. Ask through one native system flow once;
@@ -423,7 +420,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             didRequestAccessibilityDialog=true
             if !facts.canPost { requestEventPosting() } else { requestAccessibility() }
         } else if !showAccessibilityPane() {
-            settings.accessibilityStatus.stringValue="Open System Settings → Privacy & Security → Accessibility."
+            settings.setAccessibilityStatus("Open System Settings → Privacy & Security → Accessibility.")
             return
         }
         refreshAccessibilityStatus()
@@ -457,14 +454,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if pendingText != nil && !inserting { menu.addItem(item("Copy Text",#selector(copyPending))) }
         menu.addItem(.separator())
         let settingsItem=item("Settings…",#selector(configure)); settingsItem.keyEquivalent=","; menu.addItem(settingsItem)
-        menu.addItem(item(updater.menuTitle,#selector(checkForUpdates)))
-        menu.addItem(.separator()); menu.addItem(item("Quit LemonVox",#selector(quit)))
+        if !AppIdentity.running.isDebug { menu.addItem(item(updater.menuTitle,#selector(checkForUpdates))) }
+        menu.addItem(.separator()); menu.addItem(item("Quit \(AppIdentity.running.name)",#selector(quit)))
     }
     func updateMenuIndicator() {
         statusItem?.button?.title=updater.updateAvailable ? " •" : ""
-        statusItem?.button?.toolTip=updater.updateAvailable ? "LemonVox · Update available" : "LemonVox"
+        statusItem?.button?.toolTip=updater.updateAvailable ? "\(AppIdentity.running.name) · Update available" : AppIdentity.running.name
     }
-    @objc func checkForUpdates() { updater.check() }
+    @objc func checkForUpdates() { if !AppIdentity.running.isDebug { updater.check() } }
     @objc func showSamplePreview() {
         let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/LemonVox Keyboard Test.app")
         let configuration = NSWorkspace.OpenConfiguration()
@@ -480,7 +477,10 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         settings.openAccessibility={ [weak self] in self?.openAccessibilitySettings() }
         settings.retryAccessibility={ [weak self] in self?.retryPermissionTrigger() }
         refreshAccessibilityStatus()
-        settings.updatePreferences={ [weak self] in (self?.updater.automaticChecks ?? true,self?.updater.automaticInstallation ?? false) }
+        settings.updatePreferences={ [weak self] in
+            guard !AppIdentity.running.isDebug else { return (false,false) }
+            return (self?.updater.automaticChecks ?? true,self?.updater.automaticInstallation ?? false)
+        }
         settings.saveUpdatePreferences={ [weak self] checks,install in
             self?.updater.automaticChecks=checks;self?.updater.automaticInstallation=install
         }

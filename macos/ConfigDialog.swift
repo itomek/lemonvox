@@ -2,12 +2,7 @@ import AppKit
 
 enum RunningAppVersion {
     static func display(info: [String: Any]) -> String {
-        func value(_ key: String) -> String {
-            guard let text=info[key] as? String,
-                  !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return "unavailable" }
-            return text.trimmingCharacters(in:.whitespacesAndNewlines)
-        }
-        return "LemonVox \(value("CFBundleShortVersionString")) (build \(value("CFBundleVersion")))"
+        AppIdentity(info: info, path: "").version
     }
 }
 
@@ -62,7 +57,7 @@ enum RunningAppVersion {
         window = NSWindow(contentRect: NSRect(x:0,y:0,width:820,height:690),
             styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
         super.init()
-        window.title = "LemonVox Settings"; window.isReleasedWhenClosed = false; window.delegate = self
+        window.title = "\(AppIdentity.running.name) Settings"; window.isReleasedWhenClosed = false; window.delegate = self
         window.minSize=NSSize(width:820,height:480)
         guard let root = window.contentView else { return }
         scroll.frame=NSRect(x:180,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
@@ -103,12 +98,13 @@ enum RunningAppVersion {
         accessibilityOpen.target=self; accessibilityOpen.action=#selector(openAccessibilityPane)
         accessibilityRetry.target=self; accessibilityRetry.action=#selector(checkAccessibility)
         view.addSubview(accessibilityOpen); view.addSubview(accessibilityRetry)
-        accessibilityStatus.frame=NSRect(x:24,y:16,width:592,height:40)
-        accessibilityStatus.font = .systemFont(ofSize:11); accessibilityStatus.textColor = .secondaryLabelColor
+        accessibilityStatus.frame=NSRect(x:24,y:-200,width:592,height:250)
+        accessibilityStatus.isSelectable=true; accessibilityStatus.font = .systemFont(ofSize:11); accessibilityStatus.textColor = .secondaryLabelColor
         view.addSubview(accessibilityStatus)
         logPath.frame=NSRect(x:24,y:62,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
         automaticChecks.frame=NSRect(x:24,y:900,width:592,height:24)
         automaticInstallation.frame=NSRect(x:24,y:872,width:592,height:24)
+        automaticChecks.isHidden=AppIdentity.running.isDebug; automaticInstallation.isHidden=AppIdentity.running.isDebug
         view.addSubview(automaticChecks);view.addSubview(automaticInstallation)
         label("Dictation trigger", 820)
         trigger.frame=NSRect(x:24,y:752,width:592,height:62); view.addSubview(trigger)
@@ -155,7 +151,7 @@ enum RunningAppVersion {
         appVersion.font = .systemFont(ofSize:11); appVersion.textColor = .secondaryLabelColor
         appVersion.isSelectable=true; appVersion.lineBreakMode = .byTruncatingMiddle
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
-        appVersion.setAccessibilityLabel("Running LemonVox version and build")
+        appVersion.setAccessibilityLabel("Running \(AppIdentity.running.name) version and build")
         root.addSubview(appVersion)
         save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:706,y:16,width:90,height:30); save.autoresizingMask = [.minXMargin]; root.addSubview(save)
     }
@@ -248,7 +244,7 @@ enum RunningAppVersion {
             trigger.cancelRecording(); _ = try config.baseURL()
             try savePreferences?(trigger.choice,dark.state == .on,currentField.state == .on)
             try saveConfig?(config)
-            saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on)
+            if !AppIdentity.running.isDebug { saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on) }
             log.debugEnabled=debugEnabled
             saveDiagnosticPreferences(debugEnabled)
             log.record(.configSaved)
@@ -262,6 +258,9 @@ enum RunningAppVersion {
     }
     @objc func refreshLogs() {
         logPath.stringValue=(log.problem.map { $0 + " · " } ?? "") + log.file.path
+    }
+    func setAccessibilityStatus(_ text: String) {
+        accessibilityStatus.stringValue=text; accessibilityStatus.toolTip=text
     }
     @objc func openAccessibilityPane() { openAccessibility?() }
     @objc func checkAccessibility() { retryAccessibility?() }
@@ -277,7 +276,7 @@ enum RunningAppVersion {
         didClose?(); didClose=nil; saveConfig=nil
     }
     private func installEditingMenu() {
-        let menu=NSMenu(); let app=NSMenuItem(); app.submenu=NSMenu(title:"LemonVox")
+        let menu=NSMenu(); let app=NSMenuItem(); app.submenu=NSMenu(title:AppIdentity.running.name)
         let close=NSMenuItem(title:"Close Settings",action:#selector(NSWindow.performClose(_:)),keyEquivalent:"w"); close.target=window
         app.submenu?.addItem(close); menu.addItem(app)
         let edit=NSMenuItem(title:"Edit",action:nil,keyEquivalent:""); let submenu=NSMenu(title:"Edit")
