@@ -121,7 +121,7 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 | Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, non-loopback endpoint, microphone denial/no device/device loss (fake device) |
 | Microphone | Endpoint enumeration and initialization (48 kHz stereo) verified without recording; owner-run `lemonvox_mic_probe --seconds 5`: 5.000 s at 16 kHz mono, RMS -27.2 dBFS, peak -2.1 dBFS |
 | Live dictation | Owner-verified with a real microphone and Alt twice |
-| Administrator window | Owner-verified: Alt twice is not detected in an elevated terminal (UIPI); detection of elevated foreground windows verified against the open desktop (only the elevated terminal matched) |
+| Administrator window | Owner-verified: Alt twice is not detected in an elevated terminal (UIPI), and the "Administrator window" notice appears when it becomes active; only the elevated terminal matched on the open desktop |
 | Package | Install, launch, update with settings retained, uninstall with and without settings; exe 922,624 bytes, zip 437,702 bytes |
 | Idle | 0 ms CPU over 30 s, 17.6 MB working set, 4.3 MB private bytes, 12 threads |
 
