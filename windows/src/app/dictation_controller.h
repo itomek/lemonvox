@@ -51,6 +51,9 @@ struct ControllerEvents {
     std::function<void()> inserted;
     // Result text is held by the controller for copy_pending(); only the reason is passed.
     std::function<void(const std::wstring &reason)> copy_fallback;
+    // Runs after every failed, inserted or fallback terminal outcome so native
+    // adapters can release per-operation state.
+    std::function<void(OperationId)> finished;
 };
 
 // Binds WorkflowCore to the Windows adapters on the serialized executor. All

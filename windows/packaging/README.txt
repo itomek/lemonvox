@@ -1,0 +1,39 @@
+LemonVox for Windows
+====================
+
+LemonVox turns speech into text in the app you are using. It sends audio and
+the transcript to a Lemonade server you run yourself.
+
+Requirements
+- Windows 11 x64. This is the only tested configuration (see VERSION.txt and
+  the repository's windows/README.md); Windows 10 and Arm64 are untested.
+- Lemonade installed and running, with a transcription model (for example
+  Whisper-Base) and a chat model downloaded. LemonVox does not install,
+  start or update Lemonade. Default endpoint: http://127.0.0.1:13305/v1
+
+Install / update
+  powershell -ExecutionPolicy Bypass -File install.ps1 [-StartAtSignIn]
+Installs for the current user only into %LOCALAPPDATA%\Programs\LemonVox.
+No administrator rights are needed or used. Re-run to update; settings are kept.
+
+Uninstall
+  Apps & features > LemonVox > Uninstall, or
+  powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\LemonVox\uninstall.ps1" [-RemoveSettings]
+
+Use
+- Press Alt twice to start recording, Alt twice again to stop. Choose another
+  shortcut in Settings (tray icon > Settings).
+- The bar shows recording, transcribing and cleanup progress without taking
+  focus. Text is pasted into the original field; Enter is never pressed.
+- If the field changed, is a password field, or belongs to an app running as
+  administrator, LemonVox offers Copy instead so you can paste manually.
+  Do not run LemonVox as administrator to work around this.
+- Microphone access: Settings > Privacy & security > Microphone > allow
+  desktop apps to access your microphone.
+
+Privacy
+Audio and transcripts stay in memory and are discarded after each dictation.
+The clipboard is used briefly for pasting, excluded from clipboard history and
+cloud sync, and restored afterwards. Diagnostics contain no dictated content.
+
+This build is not code-signed; Windows SmartScreen may warn on first launch.

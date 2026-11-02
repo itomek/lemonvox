@@ -175,6 +175,7 @@ DictationController::DictationController(CaptureAdapter &capture,
         active_ = 0;
         const CaptureProblem problem = capture_problem_ ? capture_problem_() : CaptureProblem::none;
         if (events_.failed) events_.failed(describe_failure(failure, problem));
+        if (events_.finished) events_.finished(operation);
     };
     callbacks.completed = [this](OperationId operation, WorkflowOutcome outcome) {
         if (!accept(operation)) return;
@@ -182,11 +183,13 @@ DictationController::DictationController(CaptureAdapter &capture,
         if (outcome.kind == WorkflowOutcomeKind::inserted) {
             staged_text_.clear();
             if (events_.inserted) events_.inserted();
+            if (events_.finished) events_.finished(operation);
             return;
         }
         pending_text_ = std::move(staged_text_);
         staged_text_.clear();
         if (events_.copy_fallback) events_.copy_fallback(describe_fallback(outcome.fallback_reason));
+        if (events_.finished) events_.finished(operation);
     };
     core_ = std::make_unique<WorkflowCore>(capture, transport, insertion, diagnostics_, std::move(callbacks));
 }
