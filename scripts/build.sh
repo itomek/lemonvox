@@ -33,6 +33,8 @@ xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/
 "$OUT/core-bridge-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/protocol_bridge_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/protocol-bridge-test"
 "$OUT/protocol-bridge-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -swift-version 5 -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/tests/diagnostics_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/diagnostics-test"
+"$OUT/diagnostics-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/InsertionPolicy.swift" "$ROOT/tests/insertion_policy_test.swift" "$OUT/session.o" -lc++ -o "$OUT/policy-test"
 "$OUT/policy-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/HotKey.swift" "$ROOT/tests/hotkey_test.swift" "$OUT/session.o" -lc++ -framework AppKit -framework Carbon -o "$OUT/hotkey-test"
@@ -72,6 +74,7 @@ xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
 "$OUT/settings-ui-test" --metadata-only
+"$OUT/settings-ui-test" --diagnostics-only
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/model_picker_test.swift" -framework AppKit -o "$OUT/model-picker-test"
 

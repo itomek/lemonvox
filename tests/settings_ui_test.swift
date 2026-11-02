@@ -1,5 +1,54 @@
 import AppKit
 
+@MainActor private func debugDiagnosticsPreferenceTest() {
+    _ = NSApplication.shared
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("lemonvox-settings-diagnostics-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let log = DiagnosticLog(directory: directory)
+    let config = DictationConfig(
+        endpoint: "http://127.0.0.1:13305/v1",
+        asrModel: "asr",
+        cleanupModel: "cleanup",
+        cleanupPrompt: "Synthetic prompt"
+    )
+    let pane = SettingsController(log: log, discover: { _ in
+        DiscoveredModels(transcription: [], cleanup: [], reason: nil, version: nil)
+    })
+    pane.window.alphaValue = 0
+    var persisted: [Bool] = []
+    pane.saveDiagnosticPreferences = { persisted.append($0) }
+
+    pane.show(config: config, save: { _ in }, close: {})
+    precondition(pane.debugDiagnostics.state == .off && !log.debugEnabled)
+    precondition(pane.debugDiagnostics.title == "Enable Debug diagnostic traces")
+    precondition(pane.debugDiagnostics.accessibilityLabel() == "Enable Debug diagnostic traces")
+    let boundary = pane.debugDiagnostics.toolTip ?? ""
+    for expected in ["dictated text", "audio", "credentials", "private fields", "clipboard", "provider responses"] {
+        precondition(boundary.contains(expected), "Debug diagnostics boundary must mention \(expected)")
+    }
+
+    pane.debugDiagnostics.state = .on
+    pane.endpoint.stringValue = "https://example.invalid/v1"
+    pane.saveSettings()
+    precondition(pane.window.isVisible && !log.debugEnabled && persisted.isEmpty)
+
+    pane.endpoint.stringValue = config.endpoint
+    pane.window.close()
+    precondition(!log.debugEnabled && persisted.isEmpty)
+
+    pane.show(config: config, save: { _ in }, close: {})
+    precondition(pane.debugDiagnostics.state == .off)
+    pane.debugDiagnostics.state = .on
+    pane.saveSettings()
+    precondition(log.debugEnabled && persisted == [true] && !pane.window.isVisible)
+
+    pane.show(config: config, save: { _ in }, close: {})
+    precondition(pane.debugDiagnostics.state == .on)
+    pane.window.close()
+    print("PASS: Debug diagnostics is quiet by default, documents exclusions, and persists only after Save")
+}
+
 @main struct SettingsUITests {
     @MainActor static func main() {
         setbuf(stdout,nil)
@@ -14,6 +63,10 @@ import AppKit
         }
         if CommandLine.arguments.contains("--metadata-only") {
             print("PASS: running app version formats complete, missing, partial and malformed bundle metadata")
+            return
+        }
+        if CommandLine.arguments.contains("--diagnostics-only") {
+            debugDiagnosticsPreferenceTest()
             return
         }
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
