@@ -3,13 +3,13 @@
     <channel>
         <title>LemonVox</title>
         <item>
-            <title>0.3.0</title>
-            <pubDate>Mon, 02 Nov 2026 01:22:45 +0000</pubDate>
-            <sparkle:version>6</sparkle:version>
-            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <title>0.4.0</title>
+            <pubDate>Mon, 02 Nov 2026 04:37:30 +0000</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/itomek/lemonvox/releases/download/v0.3.0/LemonVox-0.3.0-arm64.zip" length="2031969" type="application/octet-stream" sparkle:edSignature="dpL8K0OCPIzQusC+Ip3wNa/fBeuYuXcaXDzHTk5yCWsSYLuV42BNGJWQ/+cuifQiaCYVHkqRDjupeoYNsza+Cw=="/>
+            <enclosure url="https://github.com/itomek/lemonvox/releases/download/v0.4.0/LemonVox-0.4.0-arm64.zip" length="2065395" type="application/octet-stream" sparkle:edSignature="jZKU02bAykTd0KBMdo+DXyF/naGoHPtFrkQu1h3YYK4usUmz0pVGTNcXDa1SbG4xtmLc5rd7IVD9PVj8urowBg=="/>
         </item>
     </channel>
 </rss>
