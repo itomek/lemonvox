@@ -117,6 +117,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }()
     var workflowCreated = false
     var launchTracker = WorkflowLaunchTracker()
+    var targetPreflight = TargetPreflightState()
     var pendingLaunchEpoch: UInt64?
     var preflightTask: Task<Void, Never>?
     // Smoke-only staged facts enter the same production warmup path without
@@ -181,6 +182,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             "pendingTriggerRecovery":pendingPermissionTrigger != nil,
             "lastInsertionFallback":lastInsertionFallback as Any? ?? NSNull(),
             "insertAtCompletion":useCurrentField,
+            "targetPreflightStatus":targetPreflight.status.rawValue,
+            "targetWarmupAttempts":targetPreflight.warmupAttempts,
+            "originalTargetCaptured":targetPreflight.originalCaptured,
             "accessibilityTrusted":AXIsProcessTrusted(),
             "eventPostAllowed":CGPreflightPostEventAccess(),
             "microphoneAuthorization":AVCaptureDevice.authorizationStatus(for:.audio).rawValue
@@ -248,6 +252,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             }
         } else if CommandLine.arguments.contains("--smoke-canceled-completion") {
             let epoch = launchTracker.begin()
+            precondition(launchTracker.armStart(epoch: epoch))
             precondition(launchTracker.acceptPhase(operation: 77, phase: LV_WORKFLOW_PHASE_PREPARING))
             precondition(launchTracker.finishStart(operation: 77, epoch: epoch))
             cancel()
@@ -590,6 +595,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let originalPID = stagedPreflight?.originalPID ?? workflowTargeting.frontmostPID()
         if stagedPreflight == nil { FocusAccessibility.prepareIfNeeded() }
         let initialOriginal = stagedPreflight == nil ? editableTargetForStart() : nil
+        targetPreflight.begin(initialTargetCaptured: initialOriginal != nil)
         let epoch = launchTracker.begin()
         pendingLaunchEpoch = epoch
         if let initialOriginal,
@@ -606,7 +612,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             var original = initialOriginal
             var handedOff = false
             defer {
-                if !handedOff, let original { self.workflowTargeting.release(original) }
+                if !handedOff, let original {
+                    self.workflowTargeting.release(original)
+                }
                 if self.pendingLaunchEpoch == epoch {
                     self.pendingLaunchEpoch = nil
                     self.preflightTask = nil
@@ -618,6 +626,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 for _ in 0..<8 {
                     try? await Task.sleep(nanoseconds: 60_000_000)
                     guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
+                    self.targetPreflight.warmupAttempt()
                     let frontmostPID = stagedPreflight?.frontmostPID ?? self.workflowTargeting.frontmostPID()
                     guard frontmostPID == originalPID else {
                         self.abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
@@ -632,24 +641,35 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                             return
                         }
                         original = candidate
+                        self.targetPreflight.captureWarmedTarget()
                         break
                     }
                 }
             }
             guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
-            self.workflowCreated = true
             self.workflowAdapter.prepareForStart(original: original, originalPID: originalPID, useCurrentField: sessionConfiguration.insertCurrentTarget)
+            guard self.launchTracker.armStart(epoch: epoch) else {
+                self.targetPreflight.abandon()
+                self.workflowAdapter.discardPreparedStart()
+                original = nil
+                return
+            }
+            self.workflowCreated = true
             handedOff = true
+            self.targetPreflight.handoff()
             let operation: UInt64
             if self.syntheticRun, let start = self.syntheticWorkflowStart { operation = start(sessionConfiguration) }
             else { operation = self.workflow.start(sessionConfiguration) }
             let accepted = self.launchTracker.finishStart(operation: operation, epoch: epoch)
-            if !accepted { self.workflowAdapter.finalizeOperation(operation) }
+            if !accepted {
+                self.workflowAdapter.finalizeOperation(operation)
+            }
         }
     }
 
     private func abortPreflight(epoch: UInt64, message: String) {
         guard pendingLaunchEpoch == epoch else { return }
+        targetPreflight.targetChanged()
         launchTracker.cancel()
         pendingLaunchEpoch = nil
         preflightTask?.cancel()
@@ -845,6 +865,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             workflowAdapter.finalizeOperation(operation)
         }
         if workflowCreated { workflowAdapter.discardPreparedStart() }
+        if hadPreflight || activeCore { targetPreflight.cancel() }
         stopMeter()
         sampleOperation?.cancel(); sampleOperation = nil
         sampleTimer?.invalidate(); sampleTimer = nil
