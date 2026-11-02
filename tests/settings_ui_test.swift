@@ -74,7 +74,9 @@ import AppKit
         let asr=LocalModel(id:"Whisper-Base",downloaded:true,recipe:"whispercpp",labels:["transcription"],cloud_provider:nil)
         let gemma=LocalModel(id:"Gemma-4-E4B-it-GGUF",downloaded:true,recipe:"llamacpp",labels:["chat"],cloud_provider:nil)
         let remote=LocalModel(id:"remote.chat",downloaded:nil,recipe:"cloud",labels:["chat"],cloud_provider:"remote")
+        var discoveries = 0
         let pane=SettingsController(log:log,discover:{ endpoint in
+            discoveries += 1
             try await Task.sleep(nanoseconds:300_000_000)
             if endpoint.contains("13307") { throw DictationError.serverUnavailable }
             if endpoint.contains("13306") { throw DictationError.upstream(401,"api_key=private-secret denied") }
@@ -105,14 +107,48 @@ import AppKit
         pane.saveUpdatePreferences={ updateSaved=($0,$1) }
         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
         precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && pane.save.isEnabled)
+        precondition(pane.categoryList.numberOfRows == 3)
+        pane.prompt.string = "Unsaved synthetic draft"
+        pane.dark.state = .on
+        pane.trigger.beginRecording()
+        let triggerBeforeSwitch = pane.trigger.choice
+        pane.categoryList.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        precondition(!pane.trigger.capture(key:0, flags:[], repeating:false), "Hidden recorder must not consume typing")
+        precondition(pane.trigger.choice == triggerBeforeSwitch && !pane.trigger.recording)
+        precondition(pane.scrolls[1].isHidden == false && pane.scrolls[0].isHidden)
+        pane.categoryList.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
+        pane.debugDiagnostics.state = .on
+        pane.categoryList.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        precondition(pane.dark.state == .on && pane.prompt.string == "Unsaved synthetic draft")
+        precondition(pane.debugDiagnostics.state == .on && pane.loading)
+        precondition(discoveries <= 1, "Switching categories must not restart discovery")
+        pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
+        pane.categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
+        let modelClip = pane.scrolls[1].contentView
+        modelClip.scroll(to:NSPoint(x:0,y:0))
+        pane.endpoint.stringValue = "https://example.invalid/v1"
+        pane.saveSettings()
+        precondition(pane.window.isVisible && pane.categoryList.selectedRow == 1)
+        precondition(pane.status.visibleRect.contains(pane.status.bounds), "Save error must be visible after scrolling")
+        modelClip.scroll(to:NSPoint(x:0,y:0))
+        pane.categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
+        pane.saveSettings()
+        precondition(pane.categoryList.selectedRow == 1 && pane.status.visibleRect.contains(pane.status.bounds))
+        pane.endpoint.stringValue = config.endpoint
+        pane.prompt.string = config.cleanupPrompt
+        pane.debugDiagnostics.state = .off
         precondition(pane.prompt.string == config.cleanupPrompt)
         Timer.scheduledTimer(withTimeInterval:0.7,repeats:false) { _ in
             MainActor.assumeIsolated {
                 precondition(!pane.loading && pane.cleanup.choices.count == 2 && pane.transcription.choices.count == 1)
+                precondition(discoveries == 1, "Category changes must not refetch models")
                 precondition(pane.cleanup.selectedID == gemma.id)
                 if CommandLine.arguments.contains("--render"), let view=pane.window.contentView {
-                    let output=NSImage(size:NSSize(width:1280,height:690))
+                    pane.window.setContentSize(NSSize(width:820,height:690))
+                    let output=NSImage(size:NSSize(width:1640,height:2070))
                     output.lockFocus()
+                    for row in 0..<3 {
+                    pane.categoryList.selectRowIndexes(IndexSet(integer:row),byExtendingSelection:false)
                     for (column,dark) in [false,true].enumerated() {
                         pane.window.appearance=NSAppearance(named:dark ? .darkAqua : .aqua)
                         view.layoutSubtreeIfNeeded()
@@ -120,17 +156,20 @@ import AppKit
                         RunLoop.main.run(until:Date().addingTimeInterval(0.15))
                         view.effectiveAppearance.performAsCurrentDrawingAppearance {
                             NSColor.windowBackgroundColor.setFill()
-                            NSRect(x:column*640,y:0,width:640,height:690).fill()
+                            NSRect(x:column*820,y:(2-row)*690,width:820,height:690).fill()
                         }
                         if let bitmap=view.bitmapImageRepForCachingDisplay(in:view.bounds) {
                             view.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in:view.bounds,to:bitmap) }
                             let image=NSImage(size:view.bounds.size); image.addRepresentation(bitmap)
-                            image.draw(in:NSRect(x:column*640,y:0,width:640,height:690))
+                            image.draw(in:NSRect(x:column*820,y:(2-row)*690,width:820,height:690))
                         }
+                    }
                     }
                     output.unlockFocus()
                     if let data=output.tiffRepresentation, let bitmap=NSBitmapImageRep(data:data) {
-                        try? bitmap.representation(using:.png,properties:[:])?.write(to:URL(fileURLWithPath:".build/settings-light-dark.png"))
+                        let prefix="--render-output="
+                        let path=CommandLine.arguments.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) } ?? ".build/settings-light-dark.png"
+                        try? bitmap.representation(using:.png,properties:[:])?.write(to:URL(fileURLWithPath:path))
                     }
                 }
                 pane.cleanup.commit(ModelChoice(id:remote.id,title:remote.id + " · remote"))
@@ -140,6 +179,10 @@ import AppKit
                     MainActor.assumeIsolated {
                         precondition(!pane.loading && pane.status.stringValue.contains("401"))
                         precondition(!pane.status.stringValue.contains("private-secret"))
+                        let error = pane.status.stringValue
+                        pane.categoryList.selectRowIndexes(IndexSet(integer:2), byExtendingSelection:false)
+                        pane.categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
+                        precondition(pane.status.stringValue == error && !pane.loading)
                         precondition(pane.cleanup.selectedID == remote.id)
                         pane.endpoint.stringValue="http://127.0.0.1:13307/v1"; pane.refresh()
                         Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
@@ -152,10 +195,12 @@ import AppKit
                         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
                         Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
                             MainActor.assumeIsolated {
+                                pane.prompt.string = "Saved across categories"
+                                pane.categoryList.selectRowIndexes(IndexSet(integer:2), byExtendingSelection:false)
                                 pane.saveSettings()
                                 precondition(updateSaved?.0 == false && updateSaved?.1 == true)
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
-                                precondition(saved?.cleanupPrompt == config.cleanupPrompt && !pane.window.isVisible)
+                                precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
                                 try? FileManager.default.removeItem(at:directory)
                                 print("PASS: Settings opens during delayed discovery; selectors independent; offline/retry preserves choices; close/reopen and save preserve config; errors redacted")
                                 NSApp.terminate(nil)
