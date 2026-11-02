@@ -37,6 +37,11 @@ enum RunningAppVersion {
     var openAccessibility:(() -> Void)?
     var retryAccessibility:(() -> Void)?
     let logPath = NSTextField(wrappingLabelWithString: "")
+    let debugDiagnostics = NSButton(checkboxWithTitle:"Enable Debug diagnostic traces",target:nil,action:nil)
+    let debugDiagnosticsDetail = NSTextField(wrappingLabelWithString:"Debug adds fixed trace events. It never stores dictated text, audio, credentials, private fields, clipboard content, or full provider responses.")
+    var saveDiagnosticPreferences: (Bool) -> Void = { enabled in
+        UserDefaults.standard.set(enabled, forKey: DiagnosticLog.debugEnabledPreferenceKey)
+    }
     private let log: DiagnosticLog
     private let discover: (String) async throws -> DiscoveredModels
     private let readVersion: (String) async -> String?
@@ -81,17 +86,24 @@ enum RunningAppVersion {
         prompt.frame = promptScroll.bounds; prompt.isRichText=false; prompt.font = .systemFont(ofSize:12); prompt.isVerticallyResizable=true; prompt.autoresizingMask=[.width]
         prompt.textContainer?.widthTracksTextView=true; promptScroll.documentView=prompt; view.addSubview(promptScroll)
         label("Diagnostics", 198)
+        debugDiagnostics.frame=NSRect(x:24,y:170,width:592,height:24)
+        debugDiagnostics.setAccessibilityLabel("Enable Debug diagnostic traces")
+        debugDiagnostics.toolTip=debugDiagnosticsDetail.stringValue
+        view.addSubview(debugDiagnostics)
+        debugDiagnosticsDetail.frame=NSRect(x:24,y:140,width:592,height:26)
+        debugDiagnosticsDetail.font = .systemFont(ofSize:11); debugDiagnosticsDetail.textColor = .secondaryLabelColor
+        view.addSubview(debugDiagnosticsDetail)
         let openLog=NSButton(title:"Open Log",target:self,action:#selector(openLog))
-        openLog.frame=NSRect(x:24,y:150,width:110,height:30); view.addSubview(openLog)
-        accessibilityOpen.frame=NSRect(x:150,y:150,width:170,height:30)
-        accessibilityRetry.frame=NSRect(x:332,y:150,width:140,height:30)
+        openLog.frame=NSRect(x:24,y:104,width:110,height:30); view.addSubview(openLog)
+        accessibilityOpen.frame=NSRect(x:150,y:104,width:170,height:30)
+        accessibilityRetry.frame=NSRect(x:332,y:104,width:140,height:30)
         accessibilityOpen.target=self; accessibilityOpen.action=#selector(openAccessibilityPane)
         accessibilityRetry.target=self; accessibilityRetry.action=#selector(checkAccessibility)
         view.addSubview(accessibilityOpen); view.addSubview(accessibilityRetry)
-        accessibilityStatus.frame=NSRect(x:24,y:56,width:592,height:40)
+        accessibilityStatus.frame=NSRect(x:24,y:16,width:592,height:40)
         accessibilityStatus.font = .systemFont(ofSize:11); accessibilityStatus.textColor = .secondaryLabelColor
         view.addSubview(accessibilityStatus)
-        logPath.frame=NSRect(x:24,y:104,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
+        logPath.frame=NSRect(x:24,y:62,width:592,height:36); logPath.font = .systemFont(ofSize:11); logPath.textColor = .secondaryLabelColor; logPath.isSelectable=true; view.addSubview(logPath)
         automaticChecks.frame=NSRect(x:24,y:900,width:592,height:24)
         automaticInstallation.frame=NSRect(x:24,y:872,width:592,height:24)
         view.addSubview(automaticChecks);view.addSubview(automaticInstallation)
@@ -113,6 +125,7 @@ enum RunningAppVersion {
         let updates=updatePreferences?() ?? (true,false)
         automaticChecks.state=updates.0 ? .on : .off
         automaticInstallation.state=updates.1 ? .on : .off
+        debugDiagnostics.state=log.debugEnabled ? .on : .off
         endpoint.stringValue=config.endpoint; prompt.string=config.cleanupPrompt
         populate(transcription, models:[], selected:config.asrModel)
         populate(cleanup, models:[], selected:config.cleanupModel)
@@ -172,7 +185,17 @@ enum RunningAppVersion {
     @objc func saveSettings() {
         let config=DictationConfig(endpoint:endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines),
             asrModel:selected(transcription),cleanupModel:selected(cleanup),cleanupPrompt:prompt.string)
-        do { trigger.cancelRecording(); _ = try config.baseURL(); try savePreferences?(trigger.choice,dark.state == .on,currentField.state == .on); try saveConfig?(config); saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on); log.record(.configSaved); window.close() }
+        let debugEnabled=debugDiagnostics.state == .on
+        do {
+            trigger.cancelRecording(); _ = try config.baseURL()
+            try savePreferences?(trigger.choice,dark.state == .on,currentField.state == .on)
+            try saveConfig?(config)
+            saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on)
+            log.debugEnabled=debugEnabled
+            saveDiagnosticPreferences(debugEnabled)
+            log.record(.configSaved)
+            window.close()
+        }
         catch { status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue }
     }
     @objc func refreshLogs() {
