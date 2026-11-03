@@ -175,6 +175,10 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             if !self.workflowBusy && self.sampleSession.state == LV_IDLE && !self.inserting { self.pendingPermissionTrigger=nil; self.panel.orderOut(nil) }
             else { self.cancel() }
         }
+        panel.onStop = { [weak self] in
+            guard let self, self.isRecordingSession else { return }
+            self.toggle()
+        }
         applyAppearance()
     }
     func reportDebugState() {
@@ -460,7 +464,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             }
             let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
                 guard let self else { return false }; return (!self.configuring || self.isRecordingSession) && !self.inserting
-            },fire:{ [weak self] in self?.toggle() })
+            },fire:{ [weak self] in self?.toggle() },
+              canCancel:{ [weak self] in self?.sessionActive == true },
+              cancel:{ [weak self] in self?.cancel() })
             guard candidate.start() else { candidate.stop(); panel.show("Modifier trigger unavailable; previous trigger retained. Try again in Settings."); return false }
             modifierTrigger?.stop(); modifierTrigger=candidate; binding.clear()
         }
@@ -603,6 +609,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
 
     private func activateCancellationBinding() {
+        modifierTrigger?.reset()
         guard cancellationBinding.reference == nil else { return }
         guard handler != nil, case let .combo(key, modifiers) = cancellationChoice,
               cancellationBinding.replace(key: key, modifiers: modifiers) == noErr else {
@@ -613,6 +620,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
 
     private func deactivateCancellationBinding() {
+        modifierTrigger?.reset()
         cancellationBinding.clear()
         panel.clearNotice()
     }

@@ -15,7 +15,7 @@ The first milestone is a usable macOS app. Windows and Ubuntu are planned ports;
 5. It sends the transcript and a configurable cleanup prompt to the selected language model through Lemonade.
 6. It inserts the cleaned text into the target field and returns to idle. Insertion leaves submission to the person dictating.
 
-Cancellation stops the current operation and discards its pending result. The compact indicator has one direct control, **X**, which cancels and discards; a separately configurable cancellation shortcut does the same only while an operation is active. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
+Cancellation stops the current operation and discards its pending result. The compact indicator shows Stop and X while recording. Stop finishes capture like the dictation shortcut. X and the separately configurable cancellation shortcut discard the active operation. With a modifier-only dictation gesture, platforms should also support holding that modifier while pressing Escape or tapping and releasing it once before promptly pressing Escape. Document platform limits. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
 
 ### Target field
 
@@ -61,7 +61,7 @@ Capture audio, transcribe through Lemonade, apply configurable conservative clea
 
 ### 3. Bring the same workflow to Windows and Ubuntu
 
-Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. Each native shell must finish capture with the configured dictation shortcut, cancel/discard with X and its configurable cancellation shortcut, preserve idle keyboard delivery, expose Auto/Light/Dark in native settings, and use platform semantic styling. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
+Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. Each native shell must finish capture with Stop or the configured dictation shortcut, cancel/discard with X and its configurable cancellation shortcut, preserve idle keyboard delivery, expose Auto/Light/Dark in native settings, and use platform semantic styling. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
 
 ## Technical references
 
