@@ -67,6 +67,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     let panel = IndicatorPanel()
     var statusItem: NSStatusItem!
     let binding = HotKeyBinding()
+    private var cancellationMonitor: ModifierTrigger?
     let cancellationBinding = HotKeyBinding(eventID: HotKeyEventID.cancellation)
     var handler: EventHandlerRef?
     var debugTimer: Timer?
@@ -603,6 +604,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
 
     private func validateCancellationCandidate(_ choice: TriggerChoice) -> Bool {
         guard case let .combo(key, modifiers) = choice else { return false }
+        if choice == .defaultMacCancellation { return true }
         let probe = HotKeyBinding(eventID: HotKeyEventID.cancellation)
         defer { probe.clear() }
         return probe.replace(key: key, modifiers: modifiers) == noErr
@@ -610,6 +612,19 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
 
     private func activateCancellationBinding() {
         modifierTrigger?.reset()
+        if modifierTrigger == nil && cancellationMonitor == nil {
+            let monitor = ModifierTrigger(key: 0, allowed: { false }, fire: {},
+                canCancel: { [weak self] in self?.sessionActive == true },
+                cancel: { [weak self] in self?.cancel() })
+            if monitor.start() { cancellationMonitor = monitor }
+            else { monitor.stop() }
+        }
+        if cancellationChoice == .defaultMacCancellation {
+            if modifierTrigger == nil && cancellationMonitor == nil {
+                panel.showNotice("Right Command–Escape unavailable · use X or menu")
+            }
+            return
+        }
         guard cancellationBinding.reference == nil else { return }
         guard handler != nil, case let .combo(key, modifiers) = cancellationChoice,
               cancellationBinding.replace(key: key, modifiers: modifiers) == noErr else {
@@ -620,6 +635,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     }
 
     private func deactivateCancellationBinding() {
+        cancellationMonitor?.stop()
+        cancellationMonitor = nil
         modifierTrigger?.reset()
         cancellationBinding.clear()
         panel.clearNotice()

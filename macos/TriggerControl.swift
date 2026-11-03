@@ -5,6 +5,7 @@ import Carbon
     static let defaultMacCancellation = TriggerChoice.combo(key: 53, modifiers: UInt32(cmdKey))
 
     var display:String {
+        if self == .defaultMacCancellation { return "Right Command–Escape" }
         switch self {
         case .doubleTap(let key): return (TriggerControl.modifiers.first { $0.1 == key }?.0 ?? "Modifier") + " twice"
         case .combo(let key,let modifiers):

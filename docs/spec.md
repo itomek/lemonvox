@@ -15,7 +15,7 @@ The first milestone is a usable macOS app. Windows and Ubuntu are planned ports;
 5. It sends the transcript and a configurable cleanup prompt to the selected language model through Lemonade.
 6. It inserts the cleaned text into the target field and returns to idle. Insertion leaves submission to the person dictating.
 
-Cancellation stops the current operation and discards its pending result. The compact indicator shows Stop and X while recording. Stop finishes capture like the dictation shortcut. X and the separately configurable cancellation shortcut discard the active operation. With a modifier-only dictation gesture, platforms should also support holding that modifier while pressing Escape or tapping and releasing it once before promptly pressing Escape. Document platform limits. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
+Cancellation stops the current operation and discards its pending result. The compact indicator shows Stop and X while recording. Stop finishes capture like the dictation shortcut. X and the separately configurable cancellation shortcut discard the active operation. macOS also supports holding Right Command while pressing Escape. Other platforms should document their supported cancellation gesture and any platform limits. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
 
 ### Target field
 
@@ -29,7 +29,7 @@ For example, “um send Alex the 14 invoices on Friday” should become “Send 
 
 ## Configuration and data
 
-Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, appearance, and target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Command-Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
+Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, appearance, and target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Right Command–Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
 
 Appearance choices are Auto, Light, and Dark. Auto follows the OS setting; native shells use their platform semantic colors and controls rather than application-specific color treatments.
 

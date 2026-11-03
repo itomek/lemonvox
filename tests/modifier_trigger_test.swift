@@ -20,17 +20,17 @@ import AppKit
   func escape(_ time:Double,_ flags:NSEvent.ModifierFlags=[]) {
    trigger.receive(NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:flags,timestamp:time,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:53)!)
   }
+  let rightCommand: NSEvent.ModifierFlags = [.command, NSEvent.ModifierFlags(rawValue: 16)]
+  let leftCommand: NSEvent.ModifierFlags = [.command, NSEvent.ModifierFlags(rawValue: 8)]
   trigger.reset(); active=true; enabled=false
-  event(55,true,5); event(55,false,5.1); escape(5.2)
+  event(54,true,5); event(54,false,5.1); escape(5.2)
+  escape(5.3,leftCommand)
+  escape(5.4,[rightCommand,.shift])
+  precondition(cancels == 0)
+  event(54,true,6); escape(7,rightCommand)
   precondition(cancels == 1 && count == 2)
-  event(54,true,6); escape(7,.command)
-  precondition(cancels == 2)
-  event(55,true,8); event(55,false,8.1); escape(8.6)
-  event(55,true,9); event(55,false,9.1); trigger.receive(chord); escape(9.2)
-  escape(10,[.command,.shift])
-  precondition(cancels == 2)
-  active=false; event(55,true,11); event(55,false,11.1); escape(11.2); escape(11.3,.command)
-  precondition(cancels == 2)
+  active=false; escape(8,rightCommand)
+  precondition(cancels == 1)
   trigger.stop()
   print("PASS: passive adapter metadata maps both Command sides; chord/other modifier/suspension resets; no OS event dispatch")
  }
