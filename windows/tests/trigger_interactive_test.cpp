@@ -6,6 +6,7 @@
 #include "common/trigger_binding.h"
 #include "support/interactive_lock.h"
 #include "trigger/global_trigger.h"
+#include "trigger/key_normalizer.h"
 
 #include <windows.h>
 
