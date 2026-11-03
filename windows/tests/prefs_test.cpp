@@ -47,6 +47,39 @@ void missing_key_loads_defaults(const PreferencesStore &store) {
     assert(!loaded.cancellation);
 }
 
+void legacy_trigger_loads_when_pair_is_absent_or_malformed(const PreferencesStore &store) {
+    assert(store.erase());
+    HKEY key = open_scratch(store);
+    const wchar_t trigger[] = L"combo:ctrl+shift:0x20";
+    assert(RegSetValueExW(key, L"Trigger", 0, REG_SZ, reinterpret_cast<const BYTE *>(trigger), sizeof(trigger))
+        == ERROR_SUCCESS);
+    RegCloseKey(key);
+
+    TriggerBinding expected_trigger;
+    assert(parse_trigger("combo:ctrl+shift:0x20", expected_trigger));
+    auto loaded = store.load();
+    assert(loaded.trigger == expected_trigger);
+    assert(!loaded.cancellation);
+
+    key = open_scratch(store);
+    const wchar_t malformed_pair[] = L"not-a-shortcut-pair";
+    assert(RegSetValueExW(key, L"ShortcutPair", 0, REG_SZ,
+               reinterpret_cast<const BYTE *>(malformed_pair), sizeof(malformed_pair)) == ERROR_SUCCESS);
+    RegCloseKey(key);
+    loaded = store.load();
+    assert(loaded.trigger == expected_trigger);
+    assert(!loaded.cancellation);
+
+    key = open_scratch(store);
+    const wchar_t colliding_pair[] = L"combo:alt:0x1B|combo:alt:0x1B";
+    assert(RegSetValueExW(key, L"ShortcutPair", 0, REG_SZ,
+               reinterpret_cast<const BYTE *>(colliding_pair), sizeof(colliding_pair)) == ERROR_SUCCESS);
+    RegCloseKey(key);
+    loaded = store.load();
+    assert(loaded.trigger == expected_trigger);
+    assert(!loaded.cancellation);
+}
+
 void round_trips_every_field(const PreferencesStore &store) {
     WinPreferences preferences;
     preferences.endpoint = "http://localhost:8000/api/v1";
@@ -71,6 +104,16 @@ void round_trips_every_field(const PreferencesStore &store) {
     assert(loaded.cancellation == preferences.cancellation);
     assert(loaded.capture_device_id == preferences.capture_device_id);
 
+    // A valid combined pair wins over stale legacy values, so the two
+    // shortcuts cannot be loaded from separate save generations.
+    HKEY key = open_scratch(store);
+    const wchar_t legacy_trigger[] = L"double:shift:any";
+    assert(RegSetValueExW(key, L"Trigger", 0, REG_SZ, reinterpret_cast<const BYTE *>(legacy_trigger),
+               sizeof(legacy_trigger)) == ERROR_SUCCESS);
+    RegCloseKey(key);
+    assert(store.load().trigger == preferences.trigger);
+    assert(store.load().cancellation == preferences.cancellation);
+
     const auto snapshot = loaded.snapshot();
     assert(snapshot.endpoint == preferences.endpoint && snapshot.asr_model == preferences.asr_model);
     assert(snapshot.cleanup_model == preferences.cleanup_model);
@@ -86,6 +129,11 @@ void round_trips_every_field(const PreferencesStore &store) {
     assert(reloaded.asr_model.empty() && reloaded.capture_device_id.empty() && !reloaded.insert_current_target);
     assert(reloaded.cleanup_model == preferences.cleanup_model);
     assert(reloaded.cancellation == preferences.cancellation);
+
+    WinPreferences without_cancellation = cleared;
+    without_cancellation.cancellation.reset();
+    assert(store.save(without_cancellation));
+    assert(!store.load().cancellation);
 }
 
 void malformed_values_fall_back_individually(const PreferencesStore &store) {
@@ -124,10 +172,10 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
     // Odd byte count.
     const BYTE odd[] = {'a', 0, 'b'};
     assert(RegSetValueExW(key, L"CaptureDeviceId", 0, REG_SZ, odd, sizeof(odd)) == ERROR_SUCCESS);
-    // Unsupported cancellation gesture.
-    const wchar_t cancellation[] = L"combo:ctrl+alt:0x1B";
-    assert(RegSetValueExW(key, L"CancellationTrigger", 0, REG_SZ,
-               reinterpret_cast<const BYTE *>(cancellation), sizeof(cancellation)) == ERROR_SUCCESS);
+    // A malformed new-format value must still use the legacy fields.
+    const wchar_t malformed_pair[] = L"not-a-shortcut-pair";
+    assert(RegSetValueExW(key, L"ShortcutPair", 0, REG_SZ,
+               reinterpret_cast<const BYTE *>(malformed_pair), sizeof(malformed_pair)) == ERROR_SUCCESS);
     RegCloseKey(key);
 
     const auto loaded = store.load();
@@ -163,6 +211,35 @@ void save_rejects_invalid_cancellation(const PreferencesStore &store) {
     assert(!store.save(preferences));
 }
 
+void save_rejects_colliding_shortcuts(const PreferencesStore &store) {
+    WinPreferences preferences;
+    assert(parse_trigger("combo:alt:0x1B", preferences.trigger));
+    preferences.cancellation = preferences.trigger;
+    assert(!store.save(preferences));
+}
+
+void failed_preceding_write_keeps_shortcut_pair(const PreferencesStore &store) {
+    assert(store.erase());
+    WinPreferences previous;
+    assert(parse_trigger("combo:ctrl+shift:0x20", previous.trigger));
+    TriggerBinding previous_cancellation;
+    assert(parse_cancellation_binding("combo:alt:0x1B", previous_cancellation));
+    previous.cancellation = previous_cancellation;
+    assert(store.save(previous));
+
+    WinPreferences failed = previous;
+    assert(parse_trigger("combo:ctrl+alt:0x53", failed.trigger));
+    TriggerBinding failed_cancellation;
+    assert(parse_cancellation_binding("combo:shift:0x1B", failed_cancellation));
+    failed.cancellation = failed_cancellation;
+    failed.asr_model.assign(256 * 1024, 'x'); // Exceeds the bounded REG_SZ write.
+    assert(!store.save(failed));
+
+    const auto loaded = store.load();
+    assert(loaded.trigger == previous.trigger);
+    assert(loaded.cancellation == previous.cancellation);
+}
+
 void snapshot_preferences_replace() {
     WinPreferences first;
     first.asr_model = "a";
@@ -180,10 +257,13 @@ int main() {
     const PreferencesStore store(scratch_key());
     defaults_match_mac();
     missing_key_loads_defaults(store);
+    legacy_trigger_loads_when_pair_is_absent_or_malformed(store);
     round_trips_every_field(store);
     malformed_values_fall_back_individually(store);
     save_rejects_invalid_utf8(store);
     save_rejects_invalid_cancellation(store);
+    save_rejects_colliding_shortcuts(store);
+    failed_preceding_write_keeps_shortcut_pair(store);
     snapshot_preferences_replace();
     assert(store.erase());
     HKEY key = nullptr;

@@ -5,6 +5,8 @@
 #include <windows.h>
 
 #include <optional>
+#include <string>
+#include <utility>
 
 namespace lemonvox::win {
 
@@ -22,7 +24,7 @@ constexpr wchar_t kCleanupModel[] = L"CleanupModel";
 constexpr wchar_t kCleanupPrompt[] = L"CleanupPrompt";
 constexpr wchar_t kInsertCurrentTarget[] = L"InsertCurrentTarget";
 constexpr wchar_t kTrigger[] = L"Trigger";
-constexpr wchar_t kCancellationTrigger[] = L"CancellationTrigger";
+constexpr wchar_t kShortcutPair[] = L"ShortcutPair";
 constexpr wchar_t kCaptureDevice[] = L"CaptureDeviceId";
 
 // Larger values are treated as malformed rather than loaded into memory.
@@ -85,9 +87,35 @@ bool write_bool(HKEY key, const wchar_t *name, bool value) {
         ERROR_SUCCESS;
 }
 
-bool delete_value(HKEY key, const wchar_t *name) {
-    const LSTATUS status = RegDeleteValueW(key, name);
-    return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND;
+std::string serialize_shortcut_pair(const WinPreferences &preferences) {
+    // Existing serializers use only ASCII letters, digits, ':', and '+', so
+    // this separator unambiguously keeps both bindings in one REG_SZ value.
+    std::string pair = serialize_trigger(preferences.trigger);
+    pair += '|';
+    if (preferences.cancellation) {
+        pair += serialize_cancellation_binding(*preferences.cancellation);
+    }
+    return pair;
+}
+
+bool parse_shortcut_pair(const std::string &text, TriggerBinding &trigger,
+    std::optional<TriggerBinding> &cancellation) {
+    const auto separator = text.find('|');
+    if (separator == std::string::npos || separator != text.rfind('|')) return false;
+
+    TriggerBinding parsed_trigger;
+    if (!parse_trigger(text.substr(0, separator), parsed_trigger)) return false;
+
+    std::optional<TriggerBinding> parsed_cancellation;
+    if (separator + 1 < text.size()) {
+        TriggerBinding parsed;
+        if (!parse_cancellation_binding(text.substr(separator + 1), parsed)) return false;
+        parsed_cancellation = parsed;
+    }
+    if (parsed_cancellation && *parsed_cancellation == parsed_trigger) return false;
+    trigger = parsed_trigger;
+    cancellation = std::move(parsed_cancellation);
+    return true;
 }
 
 } // namespace
@@ -109,13 +137,23 @@ WinPreferences PreferencesStore::load() const {
     if (auto value = read_utf8(key, kCleanupModel)) preferences.cleanup_model = std::move(*value);
     if (auto value = read_utf8(key, kCleanupPrompt)) preferences.cleanup_prompt = std::move(*value);
     if (auto value = read_bool(key, kInsertCurrentTarget)) preferences.insert_current_target = *value;
-    if (auto value = read_utf8(key, kTrigger)) {
-        TriggerBinding binding;
-        if (parse_trigger(*value, binding)) preferences.trigger = binding;
+    bool loaded_shortcut_pair = false;
+    if (auto value = read_utf8(key, kShortcutPair)) {
+        TriggerBinding trigger;
+        std::optional<TriggerBinding> cancellation;
+        if (parse_shortcut_pair(*value, trigger, cancellation)) {
+            preferences.trigger = trigger;
+            preferences.cancellation = std::move(cancellation);
+            loaded_shortcut_pair = true;
+        }
     }
-    if (auto value = read_utf8(key, kCancellationTrigger)) {
-        TriggerBinding binding;
-        if (parse_cancellation_binding(*value, binding)) preferences.cancellation = binding;
+    if (!loaded_shortcut_pair) {
+        // Older releases stored the dictation trigger separately. Retain that
+        // migration path when a pair has not yet been saved or is malformed.
+        if (auto value = read_utf8(key, kTrigger)) {
+            TriggerBinding binding;
+            if (parse_trigger(*value, binding)) preferences.trigger = binding;
+        }
     }
     if (auto value = read_wide(key, kCaptureDevice)) preferences.capture_device_id = std::move(*value);
     RegCloseKey(key);
@@ -123,7 +161,10 @@ WinPreferences PreferencesStore::load() const {
 }
 
 bool PreferencesStore::save(const WinPreferences &preferences) const {
-    if (preferences.cancellation && !is_cancellation_binding(*preferences.cancellation)) return false;
+    if (preferences.cancellation &&
+        (!is_cancellation_binding(*preferences.cancellation) || *preferences.cancellation == preferences.trigger)) {
+        return false;
+    }
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, subkey_.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE,
             nullptr, &key, nullptr) != ERROR_SUCCESS) {
@@ -135,15 +176,11 @@ bool PreferencesStore::save(const WinPreferences &preferences) const {
     ok = write_utf8(key, kCleanupModel, preferences.cleanup_model) && ok;
     ok = write_utf8(key, kCleanupPrompt, preferences.cleanup_prompt) && ok;
     ok = write_bool(key, kInsertCurrentTarget, preferences.insert_current_target) && ok;
-    ok = write_utf8(key, kTrigger, serialize_trigger(preferences.trigger)) && ok;
     ok = write_wide(key, kCaptureDevice, preferences.capture_device_id) && ok;
-    // Write the new cancellation value last and only after the existing
-    // preference batch succeeded. If another value cannot persist, Settings
-    // restores the live shortcuts and this opt-in value remains unchanged.
+    // The shortcuts move together: if another preference cannot persist,
+    // Settings restores the live bindings and the prior pair remains intact.
     if (ok) {
-        ok = preferences.cancellation
-            ? write_utf8(key, kCancellationTrigger, serialize_cancellation_binding(*preferences.cancellation))
-            : delete_value(key, kCancellationTrigger);
+        ok = write_utf8(key, kShortcutPair, serialize_shortcut_pair(preferences));
     }
     RegCloseKey(key);
     return ok;
