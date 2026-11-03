@@ -4,6 +4,7 @@
 #include "common/trigger_binding.h"
 
 #include <string>
+#include <optional>
 #include <utility>
 
 namespace lemonvox::win {
@@ -25,6 +26,9 @@ struct WinPreferences {
     TriggerBinding trigger = default_trigger();
     // WASAPI endpoint ID; empty means the system default capture device.
     std::wstring capture_device_id;
+    // Opt-in held-modifier Escape cancellation. No value preserves ordinary
+    // keyboard delivery; cancellation remains available through X and the tray.
+    std::optional<TriggerBinding> cancellation;
 
     PreferencesSnapshot snapshot() const;
 };

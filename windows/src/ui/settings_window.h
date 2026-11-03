@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,9 +46,11 @@ struct SettingsServices {
         refresh_models;
     // Capture devices, excluding the system default (the window adds it).
     std::function<std::vector<SettingsDevice>()> list_devices;
-    // Called on Save before `save` when the shortcut changed. Returning false
-    // keeps the previous binding active and aborts the save; `error` explains why.
-    std::function<bool(const TriggerBinding &, std::wstring *error)> apply_trigger;
+    // Called on Save before `save` when either shortcut changes. Returning
+    // false keeps both previous live bindings active and aborts the save;
+    // `error` explains why.
+    std::function<bool(const TriggerBinding &, const std::optional<TriggerBinding> &, std::wstring *error)>
+        apply_shortcuts;
     // true while the shortcut recorder has focus, so the global trigger does not
     // fire (and registered hotkeys do not swallow keys) during recording.
     std::function<void(bool suspended)> set_trigger_suspended;
@@ -78,6 +81,9 @@ enum class SettingsControl : int {
     shortcut_combo,
     recorder_label,
     recorder_edit,
+    cancellation_label,
+    cancellation_recorder_edit,
+    cancellation_clear_button,
     insert_label,
     insert_combo,
     microphone_label,
@@ -111,6 +117,9 @@ public:
     // returns true when the message was consumed (dialog keyboard navigation,
     // Enter = Save, Esc = Cancel, mnemonics).
     bool pre_translate(MSG *message);
+    // Enables shortcut editors only while no dictation session is active. If a
+    // recorder was focused, it is ended before the cancellation binding arms.
+    void set_shortcuts_editable(bool editable);
     // Whether the dark palette is in use (system dark mode, not high contrast).
     bool dark_mode_active() const;
 

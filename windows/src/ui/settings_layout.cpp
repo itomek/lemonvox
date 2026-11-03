@@ -138,6 +138,12 @@ bool trigger_round_trips(const TriggerBinding &binding) {
     return parse_trigger(serialize_trigger(binding), parsed) && parsed == binding;
 }
 
+bool cancellation_round_trips(const TriggerBinding &binding) {
+    TriggerBinding parsed;
+    const std::string stored = serialize_cancellation_binding(binding);
+    return !stored.empty() && parse_cancellation_binding(stored, parsed) && parsed == binding;
+}
+
 RecordStep record_key(std::uint32_t virtual_key, std::uint32_t modifiers) {
     RecordStep step;
     if (virtual_key == VK_ESCAPE && modifiers == 0) {
@@ -158,6 +164,32 @@ RecordStep record_key(std::uint32_t virtual_key, std::uint32_t modifiers) {
         step.display = (modifiers & (MOD_CONTROL | MOD_ALT | MOD_WIN)) == 0
             ? L"A shortcut needs Ctrl, Alt or Windows together with another key."
             : L"That key can't be used in a shortcut. Try another key.";
+        return step;
+    }
+    step.outcome = RecordStep::Outcome::captured;
+    step.binding = binding;
+    step.display = describe_trigger(binding);
+    return step;
+}
+
+RecordStep record_cancellation_key(std::uint32_t virtual_key, std::uint32_t modifiers) {
+    RecordStep step;
+    if (virtual_key == VK_ESCAPE && modifiers == 0) {
+        step.outcome = RecordStep::Outcome::canceled;
+        return step;
+    }
+    if (virtual_key == 0 || is_modifier_key(virtual_key) || virtual_key == VK_PROCESSKEY || virtual_key == VK_PACKET) {
+        step.outcome = RecordStep::Outcome::pending;
+        step.display = modifiers ? modifier_prefix(modifiers) + L"…" : kRecorderPrompt;
+        return step;
+    }
+    TriggerBinding binding = default_trigger();
+    binding.kind = TriggerKind::combination;
+    binding.modifiers = modifiers;
+    binding.virtual_key = virtual_key;
+    if (!cancellation_round_trips(binding)) {
+        step.outcome = RecordStep::Outcome::rejected;
+        step.display = L"Hold exactly one of Alt, Ctrl, or Shift, then press Esc.";
         return step;
     }
     step.outcome = RecordStep::Outcome::captured;
@@ -382,6 +414,13 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     y += line_height + label_gap;
     at(layout, SettingsControl::shortcut_combo, margin, y, half, row);
     at(layout, SettingsControl::recorder_edit, margin + half + column_gap, y, inner - half - column_gap, row);
+    y += row + group_gap;
+
+    at(layout, SettingsControl::cancellation_label, margin, y, inner, line_height);
+    y += line_height + label_gap;
+    const int clear_w = button_width(SettingsControl::cancellation_clear_button, 76);
+    at(layout, SettingsControl::cancellation_recorder_edit, margin, y, inner - clear_w - column_gap, row);
+    at(layout, SettingsControl::cancellation_clear_button, margin + inner - clear_w, y, clear_w, row);
     y += row + group_gap;
 
     at(layout, SettingsControl::insert_label, margin, y, inner, line_height);

@@ -52,6 +52,9 @@ TriggerChoices build_trigger_choices(const TriggerBinding &current);
 
 // True when the binding survives its storage form unchanged.
 bool trigger_round_trips(const TriggerBinding &binding);
+// True when an opt-in held-modifier Escape cancellation binding survives its
+// separate storage form unchanged.
+bool cancellation_round_trips(const TriggerBinding &binding);
 
 struct RecordStep {
     enum class Outcome { pending, captured, canceled, rejected };
@@ -62,6 +65,9 @@ struct RecordStep {
 // One key press seen by the recorder. `modifiers` are the MOD_* keys held,
 // including `virtual_key` itself when it is a modifier.
 RecordStep record_key(std::uint32_t virtual_key, std::uint32_t modifiers);
+// Records only a cancellation gesture: exactly one held Alt, Ctrl, or Shift
+// plus Escape. Bare Escape cancels recording rather than clearing the setting.
+RecordStep record_cancellation_key(std::uint32_t virtual_key, std::uint32_t modifiers);
 extern const wchar_t kRecorderPrompt[];
 
 std::wstring trim(const std::wstring &text);

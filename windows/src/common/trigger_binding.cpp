@@ -78,6 +78,12 @@ bool valid(const TriggerBinding &binding) {
     return !is_modifier_key(binding.virtual_key);
 }
 
+bool valid_cancellation(const TriggerBinding &binding) {
+    return binding.kind == TriggerKind::combination && binding.tap_key == LV_KEY_OPTION
+        && binding.tap_side == LV_KEY_SIDE_ANY && binding.virtual_key == VK_ESCAPE
+        && (binding.modifiers == MOD_ALT || binding.modifiers == MOD_CONTROL || binding.modifiers == MOD_SHIFT);
+}
+
 std::wstring key_label(std::uint32_t vk) {
     switch (vk) {
     case VK_SPACE: return L"Space";
@@ -116,6 +122,50 @@ bool TriggerBinding::operator==(const TriggerBinding &other) const {
 
 TriggerBinding default_trigger() {
     return TriggerBinding{};
+}
+
+bool is_cancellation_binding(const TriggerBinding &binding) {
+    return valid_cancellation(binding);
+}
+
+std::string serialize_cancellation_binding(const TriggerBinding &binding) {
+    if (!valid_cancellation(binding)) return {};
+    std::string text = "combo:";
+    for (const auto &name : kModifierNames) {
+        if ((binding.modifiers & name.flag) != 0) text += name.storage;
+    }
+    char vk[8];
+    std::snprintf(vk, sizeof(vk), ":0x%02X", binding.virtual_key);
+    return text + vk;
+}
+
+bool parse_cancellation_binding(const std::string &text, TriggerBinding &binding) {
+    constexpr std::string_view prefix = "combo:";
+    const std::string_view view(text);
+    if (view.rfind(prefix, 0) != 0) return false;
+    const std::string_view rest = view.substr(prefix.size());
+    const size_t colon = rest.rfind(':');
+    if (colon == std::string_view::npos || colon == 0) return false;
+    const std::string_view modifier = rest.substr(0, colon);
+    TriggerBinding parsed;
+    for (const auto &name : kModifierNames) {
+        if (modifier == name.storage) parsed.modifiers = name.flag;
+    }
+    const std::string key(rest.substr(colon + 1));
+    if (key.size() != 4 || key[0] != '0' || (key[1] != 'x' && key[1] != 'X')) return false;
+    char *end = nullptr;
+    const unsigned long vk = std::strtoul(key.c_str() + 2, &end, 16);
+    if (end != key.c_str() + key.size()) return false;
+    parsed.kind = TriggerKind::combination;
+    parsed.virtual_key = static_cast<std::uint32_t>(vk);
+    if (!valid_cancellation(parsed)) return false;
+    binding = parsed;
+    return true;
+}
+
+bool cancellation_matches(const TriggerBinding &binding, std::uint32_t virtual_key,
+    bool down, std::uint32_t held_modifiers) {
+    return valid_cancellation(binding) && down && virtual_key == VK_ESCAPE && held_modifiers == binding.modifiers;
 }
 
 std::string serialize_trigger(const TriggerBinding &binding) {
@@ -195,7 +245,7 @@ bool parse_trigger(const std::string &text, TriggerBinding &binding) {
 }
 
 std::wstring describe_trigger(const TriggerBinding &binding) {
-    const TriggerBinding &shown = valid(binding) ? binding : default_trigger();
+    const TriggerBinding &shown = (valid(binding) || valid_cancellation(binding)) ? binding : default_trigger();
     if (shown.kind == TriggerKind::double_tap) {
         std::wstring label;
         for (const auto &name : kSideNames) if (name.side == shown.tap_side) label += name.label;

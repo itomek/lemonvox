@@ -7,7 +7,7 @@ Configurable system-wide trigger for the Windows host. The double-tap policy
 | File | Role |
 | --- | --- |
 | `key_normalizer.h/.cpp` | Pure, stateful translation of `KBDLLHOOKSTRUCT`-style input (or window key messages) into `LVNormalizedKeyEvent`. Exports `kLemonVoxInjectedTag`. |
-| `global_trigger.h/.cpp` | `GlobalTrigger`: listener thread with its own message loop; `WH_KEYBOARD_LL` + `WH_MOUSE_LL` for double taps, `RegisterHotKey` for combinations. |
+| `global_trigger.h/.cpp` | `GlobalTrigger`: listener thread with its own message loop; `WH_KEYBOARD_LL` + `WH_MOUSE_LL` for double taps and active-only cancellation, `RegisterHotKey` for regular combinations. |
 | `shortcut_recorder.h/.cpp` | UI-agnostic capture logic for the Settings shortcut recorder control. |
 
 ## Normalization rules
@@ -34,18 +34,28 @@ AltGr never counts as an Alt tap, so "Alt twice" (any or right side) is never tr
 typing AltGr characters. In the recorder, AltGr+key records the equivalent Ctrl+Alt+key hotkey,
 which is how `RegisterHotKey` treats AltGr anyway.
 
+An opt-in cancellation binding is narrower: it permits exactly one of Alt, Ctrl, or Shift with
+Escape. Ctrl+Alt+Escape is therefore rejected and AltGr can never satisfy an Alt-Escape cancellation
+binding.
+
 ## Hooks and their limits
 
-- Hook procedures only update in-memory state and post to the executor; every event is passed
-  on with `CallNextHookEx`. Nothing is ever swallowed.
+- Hook procedures only update in-memory state and post to the executor. Every event is passed on
+  with `CallNextHookEx` except the down/up pair of an exact configured cancellation Escape while the
+  application has explicitly armed an active session. Idle input, released-modifier Escape, unmatched
+  chords and LemonVox-tagged injected input always pass through.
 - Windows silently removes a low-level hook that exceeds `LowLevelHooksTimeout`. A 2 s timer
   compares `GetLastInputInfo` with the time of our last hook callback; if the system saw input
   more than 1 s newer than anything our hooks received, the hooks are reinstalled
   (`GlobalTrigger::hook_reinstalls()` counts this). Input that never reaches medium-integrity
   hooks (e.g. some elevated or secure-desktop cases) may cause a harmless reinstall.
-- Hooks are installed only for double-tap bindings; combinations use only `RegisterHotKey`.
+- Hooks are installed for a double-tap binding or a configured cancellation binding; ordinary
+  combinations still use only `RegisterHotKey`. Cancellation deliberately does not use
+  `RegisterHotKey`, because it must not reserve or swallow the chord while idle.
 - On a failed `apply` the previous binding stays live: a new hotkey is registered before the old
-  one is released, and a hook failure leaves the old hotkey in place.
+  one is released, and a hook failure leaves the old hotkey/cancellation configuration in place.
+  A consumed cancellation callback carries an arm generation and is dropped if the session reaches
+  idle or a later session arms before the UI executor delivers it.
 
 ## Alt and menu mode
 
@@ -67,8 +77,10 @@ distracting can choose another modifier or a key combination.
 
 - Insertion: set `dwExtraInfo = lemonvox::win::kLemonVoxInjectedTag` on every `INPUT` LemonVox
   sends (`key_normalizer.h`), so pasting or typing never interacts with a pending double tap.
-- Settings: while the shortcut recorder control has focus call `set_suspended(true)`, feed
-  `WM_(SYS)KEYDOWN/UP` through `recorder_key_from_message` + `ShortcutRecorder::feed`, then
-  `apply()` the recorded binding and show the returned error if it fails.
-- `on_trigger` runs on the executor thread. Call `shutdown()` on that thread to guarantee no
-  callback runs afterwards (already-queued deliveries are dropped).
+- Settings: while either shortcut recorder control has focus call `set_suspended(true)`, then restore
+  it before arming cancellation. Disable both recorder controls for an active session. Persist an
+  optional cancellation binding separately from the dictation trigger and replace both live bindings
+  before saving; restore the live pair if persistence fails.
+- `on_trigger` and `on_cancel` run on the executor thread. Arm cancellation before preflight, disarm
+  it on every terminal/cancel/quit path, and call `shutdown()` on that thread to guarantee no callback
+  runs afterwards (already-queued deliveries are dropped).

@@ -35,6 +35,7 @@ void defaults_match_mac() {
     assert(preferences.asr_model.empty() && preferences.cleanup_model.empty());
     assert(!preferences.insert_current_target);
     assert(preferences.trigger == default_trigger());
+    assert(!preferences.cancellation);
     assert(preferences.capture_device_id.empty());
 }
 
@@ -43,6 +44,7 @@ void missing_key_loads_defaults(const PreferencesStore &store) {
     const auto loaded = store.load();
     assert(loaded.endpoint == kDefaultEndpoint && loaded.cleanup_prompt == kDefaultCleanupPrompt);
     assert(loaded.trigger == default_trigger() && !loaded.insert_current_target);
+    assert(!loaded.cancellation);
 }
 
 void round_trips_every_field(const PreferencesStore &store) {
@@ -53,6 +55,9 @@ void round_trips_every_field(const PreferencesStore &store) {
     preferences.cleanup_prompt = "Line one\nLine two \xE2\x80\x94 done";
     preferences.insert_current_target = true;
     assert(parse_trigger("combo:ctrl+shift:0x20", preferences.trigger));
+    TriggerBinding cancellation;
+    assert(parse_cancellation_binding("combo:alt:0x1B", cancellation));
+    preferences.cancellation = cancellation;
     preferences.capture_device_id = L"{0.0.1.00000000}.{abc-\u017C}";
     assert(store.save(preferences));
 
@@ -63,6 +68,7 @@ void round_trips_every_field(const PreferencesStore &store) {
     assert(loaded.cleanup_prompt == preferences.cleanup_prompt);
     assert(loaded.insert_current_target);
     assert(loaded.trigger == preferences.trigger);
+    assert(loaded.cancellation == preferences.cancellation);
     assert(loaded.capture_device_id == preferences.capture_device_id);
 
     const auto snapshot = loaded.snapshot();
@@ -79,6 +85,7 @@ void round_trips_every_field(const PreferencesStore &store) {
     const auto reloaded = store.load();
     assert(reloaded.asr_model.empty() && reloaded.capture_device_id.empty() && !reloaded.insert_current_target);
     assert(reloaded.cleanup_model == preferences.cleanup_model);
+    assert(reloaded.cancellation == preferences.cancellation);
 }
 
 void malformed_values_fall_back_individually(const PreferencesStore &store) {
@@ -89,6 +96,9 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
     preferences.cleanup_prompt = "kept prompt";
     preferences.insert_current_target = true;
     assert(parse_trigger("double:ctrl:right", preferences.trigger));
+    TriggerBinding cancellation;
+    assert(parse_cancellation_binding("combo:shift:0x1B", cancellation));
+    preferences.cancellation = cancellation;
     assert(store.save(preferences));
 
     HKEY key = open_scratch(store);
@@ -114,6 +124,10 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
     // Odd byte count.
     const BYTE odd[] = {'a', 0, 'b'};
     assert(RegSetValueExW(key, L"CaptureDeviceId", 0, REG_SZ, odd, sizeof(odd)) == ERROR_SUCCESS);
+    // Unsupported cancellation gesture.
+    const wchar_t cancellation[] = L"combo:ctrl+alt:0x1B";
+    assert(RegSetValueExW(key, L"CancellationTrigger", 0, REG_SZ,
+               reinterpret_cast<const BYTE *>(cancellation), sizeof(cancellation)) == ERROR_SUCCESS);
     RegCloseKey(key);
 
     const auto loaded = store.load();
@@ -123,6 +137,7 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
     assert(loaded.cleanup_prompt == kDefaultCleanupPrompt);
     assert(loaded.cleanup_model.empty());
     assert(loaded.capture_device_id.empty());
+    assert(!loaded.cancellation);
     assert(loaded.asr_model == "kept-asr");
 
     // A REG_SZ without its terminator is still accepted.
@@ -137,6 +152,14 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
 void save_rejects_invalid_utf8(const PreferencesStore &store) {
     WinPreferences preferences;
     preferences.asr_model = "\xC3\x28";
+    assert(!store.save(preferences));
+}
+
+void save_rejects_invalid_cancellation(const PreferencesStore &store) {
+    WinPreferences preferences;
+    TriggerBinding invalid;
+    assert(parse_trigger("combo:ctrl+alt:0x1B", invalid));
+    preferences.cancellation = invalid;
     assert(!store.save(preferences));
 }
 
@@ -160,6 +183,7 @@ int main() {
     round_trips_every_field(store);
     malformed_values_fall_back_individually(store);
     save_rejects_invalid_utf8(store);
+    save_rejects_invalid_cancellation(store);
     snapshot_preferences_replace();
     assert(store.erase());
     HKEY key = nullptr;

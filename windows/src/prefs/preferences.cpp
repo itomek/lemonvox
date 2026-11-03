@@ -22,6 +22,7 @@ constexpr wchar_t kCleanupModel[] = L"CleanupModel";
 constexpr wchar_t kCleanupPrompt[] = L"CleanupPrompt";
 constexpr wchar_t kInsertCurrentTarget[] = L"InsertCurrentTarget";
 constexpr wchar_t kTrigger[] = L"Trigger";
+constexpr wchar_t kCancellationTrigger[] = L"CancellationTrigger";
 constexpr wchar_t kCaptureDevice[] = L"CaptureDeviceId";
 
 // Larger values are treated as malformed rather than loaded into memory.
@@ -84,6 +85,11 @@ bool write_bool(HKEY key, const wchar_t *name, bool value) {
         ERROR_SUCCESS;
 }
 
+bool delete_value(HKEY key, const wchar_t *name) {
+    const LSTATUS status = RegDeleteValueW(key, name);
+    return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND;
+}
+
 } // namespace
 
 PreferencesSnapshot WinPreferences::snapshot() const {
@@ -107,12 +113,17 @@ WinPreferences PreferencesStore::load() const {
         TriggerBinding binding;
         if (parse_trigger(*value, binding)) preferences.trigger = binding;
     }
+    if (auto value = read_utf8(key, kCancellationTrigger)) {
+        TriggerBinding binding;
+        if (parse_cancellation_binding(*value, binding)) preferences.cancellation = binding;
+    }
     if (auto value = read_wide(key, kCaptureDevice)) preferences.capture_device_id = std::move(*value);
     RegCloseKey(key);
     return preferences;
 }
 
 bool PreferencesStore::save(const WinPreferences &preferences) const {
+    if (preferences.cancellation && !is_cancellation_binding(*preferences.cancellation)) return false;
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, subkey_.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE,
             nullptr, &key, nullptr) != ERROR_SUCCESS) {
@@ -126,6 +137,14 @@ bool PreferencesStore::save(const WinPreferences &preferences) const {
     ok = write_bool(key, kInsertCurrentTarget, preferences.insert_current_target) && ok;
     ok = write_utf8(key, kTrigger, serialize_trigger(preferences.trigger)) && ok;
     ok = write_wide(key, kCaptureDevice, preferences.capture_device_id) && ok;
+    // Write the new cancellation value last and only after the existing
+    // preference batch succeeded. If another value cannot persist, Settings
+    // restores the live shortcuts and this opt-in value remains unchanged.
+    if (ok) {
+        ok = preferences.cancellation
+            ? write_utf8(key, kCancellationTrigger, serialize_cancellation_binding(*preferences.cancellation))
+            : delete_value(key, kCancellationTrigger);
+    }
     RegCloseKey(key);
     return ok;
 }
