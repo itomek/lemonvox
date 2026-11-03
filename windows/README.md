@@ -130,11 +130,14 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 - Google Chrome exposes page fields to UI Automation only after an MSAA client asks; LemonVox
   makes one MSAA focus query for Chromium windows, so the first dictation into a Chrome window can
   take up to 300 ms longer. A field Chrome still does not expose falls back to Copy.
-- Higher-integrity (administrator) windows: Windows (UIPI) does not deliver their keystrokes to
-  LemonVox's keyboard hook, so a modifier double tap such as Alt twice does nothing there (confirmed
-  by the owner in an elevated terminal). When such a window becomes active, the bar briefly says so.
-  A regular shortcut (`RegisterHotKey`) or tray > Start dictation still works, and the result is
-  offered for Copy because input cannot be sent to elevated windows.
+- Higher-integrity (administrator) windows are not supported. Windows (UIPI) does not deliver their
+  keystrokes to LemonVox's keyboard hook, so a modifier double tap such as Alt twice does nothing there
+  (confirmed by the owner in an elevated terminal). When such a window becomes active, the bar briefly
+  says so. A regular shortcut (`RegisterHotKey`) or tray > Start dictation still works, and the result
+  is offered for Copy because input cannot be sent to elevated windows. Comparable dictation apps that
+  run at normal integrity have the same limit. Running LemonVox as administrator, or a signed
+  `uiAccess` build installed under Program Files, would lift it; both were rejected for now because
+  they widen LemonVox's privileges, and running it elevated is unsupported.
 - A lone Alt tap puts classic Win32 apps into menu mode; a double tap enters and leaves it, so the
   target is unchanged, but a menu bar may flash. Choose another trigger if that is distracting.
 - If Windows silently removes the keyboard hook (`LowLevelHooksTimeout`) a health check reinstalls it
