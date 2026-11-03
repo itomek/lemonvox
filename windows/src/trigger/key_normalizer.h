@@ -35,7 +35,8 @@ public:
     bool key(const RawKeyEvent &event, LVNormalizedKeyEvent *out);
     // A mouse button press always interrupts a pending double tap.
     LVNormalizedKeyEvent mouse_button(std::uint32_t time_ms);
-    // MOD_* flags for modifiers currently held (AltGr reports Ctrl+Alt, as Windows does).
+    // MOD_* flags for modifiers currently held (AltGr, including either
+    // release-order handoff, reports Ctrl+Alt as Windows does).
     std::uint32_t held_modifiers() const;
     void reset();
 

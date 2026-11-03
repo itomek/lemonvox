@@ -136,8 +136,13 @@ LVNormalizedKeyEvent KeyNormalizer::mouse_button(std::uint32_t time_ms) {
 
 std::uint32_t KeyNormalizer::held_modifiers() const {
     std::uint32_t modifiers = 0;
-    if ((down_ & (kLeftAlt | kRightAlt)) != 0 || altgr_down_) modifiers |= MOD_ALT;
-    if ((down_ & (kLeftCtrl | kRightCtrl)) != 0 || fake_ctrl_down_) modifiers |= MOD_CONTROL;
+    // AltGr is one synthetic Ctrl+right-Alt pair. Windows can report either
+    // release first, so keep both modifier bits present until both halves are
+    // clear; otherwise Escape between releases could impersonate Alt+Esc or
+    // Ctrl+Esc cancellation. Genuine Ctrl/Alt state stays in down_.
+    const bool altgr_pair = altgr_down_ || fake_ctrl_down_;
+    if ((down_ & (kLeftAlt | kRightAlt)) != 0 || altgr_pair) modifiers |= MOD_ALT;
+    if ((down_ & (kLeftCtrl | kRightCtrl)) != 0 || altgr_pair) modifiers |= MOD_CONTROL;
     if ((down_ & (kLeftShift | kRightShift)) != 0) modifiers |= MOD_SHIFT;
     if ((down_ & (kLeftWin | kRightWin)) != 0) modifiers |= MOD_WIN;
     return modifiers;

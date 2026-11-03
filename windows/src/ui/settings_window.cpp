@@ -342,7 +342,7 @@ private:
             current.insert_current_target ? 1 : 0);
         rebuild_trigger();
         cancellation_.reset();
-        if (current.cancellation && cancellation_round_trips(*current.cancellation)) {
+        if (current.cancellation && settings::cancellation_round_trips(*current.cancellation)) {
             cancellation_ = current.cancellation;
         }
         update_cancellation_text();
