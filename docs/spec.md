@@ -15,7 +15,7 @@ The first milestone is a usable macOS app. Windows and Ubuntu are planned ports;
 5. It sends the transcript and a configurable cleanup prompt to the selected language model through Lemonade.
 6. It inserts the cleaned text into the target field and returns to idle. Insertion leaves submission to the person dictating.
 
-Cancellation stops the current operation and discards its pending result. The compact indicator has one direct control, **X**, which cancels and discards; a separately configurable cancellation shortcut does the same only while an operation is active. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
+Cancellation stops the current operation and discards its pending result. The compact indicator shows Stop and X while recording. Stop finishes capture like the dictation shortcut. X and the separately configurable cancellation shortcut discard the active operation. By default, macOS supports holding Right Command while pressing Escape; a saved custom cancellation shortcut replaces that gesture. Other platforms should document their supported cancellation gesture and any platform limits. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
 
 ### Target field
 
@@ -29,7 +29,7 @@ For example, “um send Alex the 14 invoices on Friday” should become “Send 
 
 ## Configuration and data
 
-Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, appearance, and target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Command-Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
+Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, appearance, and target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Right Command–Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
 
 Appearance choices are Auto, Light, and Dark. Auto follows the OS setting; native shells use their platform semantic colors and controls rather than application-specific color treatments.
 
@@ -61,7 +61,7 @@ Capture audio, transcribe through Lemonade, apply configurable conservative clea
 
 ### 3. Bring the same workflow to Windows and Ubuntu
 
-Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. Each native shell must finish capture with the configured dictation shortcut, cancel/discard with X and its configurable cancellation shortcut, preserve idle keyboard delivery, expose Auto/Light/Dark in native settings, and use platform semantic styling. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
+Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. Each native shell must finish capture with Stop or the configured dictation shortcut, cancel/discard with X and its configurable cancellation shortcut, preserve idle keyboard delivery, expose Auto/Light/Dark in native settings, and use platform semantic styling. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
 
 ## Technical references
 

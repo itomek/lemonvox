@@ -3,7 +3,7 @@ import AppKit
 enum OverlayPhase { case recording, processing, message(String), permission(String) }
 
 private enum SpeechBarMetrics {
-    static let size = NSSize(width: 104, height: 44)
+    static let size = NSSize(width: 128, height: 44)
     static let waveformWidth: CGFloat = 32
 }
 
@@ -36,11 +36,13 @@ final class OverlayView: NSView {
     let spinner = NSProgressIndicator()
     let activity = ActivityView()
     let cancelButton = OverlayButton()
+    let stopButton = OverlayButton()
     let openSettingsButton = OverlayButton(title:"Open Accessibility Settings…",target:nil,action:nil)
     let retryPermissionButton = OverlayButton(title:"Check Again",target:nil,action:nil)
     var onOpenSettings: (() -> Void)?
     var onRetryPermission: (() -> Void)?
     var onCancel: (() -> Void)?
+    var onStop: (() -> Void)?
     var phase = OverlayPhase.recording { didSet { updateState() } }
     var tick = 0.0 { didSet { activity.tick = tick; activity.needsDisplay = true } }
     var isSample = true { didSet { activity.sample = isSample; updateState() } }
@@ -69,6 +71,16 @@ final class OverlayView: NSView {
         cancelButton.refusesFirstResponder = true
         cancelButton.toolTip = "Cancel dictation"; cancelButton.setAccessibilityLabel("Cancel dictation")
         content.addSubview(cancelButton)
+        stopButton.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: "Finish recording")
+        stopButton.symbolConfiguration = cancelButton.symbolConfiguration
+        stopButton.bezelStyle = .circular
+        stopButton.isBordered = true
+        stopButton.refusesFirstResponder = true
+        stopButton.target = self
+        stopButton.action = #selector(stop)
+        stopButton.toolTip = "Finish recording"
+        stopButton.setAccessibilityLabel("Finish recording")
+        content.addSubview(stopButton)
         for (button, action) in [(openSettingsButton, #selector(openSettings)), (retryPermissionButton, #selector(retryPermission))] {
             button.bezelStyle = .rounded; button.target = self; button.action = action
             button.refusesFirstResponder = true; button.setAccessibilityLabel(button.title)
@@ -92,9 +104,10 @@ final class OverlayView: NSView {
         glass.frame = bounds
         content.frame = bounds
         cancelButton.frame = NSRect(x: 4, y: bounds.midY - 16, width: 32, height: 32)
-        activity.frame = NSRect(x: 52, y: bounds.midY - 14,
+        stopButton.frame = NSRect(x: bounds.width - 36, y: bounds.midY - 16, width: 32, height: 32)
+        activity.frame = NSRect(x: 48, y: bounds.midY - 14,
             width: SpeechBarMetrics.waveformWidth, height: 28)
-        spinner.frame = NSRect(x: 60, y: bounds.midY - 8, width: 16, height: 16)
+        spinner.frame = NSRect(x: 56, y: bounds.midY - 8, width: 16, height: 16)
     }
     func updateAccessibilityAppearance() {
         applyTransparencyPreference(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
@@ -130,8 +143,12 @@ final class OverlayView: NSView {
         let permission: Bool
         if case .permission = phase { permission = true } else { permission = false }
         openSettingsButton.isHidden = !permission; retryPermissionButton.isHidden = !permission
+        stopButton.isHidden = true
+        stopButton.isEnabled = false
         switch phase {
         case .recording:
+            stopButton.isHidden = false
+            stopButton.isEnabled = true
             statusLabel.stringValue = isSample ? "Sample recording" : "Listening…"
             activity.isHidden = false; spinner.isHidden = true
             cancelButton.isHidden = false; cancelButton.isEnabled = true
@@ -159,6 +176,7 @@ final class OverlayView: NSView {
     }
     @objc private func openSettings() { if case .permission = phase { onOpenSettings?() } }
     @objc private func retryPermission() { if case .permission = phase { onRetryPermission?() } }
+    @objc private func stop() { if case .recording = phase { onStop?() } }
     @objc private func cancel() { onCancel?() }
 }
 
@@ -179,6 +197,7 @@ final class IndicatorPanel: NSPanel {
     private var clamping = false
     private var noticeVisible = false
     private var observers: [NSObjectProtocol] = []
+    var onStop: (() -> Void)? { didSet { overlay.onStop = onStop } }
     var onCancel: (() -> Void)? { didSet { overlay.onCancel = onCancel } }
     var onOpenSettings: (() -> Void)? { didSet { overlay.onOpenSettings = onOpenSettings } }
     var onRetryPermission: (() -> Void)? { didSet { overlay.onRetryPermission = onRetryPermission } }

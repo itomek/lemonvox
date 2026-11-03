@@ -46,18 +46,23 @@ import AppKit
             panel.setPhase(.recording)
             precondition(panel.frame.size == IndicatorPanel.speechBarSize,
                 "Speech bar geometry must use the declared compact native size")
-            precondition(panel.frame.width < 128 && panel.frame.height <= 44,
+            precondition(panel.frame.width <= 128 && panel.frame.height <= 44,
                 "Speech controls must fit a compact, roughly quarter-area bar")
             precondition(panel.overlay.statusLabel.isHidden,
                 "The compact speech bar must not show status text")
             precondition(panel.overlay.cancelButton.frame.width >= 32 && panel.overlay.cancelButton.frame.height >= 32)
             precondition(panel.isMovableByWindowBackground)
-            precondition(panel.overlay.hitTest(NSPoint(x:panel.overlay.bounds.width - 8,y:22))?.mouseDownCanMoveWindow == true)
+            precondition(panel.overlay.hitTest(NSPoint(x:40,y:22))?.mouseDownCanMoveWindow == true)
             precondition(panel.overlay.hitTest(NSPoint(x:20,y:22)) is OverlayButton)
             precondition(panel.overlay.cancelButton.mouseDownCanMoveWindow == false)
             precondition(!panel.canBecomeKey && !panel.canBecomeMain)
             precondition(!panel.overlay.cancelButton.acceptsFirstResponder)
             precondition(panel.overlay.cancelButton.isEnabled)
+            var finishes = 0
+            panel.onStop = { finishes += 1 }
+            assertControlIsNotDragHandle(panel.overlay.stopButton)
+            panel.overlay.stopButton.performClick(nil)
+            precondition(finishes == 1)
             var cancellations = 0
             panel.onCancel = { cancellations += 1 }
             panel.overlay.cancelButton.performClick(nil)
@@ -68,6 +73,9 @@ import AppKit
             panel.setFrameOrigin(moved)
             let movedOrigin = panel.frame.origin
             panel.present(.processing)
+            precondition(panel.overlay.stopButton.isHidden && !panel.overlay.stopButton.isEnabled)
+            panel.overlay.stopButton.performClick(nil)
+            precondition(finishes == 1)
             precondition(panel.frame.origin == movedOrigin, "A new phase must retain the moved bar position")
             panel.overlay.cancelButton.performClick(nil)
             precondition(cancellations == 2)
