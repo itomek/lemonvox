@@ -13,4 +13,6 @@ macOS comes first. Windows and Ubuntu follow, sharing the dictation pipeline and
 
 The local Mac prototype uses Swift/AppKit and a small C++ session core. It supports a fixed-text sample mode and a user-started microphone → local Lemonade transcription → cleanup → insertion path. [Build and test instructions](macos/PROTOTYPE.md) describe configuration, permissions, and remaining live checks.
 
+The Windows port is a native Win32 tray app built on the same C++ core, with a global Alt-twice trigger, a nonactivating indicator, Settings and a per-user installer. See [Windows build, usage and validation](windows/README.md).
+
 Licensed under the [MIT License](LICENSE).

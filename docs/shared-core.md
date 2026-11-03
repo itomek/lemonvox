@@ -164,5 +164,7 @@ It compiles `core/session.cpp`, `core/protocol.cpp`, and yyjson into
 `liblemonvox_core.a`, then runs the C++ session, trigger, protocol, and
 fake-adapter contract tests with C++17/C17 compilers on the available Unix
 toolchain. The later Mac-adapter step compiles its Swift bridge parity tests
-against these headers/objects. This target proves source/library isolation
-there; a Windows build proof remains separate and is not implied.
+against these headers/objects. The Windows host builds the same sources and
+tests with MSVC 2022 (`/W4 /WX /permissive-`) through
+[`windows/CMakeLists.txt`](../windows/CMakeLists.txt); see
+[`windows/README.md`](../windows/README.md).
