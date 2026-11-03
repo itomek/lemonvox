@@ -1,9 +1,11 @@
 import Foundation
+import Carbon
 
 enum TriggerChoice: Codable, Equatable {
     case combo(key: UInt16, modifiers: UInt32)
     case doubleTap(key: UInt16)
     static let defaultMac = TriggerChoice.doubleTap(key: 0) // Either Command, same side per pair.
+    static let defaultMacCancellation = TriggerChoice.combo(key: 53, modifiers: UInt32(cmdKey))
     static func migrate(_ legacy: Int?) -> TriggerChoice {
         legacy == 1 ? .combo(key:49,modifiers:768) : .defaultMac
     }

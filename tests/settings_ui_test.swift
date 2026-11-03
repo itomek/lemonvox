@@ -59,9 +59,18 @@ import AppKit
     precondition(AppearanceChoice.light.appKitAppearance?.name == .aqua)
     precondition(AppearanceChoice.dark.appKitAppearance?.name == .darkAqua)
 
+    precondition(TriggerChoice.defaultMacCancellation.display == "⌘Escape",
+                 "Generic shortcut labels must not claim a Command side")
+    let dictation = TriggerControl(frame: .zero, allowsDoubleTap: true,
+                                   initialChoice: .defaultMacCancellation)
+    precondition(dictation.summary.stringValue == "⌘Escape",
+                 "A dictation shortcut must retain its generic Command label")
+
     let cancellation = TriggerControl(frame: .zero, allowsDoubleTap: false,
                                       initialChoice: .defaultMacCancellation)
     precondition(cancellation.choice == .defaultMacCancellation)
+    precondition(cancellation.summary.stringValue == "Right Command–Escape",
+                 "Only the default cancellation control may describe the right-side gesture")
     precondition(cancellation.mode.isHidden && cancellation.modifier.isHidden && !cancellation.record.isHidden)
     precondition(cancellation.record.accessibilityLabel() == "Record cancellation shortcut")
     cancellation.beginRecording()

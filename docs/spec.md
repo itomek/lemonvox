@@ -15,7 +15,7 @@ The first milestone is a usable macOS app. Windows and Ubuntu are planned ports;
 5. It sends the transcript and a configurable cleanup prompt to the selected language model through Lemonade.
 6. It inserts the cleaned text into the target field and returns to idle. Insertion leaves submission to the person dictating.
 
-Cancellation stops the current operation and discards its pending result. The compact indicator shows Stop and X while recording. Stop finishes capture like the dictation shortcut. X and the separately configurable cancellation shortcut discard the active operation. macOS also supports holding Right Command while pressing Escape. Other platforms should document their supported cancellation gesture and any platform limits. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
+Cancellation stops the current operation and discards its pending result. The compact indicator shows Stop and X while recording. Stop finishes capture like the dictation shortcut. X and the separately configurable cancellation shortcut discard the active operation. By default, macOS supports holding Right Command while pressing Escape; a saved custom cancellation shortcut replaces that gesture. Other platforms should document their supported cancellation gesture and any platform limits. The cancellation shortcut must never consume keys while LemonVox is idle. Each recording has one result; late responses from a canceled operation must be ignored.
 
 ### Target field
 

@@ -393,12 +393,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             toggle()
             precondition(sampleSession.state == LV_RECORDING && cancellationBinding.reference != nil,
                 "The cancellation binding must exist only for an active session")
+            precondition(cancellationMonitor == nil,
+                "A custom cancellation shortcut must not arm the Right Command-Escape observer")
             precondition(dispatchHotKeyForSmoke(HotKeyEventID.cancellation) == noErr)
             precondition(sampleSession.state == LV_IDLE && cancellationBinding.reference == nil,
                 "Cancellation event ID must discard rather than finish or start dictation")
             precondition(dispatchHotKeyForSmoke(HotKeyEventID.cancellation) == OSStatus(eventNotHandledErr) &&
                 sampleSession.state == LV_IDLE, "Idle cancellation shortcut must not be consumed")
-            print("PASS: cancellation event ID routes only while active; idle keys and rejected bindings remain safe")
+            print("PASS: custom cancellation event routes only while active; default observer stays inactive; idle keys and rejected bindings remain safe")
             Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
         } else if CommandLine.arguments.contains("--smoke-cancel") {
             toggle()
@@ -466,7 +468,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
                 guard let self else { return false }; return (!self.configuring || self.isRecordingSession) && !self.inserting
             },fire:{ [weak self] in self?.toggle() },
-              canCancel:{ [weak self] in self?.sessionActive == true },
+              canCancel:{ [weak self] in
+                  guard let self else { return false }
+                  return ModifierTrigger.canObserveDefaultCancellation(self.cancellationChoice,
+                                                                         sessionActive:self.sessionActive)
+              },
               cancel:{ [weak self] in self?.cancel() })
             guard candidate.start() else { candidate.stop(); panel.show("Modifier trigger unavailable; previous trigger retained. Try again in Settings."); return false }
             modifierTrigger?.stop(); modifierTrigger=candidate; binding.clear()
@@ -612,14 +618,18 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
 
     private func activateCancellationBinding() {
         modifierTrigger?.reset()
-        if modifierTrigger == nil && cancellationMonitor == nil {
-            let monitor = ModifierTrigger(key: 0, allowed: { false }, fire: {},
-                canCancel: { [weak self] in self?.sessionActive == true },
-                cancel: { [weak self] in self?.cancel() })
-            if monitor.start() { cancellationMonitor = monitor }
-            else { monitor.stop() }
-        }
         if cancellationChoice == .defaultMacCancellation {
+            if modifierTrigger == nil && cancellationMonitor == nil {
+                let monitor = ModifierTrigger(key: 0, allowed: { false }, fire: {},
+                    canCancel: { [weak self] in
+                        guard let self else { return false }
+                        return ModifierTrigger.canObserveDefaultCancellation(self.cancellationChoice,
+                                                                               sessionActive:self.sessionActive)
+                    },
+                    cancel: { [weak self] in self?.cancel() })
+                if monitor.start() { cancellationMonitor = monitor }
+                else { monitor.stop() }
+            }
             if modifierTrigger == nil && cancellationMonitor == nil {
                 panel.showNotice("Right Command–Escape unavailable · use X or menu")
             }

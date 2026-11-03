@@ -1,13 +1,60 @@
 import AppKit
 import ApplicationServices
 
+@MainActor struct ModifierCommandSides {
+    private enum State { case unknown, up, down }
+    private var left = State.unknown
+    private var right = State.unknown
+
+    var rightOnlyHeld: Bool { right == .down && left == .up }
+
+    mutating func reset(commandHeld: Bool) {
+        let baseline: State = commandHeld ? .unknown : .up
+        left = baseline
+        right = baseline
+    }
+
+    mutating func observe(_ event: NSEvent) {
+        guard event.modifierFlags.contains(.command) else {
+            reset(commandHeld: false)
+            return
+        }
+        let sideMask: UInt = 0x18
+        let raw = event.modifierFlags.rawValue
+        if raw & sideMask != 0 {
+            left = raw & 0x8 != 0 ? .down : .up
+            right = raw & 0x10 != 0 ? .down : .up
+            return
+        }
+        guard event.type == .flagsChanged else { return }
+        switch event.keyCode {
+        case 54:
+            if right == .up { right = .down }
+            else if right == .down { right = .up }
+        case 55:
+            if left == .up { left = .down }
+            else if left == .down { left = .up }
+        default:
+            return
+        }
+        if left == .up && right == .up {
+            // Aggregate Command remains set, so an unobserved side may be held.
+            reset(commandHeld: true)
+        }
+    }
+}
+
 /// Global observation is passive. A recognized cancellation is consumed locally.
 @MainActor final class ModifierTrigger {
     private static let sideBits:[UInt16:UInt]=[55:0x8,54:0x10,58:0x20,61:0x40,59:0x1,62:0x2000,56:0x2,60:0x4]
+    static func canObserveDefaultCancellation(_ choice: TriggerChoice, sessionActive: Bool) -> Bool {
+        sessionActive && choice == .defaultMacCancellation
+    }
     private var monitor:Any?
     var isMonitoring:Bool { monitor != nil }
     private var activation:Any?
     private var localMonitor:Any?
+    private var commandSides = ModifierCommandSides()
     private let canCancel:() -> Bool
     private let cancel:() -> Void
     private var detector:DoubleTapDetector
@@ -20,6 +67,7 @@ import ApplicationServices
     }
     func start() -> Bool {
         guard AXIsProcessTrusted() else { return false }
+        reset()
         monitor=NSEvent.addGlobalMonitorForEvents(matching:[.flagsChanged,.keyDown,.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] event in
             MainActor.assumeIsolated { self?.receive(event) }
         }
@@ -32,7 +80,10 @@ import ApplicationServices
         }
         return monitor != nil
     }
-    func reset() { detector.reset() }
+    func reset() {
+        detector.reset()
+        commandSides.reset(commandHeld: NSEvent.modifierFlags.contains(.command))
+    }
     func receive(_ event:NSEvent) {
         if observeCancellation(event) { return }
         guard allowed() else { detector.reset(); return }
@@ -53,11 +104,11 @@ import ApplicationServices
         if detector.event(key:key,down:down,time:event.timestamp) { fire() }
     }
     private func observeCancellation(_ event:NSEvent) -> Bool {
+        commandSides.observe(event)
         guard canCancel(), event.type == .keyDown, event.keyCode == 53,
               !event.isARepeat else { return false }
         let flags=event.modifierFlags.intersection([.command,.option,.control,.shift,.capsLock,.function])
-        let rightCommand = event.modifierFlags.rawValue & (Self.sideBits[54] ?? 0) != 0
-        guard flags == .command, rightCommand else { return false }
+        guard flags == .command, commandSides.rightOnlyHeld else { return false }
         reset()
         cancel()
         return true

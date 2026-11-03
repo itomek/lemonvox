@@ -2,10 +2,7 @@ import AppKit
 import Carbon
 
 @MainActor extension TriggerChoice {
-    static let defaultMacCancellation = TriggerChoice.combo(key: 53, modifiers: UInt32(cmdKey))
-
     var display:String {
-        if self == .defaultMacCancellation { return "Right Command–Escape" }
         switch self {
         case .doubleTap(let key): return (TriggerControl.modifiers.first { $0.1 == key }?.0 ?? "Modifier") + " twice"
         case .combo(let key,let modifiers):
@@ -25,6 +22,9 @@ import Carbon
     private var monitor:Any?
     var onChange: (() -> Void)?
     private let allowsDoubleTap: Bool
+    private var displayedChoice: String {
+        !allowsDoubleTap && choice == .defaultMacCancellation ? "Right Command–Escape" : choice.display
+    }
     init(frame:NSRect, allowsDoubleTap: Bool = true, initialChoice: TriggerChoice = .defaultMac) {
         self.allowsDoubleTap = allowsDoubleTap
         super.init(frame:frame)
@@ -50,7 +50,7 @@ import Carbon
         mode.isHidden = !allowsDoubleTap
         modifier.isHidden = !allowsDoubleTap || mode.indexOfSelectedItem != 0
         record.isHidden = allowsDoubleTap && !modifier.isHidden
-        summary.stringValue=supported.display
+        summary.stringValue=displayedChoice
         onChange?()
     }
     @objc func modeChanged() {
@@ -82,6 +82,6 @@ import Carbon
         update(.combo(key:key,modifiers:bits)); return true
     }
     func cancelRecording() {
-        if let monitor { NSEvent.removeMonitor(monitor) }; monitor=nil; recording=false; summary.stringValue=choice.display
+        if let monitor { NSEvent.removeMonitor(monitor) }; monitor=nil; recording=false; summary.stringValue=displayedChoice
     }
 }
