@@ -26,11 +26,19 @@ constexpr wchar_t kWindowClass[] = L"LemonVoxTriggerListener";
 struct Shared {
     std::atomic<bool> alive{true};
     std::atomic<bool> suspended{false};
+    // Low bit: armed. Higher bits: a monotonic generation. A consumed Escape
+    // clears the low bit but retains its generation; every explicit arm or
+    // disarm advances it, invalidating queued cancellation callbacks.
+    std::atomic<std::uint64_t> cancellation_state{0};
     std::function<void()> on_trigger;
+    std::function<void()> on_cancel;
 };
 
+enum class ApplyKind { trigger, cancellation };
+
 struct ApplyRequest {
-    const TriggerBinding *binding = nullptr;
+    ApplyKind kind = ApplyKind::trigger;
+    std::optional<TriggerBinding> binding;
     std::wstring error;
     bool ok = false;
 };
@@ -47,9 +55,10 @@ std::wstring with_code(const std::wstring &text, DWORD code) {
 } // namespace
 
 struct GlobalTrigger::Impl {
-    Impl(Executor &executor_ref, std::function<void()> callback)
+    Impl(Executor &executor_ref, std::function<void()> trigger_callback, std::function<void()> cancel_callback)
         : executor(executor_ref), shared(std::make_shared<Shared>()) {
-        shared->on_trigger = std::move(callback);
+        shared->on_trigger = std::move(trigger_callback);
+        shared->on_cancel = std::move(cancel_callback);
     }
 
     Executor &executor;
@@ -62,6 +71,7 @@ struct GlobalTrigger::Impl {
     std::mutex control_mutex;
     mutable std::mutex state_mutex;
     std::optional<TriggerBinding> active_binding;
+    std::optional<TriggerBinding> active_cancellation_binding;
     std::wstring startup_error;
 
     // Listener-thread state.
@@ -69,6 +79,9 @@ struct GlobalTrigger::Impl {
     HHOOK mouse_hook = nullptr;
     HWINEVENTHOOK foreground_hook = nullptr;
     int hotkey_id = 0;
+    std::optional<TriggerBinding> listener_binding;
+    std::optional<TriggerBinding> listener_cancellation_binding;
+    bool swallow_cancellation_keyup = false;
     KeyNormalizer normalizer;
     LVDoubleTapDetector detector{};
     std::uint32_t seen_generation = 0;
@@ -76,17 +89,30 @@ struct GlobalTrigger::Impl {
 
     void run(std::promise<void> *ready);
     bool apply_on_thread(const TriggerBinding &binding, std::wstring *error);
+    bool apply_cancellation_on_thread(const std::optional<TriggerBinding> &binding, std::wstring *error);
     bool install_hooks(DWORD *code);
     void remove_hooks();
     void teardown();
     void health_check();
     void sync_reset();
-    void on_key(WPARAM message, const KBDLLHOOKSTRUCT &info);
+    bool on_key(WPARAM message, const KBDLLHOOKSTRUCT &info);
     void on_mouse(WPARAM message, const MSLLHOOKSTRUCT &info);
     void fire();
+    void fire_cancel(std::uint64_t consumed_cancellation_state);
+    void set_cancellation_armed(bool armed) {
+        std::uint64_t previous = shared->cancellation_state.load();
+        for (;;) {
+            const std::uint64_t next = (previous & ~std::uint64_t{1}) + 2 + (armed ? 1 : 0);
+            if (shared->cancellation_state.compare_exchange_weak(previous, next)) return;
+        }
+    }
     void set_active(const std::optional<TriggerBinding> &binding) {
         std::lock_guard<std::mutex> lock(state_mutex);
         active_binding = binding;
+    }
+    void set_active_cancellation(const std::optional<TriggerBinding> &binding) {
+        std::lock_guard<std::mutex> lock(state_mutex);
+        active_cancellation_binding = binding;
     }
 };
 
@@ -96,7 +122,7 @@ thread_local GlobalTrigger::Impl *t_listener = nullptr;
 
 LRESULT CALLBACK keyboard_proc(int code, WPARAM wparam, LPARAM lparam) {
     if (code == HC_ACTION && t_listener) {
-        t_listener->on_key(wparam, *reinterpret_cast<const KBDLLHOOKSTRUCT *>(lparam));
+        if (t_listener->on_key(wparam, *reinterpret_cast<const KBDLLHOOKSTRUCT *>(lparam))) return 1;
     }
     return CallNextHookEx(nullptr, code, wparam, lparam);
 }
@@ -118,7 +144,9 @@ LRESULT CALLBACK listener_window_proc(HWND hwnd, UINT message, WPARAM wparam, LP
         switch (message) {
         case kApplyMessage: {
             auto *request = reinterpret_cast<ApplyRequest *>(lparam);
-            request->ok = impl->apply_on_thread(*request->binding, &request->error);
+            request->ok = request->kind == ApplyKind::trigger
+                ? impl->apply_on_thread(*request->binding, &request->error)
+                : impl->apply_cancellation_on_thread(request->binding, &request->error);
             return 0;
         }
         case kStopMessage:
@@ -173,12 +201,7 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
         *error = L"That trigger isn't supported";
         return false;
     }
-    std::optional<TriggerBinding> current;
-    {
-        std::lock_guard<std::mutex> lock(state_mutex);
-        current = active_binding;
-    }
-    if (current && *current == binding) return true;
+    if (listener_binding && *listener_binding == binding) return true;
 
     if (binding.kind == TriggerKind::combination) {
         // Register the new hotkey before releasing the old one so a conflict
@@ -192,7 +215,6 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
                 : with_code(L"Couldn't register " + label, code);
             return false;
         }
-        remove_hooks();
         if (hotkey_id != 0) UnregisterHotKey(hwnd, hotkey_id);
         hotkey_id = id;
     } else {
@@ -209,7 +231,36 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
             hotkey_id = 0;
         }
     }
+    listener_binding = binding;
     set_active(binding);
+    // A configured cancellation gesture needs the low-level listener even
+    // when the regular trigger is a RegisterHotKey combination.
+    if (binding.kind == TriggerKind::combination && !listener_cancellation_binding) remove_hooks();
+    return true;
+}
+
+bool GlobalTrigger::Impl::apply_cancellation_on_thread(const std::optional<TriggerBinding> &binding,
+    std::wstring *error) {
+    if (binding && !is_cancellation_binding(*binding)) {
+        *error = L"Cancellation must hold exactly one of Alt, Ctrl, or Shift with Esc";
+        return false;
+    }
+    if (listener_cancellation_binding == binding) return true;
+
+    // Keep the previous configuration intact if the low-level hook cannot be
+    // installed. Unlike RegisterHotKey, the hook does not reserve the chord
+    // while a session is idle.
+    if (binding && !keyboard_hook) {
+        DWORD code = 0;
+        if (!install_hooks(&code)) {
+            *error = with_code(L"Couldn't start cancellation shortcut listening", code);
+            return false;
+        }
+    }
+    listener_cancellation_binding = binding;
+    set_cancellation_armed(false);
+    set_active_cancellation(binding);
+    if (!binding && listener_binding && listener_binding->kind == TriggerKind::combination) remove_hooks();
     return true;
 }
 
@@ -235,6 +286,7 @@ bool GlobalTrigger::Impl::install_hooks(DWORD *code) {
     }
     normalizer.reset();
     lv_double_tap_cancel(&detector);
+    swallow_cancellation_keyup = false;
     last_hook_tick = GetTickCount();
     SetTimer(hwnd, kHealthTimer, kHealthIntervalMs, nullptr);
     return true;
@@ -250,13 +302,18 @@ void GlobalTrigger::Impl::remove_hooks() {
     foreground_hook = nullptr;
     normalizer.reset();
     lv_double_tap_cancel(&detector);
+    swallow_cancellation_keyup = false;
 }
 
 void GlobalTrigger::Impl::teardown() {
     remove_hooks();
     if (hotkey_id != 0) UnregisterHotKey(hwnd, hotkey_id);
     hotkey_id = 0;
+    listener_binding.reset();
+    listener_cancellation_binding.reset();
+    set_cancellation_armed(false);
     set_active(std::nullopt);
+    set_active_cancellation(std::nullopt);
 }
 
 void GlobalTrigger::Impl::health_check() {
@@ -278,7 +335,7 @@ void GlobalTrigger::Impl::sync_reset() {
     lv_double_tap_cancel(&detector);
 }
 
-void GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
+bool GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
     last_hook_tick = GetTickCount();
     sync_reset();
     RawKeyEvent raw;
@@ -288,13 +345,37 @@ void GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
     raw.message = static_cast<std::uint32_t>(message);
     raw.time_ms = info.time;
     raw.extra_info = info.dwExtraInfo;
+    // LemonVox's own input must remain invisible to both the normal trigger
+    // detector and the cancellation key-up companion logic.
+    if (raw.extra_info == kLemonVoxInjectedTag) return false;
+    const bool up = (info.flags & LLKHF_UP) != 0 || message == WM_KEYUP || message == WM_SYSKEYUP;
     LVNormalizedKeyEvent event;
-    if (!normalizer.key(raw, &event)) return;
+    const bool normalized = normalizer.key(raw, &event);
+    // The matching key-up accompanies a swallowed cancellation key-down so a
+    // foreground control never sees a lone Escape release. Repeats stay
+    // swallowed until that release too.
+    if (swallow_cancellation_keyup && info.vkCode == VK_ESCAPE) {
+        if (up) swallow_cancellation_keyup = false;
+        return true;
+    }
+    if (!normalized) return false;
+    if (listener_cancellation_binding
+        && cancellation_matches(*listener_cancellation_binding, info.vkCode, !up, normalizer.held_modifiers())) {
+        std::uint64_t armed_state = shared->cancellation_state.load();
+        const std::uint64_t consumed_state = armed_state & ~std::uint64_t{1};
+        if ((armed_state & 1) != 0 && shared->cancellation_state.compare_exchange_strong(armed_state, consumed_state)) {
+            swallow_cancellation_keyup = true;
+            lv_double_tap_cancel(&detector);
+            fire_cancel(consumed_state);
+            return true;
+        }
+    }
     if (shared->suspended.load()) {
         lv_double_tap_cancel(&detector);
-        return;
+        return false;
     }
     if (lv_double_tap_event(&detector, event)) fire();
+    return false;
 }
 
 void GlobalTrigger::Impl::on_mouse(WPARAM message, const MSLLHOOKSTRUCT &info) {
@@ -317,8 +398,18 @@ void GlobalTrigger::Impl::fire() {
     });
 }
 
-GlobalTrigger::GlobalTrigger(Executor &executor, std::function<void()> on_trigger)
-    : impl_(std::make_unique<Impl>(executor, std::move(on_trigger))) {
+void GlobalTrigger::Impl::fire_cancel(std::uint64_t consumed_cancellation_state) {
+    if (!shared->alive.load()) return;
+    std::shared_ptr<Shared> state = shared;
+    executor.post([state, consumed_cancellation_state] {
+        if (state->alive.load() && state->cancellation_state.load() == consumed_cancellation_state && state->on_cancel) {
+            state->on_cancel();
+        }
+    });
+}
+
+GlobalTrigger::GlobalTrigger(Executor &executor, std::function<void()> on_trigger, std::function<void()> on_cancel)
+    : impl_(std::make_unique<Impl>(executor, std::move(on_trigger), std::move(on_cancel))) {
     std::promise<void> ready;
     std::future<void> started = ready.get_future();
     Impl *impl = impl_.get();
@@ -340,7 +431,8 @@ bool GlobalTrigger::apply(const TriggerBinding &binding, std::wstring *error) {
         return false;
     }
     ApplyRequest request;
-    request.binding = &binding;
+    request.kind = ApplyKind::trigger;
+    request.binding = binding;
     SendMessageW(impl_->hwnd, kApplyMessage, 0, reinterpret_cast<LPARAM>(&request));
     if (!request.ok) message = request.error;
     return request.ok;
@@ -349,6 +441,36 @@ bool GlobalTrigger::apply(const TriggerBinding &binding, std::wstring *error) {
 std::optional<TriggerBinding> GlobalTrigger::active() const {
     std::lock_guard<std::mutex> lock(impl_->state_mutex);
     return impl_->active_binding;
+}
+
+bool GlobalTrigger::apply_cancellation(const std::optional<TriggerBinding> &binding, std::wstring *error) {
+    std::wstring ignored;
+    std::wstring &message = error ? *error : ignored;
+    std::lock_guard<std::mutex> lock(impl_->control_mutex);
+    assert(GetCurrentThreadId() != impl_->thread_id);
+    if (!impl_->hwnd) {
+        message = impl_->startup_error.empty() ? L"The trigger has shut down" : impl_->startup_error;
+        return false;
+    }
+    ApplyRequest request;
+    request.kind = ApplyKind::cancellation;
+    request.binding = binding;
+    SendMessageW(impl_->hwnd, kApplyMessage, 0, reinterpret_cast<LPARAM>(&request));
+    if (!request.ok) message = request.error;
+    return request.ok;
+}
+
+std::optional<TriggerBinding> GlobalTrigger::active_cancellation() const {
+    std::lock_guard<std::mutex> lock(impl_->state_mutex);
+    return impl_->active_cancellation_binding;
+}
+
+void GlobalTrigger::set_cancellation_armed(bool armed) {
+    impl_->set_cancellation_armed(armed);
+}
+
+bool GlobalTrigger::cancellation_armed() const {
+    return (impl_->shared->cancellation_state.load() & 1) != 0;
 }
 
 void GlobalTrigger::set_suspended(bool suspended) {
@@ -366,12 +488,14 @@ std::uint32_t GlobalTrigger::hook_reinstalls() const {
 
 void GlobalTrigger::shutdown() {
     std::lock_guard<std::mutex> lock(impl_->control_mutex);
+    impl_->set_cancellation_armed(false);
     impl_->shared->alive.store(false);
     if (!impl_->thread.joinable()) return;
     assert(GetCurrentThreadId() != impl_->thread_id);
     if (impl_->hwnd) SendMessageW(impl_->hwnd, kStopMessage, 0, 0);
     impl_->thread.join();
     impl_->set_active(std::nullopt);
+    impl_->set_active_cancellation(std::nullopt);
 }
 
 } // namespace lemonvox::win

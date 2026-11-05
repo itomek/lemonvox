@@ -55,7 +55,11 @@ struct Fake {
     bool suspended = false;
     int suspend_calls = 0;
     bool apply_fails = false;
-    std::vector<TriggerBinding> applied;
+    struct AppliedShortcuts {
+        TriggerBinding trigger;
+        std::optional<TriggerBinding> cancellation;
+    };
+    std::vector<AppliedShortcuts> applied;
     std::optional<WinPreferences> saved;
     int save_calls = 0;
     int privacy_calls = 0;
@@ -79,8 +83,9 @@ struct Fake {
         services.list_devices = [] {
             return std::vector<SettingsDevice>{{L"{dev1}", L"Desk mic"}, {L"{dev2}", L"Headset"}};
         };
-        services.apply_trigger = [this](const TriggerBinding &binding, std::wstring *error) {
-            applied.push_back(binding);
+        services.apply_shortcuts = [this](const TriggerBinding &binding,
+                                       const std::optional<TriggerBinding> &cancellation, std::wstring *error) {
+            applied.push_back({binding, cancellation});
             if (apply_fails && error) *error = L"already registered by another app";
             return !apply_fails;
         };
@@ -246,6 +251,7 @@ std::vector<std::string> check_automation(const SettingsWindow &window) {
         {item(window, SettingsControl::prompt_edit), L"Cleanup prompt"},
         {item(window, SettingsControl::shortcut_combo), L"Shortcut"},
         {item(window, SettingsControl::recorder_edit), L"Custom shortcut"},
+        {item(window, SettingsControl::cancellation_recorder_edit), L"Cancel dictation"},
         {item(window, SettingsControl::insert_combo), L"Insert into"},
         {item(window, SettingsControl::microphone_combo), L"Microphone"},
         {item(window, SettingsControl::refresh_button), L"Refresh models"},
@@ -352,6 +358,7 @@ int main() {
         CHECK(text_of(item(window, SettingsControl::endpoint_edit)) == L"http://127.0.0.1:13305/v1");
         CHECK(text_of(item(window, SettingsControl::prompt_edit)) == L"Clean up.\r\nKeep meaning.");
         CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Alt twice");
+        CHECK(text_of(item(window, SettingsControl::cancellation_recorder_edit)) == L"Not set");
         CHECK(combo_selected(item(window, SettingsControl::insert_combo)) == L"Original field (recommended)");
         CHECK(combo_items(item(window, SettingsControl::microphone_combo))
             == (std::vector<std::wstring>{L"System default", L"Desk mic", L"Headset"}));
@@ -399,6 +406,7 @@ int main() {
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
             SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::prompt_edit,
             SettingsControl::reset_prompt_button, SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
+            SettingsControl::cancellation_recorder_edit, SettingsControl::cancellation_clear_button,
             SettingsControl::insert_combo, SettingsControl::microphone_combo, SettingsControl::privacy_button,
             SettingsControl::save_button, SettingsControl::cancel_button, SettingsControl::endpoint_edit};
         for (size_t i = 0; i + 1 < order.size(); ++i) {
@@ -432,6 +440,17 @@ int main() {
         click(window, SettingsControl::privacy_button);
         CHECK(fake.privacy_calls == 1);
 
+        // Cancellation shortcuts are opt-in and their recorder becomes
+        // unavailable while a session is active, so it cannot eat a real
+        // cancellation chord.
+        window.set_shortcuts_editable(false);
+        CHECK(!IsWindowEnabled(item(window, SettingsControl::shortcut_combo)));
+        CHECK(!IsWindowEnabled(item(window, SettingsControl::recorder_edit)));
+        CHECK(!IsWindowEnabled(item(window, SettingsControl::cancellation_recorder_edit)));
+        CHECK(!IsWindowEnabled(item(window, SettingsControl::cancellation_clear_button)));
+        window.set_shortcuts_editable(true);
+        CHECK(IsWindowEnabled(item(window, SettingsControl::cancellation_recorder_edit)));
+
         // Recording: Alt+letter is recorded, not treated as a mnemonic (Alt+S would Save).
         focus(window, SettingsControl::recorder_edit);
         CHECK(fake.suspended);
@@ -459,6 +478,22 @@ int main() {
         CHECK(GetFocus() == item(window, SettingsControl::shortcut_combo));
         CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Ctrl+Shift+K");
         CHECK(!fake.suspended);
+
+        // A bare Escape leaves cancellation unset; only a held modifier plus
+        // Escape is captured. Clear removes an opt-in value again.
+        focus(window, SettingsControl::cancellation_recorder_edit);
+        send_keys(window.hwnd(), {{VK_ESCAPE, false}, {VK_ESCAPE, true}});
+        CHECK(text_of(item(window, SettingsControl::cancellation_recorder_edit)) == L"Not set");
+        CHECK(!fake.suspended);
+        focus(window, SettingsControl::cancellation_recorder_edit);
+        send_keys(window.hwnd(), {{VK_SHIFT, false}, {VK_ESCAPE, false}, {VK_ESCAPE, true}, {VK_SHIFT, true}});
+        CHECK(text_of(item(window, SettingsControl::cancellation_recorder_edit)) == L"Shift+Esc");
+        CHECK(!fake.suspended);
+        click(window, SettingsControl::cancellation_clear_button);
+        CHECK(text_of(item(window, SettingsControl::cancellation_recorder_edit)) == L"Not set");
+        focus(window, SettingsControl::cancellation_recorder_edit);
+        send_keys(window.hwnd(), {{VK_SHIFT, false}, {VK_ESCAPE, false}, {VK_ESCAPE, true}, {VK_SHIFT, true}});
+        CHECK(text_of(item(window, SettingsControl::cancellation_recorder_edit)) == L"Shift+Esc");
         // Shift alone plus a key is rejected and recording continues.
         focus(window, SettingsControl::recorder_edit);
         send_keys(window.hwnd(), {{VK_SHIFT, false}, {'Q', false}, {'Q', true}, {VK_SHIFT, true}});
@@ -476,7 +511,8 @@ int main() {
         focus(window, SettingsControl::endpoint_edit);
         send_keys(window.hwnd(), {{VK_RETURN, false}, {VK_RETURN, true}});
         CHECK(window.is_open() && fake.save_calls == 0);
-        CHECK(fake.applied.size() == 1 && fake.applied[0] == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
+        CHECK(fake.applied.size() == 1 && fake.applied[0].trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
+        CHECK(fake.applied[0].cancellation == std::optional<TriggerBinding>{combination(MOD_SHIFT, VK_ESCAPE)});
         CHECK(text_of(item(window, SettingsControl::status)).find(L"already registered by another app")
             != std::wstring::npos);
 
@@ -492,6 +528,7 @@ int main() {
         CHECK(saved.cleanup_prompt == kDefaultPrompt);
         CHECK(saved.insert_current_target);
         CHECK(saved.trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
+        CHECK(saved.cancellation == std::optional<TriggerBinding>{combination(MOD_SHIFT, VK_ESCAPE)});
         CHECK(saved.capture_device_id == L"{dev2}");
         CHECK(!fake.suspended);
 

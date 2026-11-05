@@ -64,6 +64,14 @@ active or focused (ctest `ui_demo_smoke`).
   repeats, AltGr and any intervening key or mouse click cancel a pending double tap; keys are never
   swallowed. Settings offers Ctrl/Shift/Windows-key double taps or a regular shortcut
   (`RegisterHotKey`; a conflict keeps the previous shortcut).
+- **X** cancels and discards an active recording or processing operation; the repeated dictation shortcut
+  and **Stop** finish capture normally. Settings → **Cancel dictation** can opt in to exactly
+  Alt-Esc, Ctrl-Esc, or Shift-Esc. It has no default: Alt-Esc is a Windows window-switching shortcut
+  and its behavior must be checked on the target desktop before recommending it. The configured
+  cancellation chord is intercepted only while an operation is active; idle Escape, a released
+  modifier followed by Escape, AltGr (Ctrl+Alt), and LemonVox's own tagged input pass through. While
+  dictation is active, both shortcut recorder controls are disabled so a recorder cannot consume a
+  real cancellation chord.
 - The bar shows preparing, recording (level and time), transcribing, cleaning and inserting without
   taking focus; it can be dragged and remembers its position. Stop, Cancel and Copy are also in the
   tray menu. Left-click the tray icon for Settings.
@@ -113,6 +121,7 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 | --- | --- |
 | Shared core tests under MSVC | Pass (session, trigger, contracts, protocol, workflow) |
 | Global trigger | Alt twice (left or right) fires once; Alt chords, holds, repeats, AltGr, intervening keys/mouse do not; typing passes through; hotkey conflict keeps previous binding; suspended while recording a shortcut |
+| Opt-in cancellation | Source and focused test coverage require a real Windows recheck: active Shift/Ctrl/Alt-Esc cancellation, idle/released-modifier pass-through, AltGr, tagged input, and the reserved Alt-Esc system behavior |
 | Indicator | Never foreground/active/focused across all states, clicks and drags |
 | Fixed-text insertion | Native EDIT and RichEdit once, no newline; password field rejected; changed focus detected; clipboard restored; cancel inserts nothing |
 | Real apps | See [`tests/insertion-matrix.md`](tests/insertion-matrix.md): Notepad, Edge, Chrome and VS Code (Electron) insert; changed focus and password fields in Edge/Chrome are refused; elevated windows fall back to Copy (manual check steps documented) |

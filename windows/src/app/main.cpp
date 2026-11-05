@@ -110,6 +110,11 @@ private:
     void show_failure(const UserMessage &message);
     void open_settings();
     void apply_trigger_at_launch();
+    bool apply_shortcuts(const TriggerBinding &trigger, const std::optional<TriggerBinding> &cancellation,
+        std::wstring *error);
+    void toggle_dictation();
+    void start_dictation();
+    void cancel_dictation();
     void refresh_tray();
     void copy_pending();
     void quit();
@@ -184,7 +189,7 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     insertion_ = std::make_unique<WinInsertion>(executor_);
 
     ui::IndicatorCallbacks indicator_callbacks;
-    indicator_callbacks.cancel = [this] { controller_->cancel(); indicator_->set_state({}); };
+    indicator_callbacks.cancel = [this] { cancel_dictation(); };
     indicator_callbacks.stop = [this] { controller_->stop(); };
     indicator_callbacks.copy = [this] { copy_pending(); };
     indicator_callbacks.dismiss = [this] { controller_->discard_pending(); refresh_tray(); };
@@ -200,8 +205,8 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     indicator_->set_anchor(load_anchor());
 
     ui::TrayCallbacks tray_callbacks;
-    tray_callbacks.toggle_dictation = [this] { controller_->toggle(); };
-    tray_callbacks.cancel = [this] { controller_->cancel(); indicator_->set_state({}); };
+    tray_callbacks.toggle_dictation = [this] { toggle_dictation(); };
+    tray_callbacks.cancel = [this] { cancel_dictation(); };
     tray_callbacks.copy_last = [this] { copy_pending(); };
     tray_callbacks.open_settings = [this] { open_settings(); };
     tray_callbacks.open_diagnostics = [this] {
@@ -242,7 +247,7 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     });
     capture_->set_failure_callback([this](OperationId, CaptureFailureReason) { controller_->capture_failed(); });
 
-    trigger_ = std::make_unique<GlobalTrigger>(executor_, [this] { controller_->toggle(); });
+    trigger_ = std::make_unique<GlobalTrigger>(executor_, [this] { toggle_dictation(); }, [this] { cancel_dictation(); });
     apply_trigger_at_launch();
 
     SettingsServices services;
@@ -265,8 +270,9 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
         for (const auto &device : list_capture_devices().devices) devices.push_back({device.id, device.name});
         return devices;
     };
-    services.apply_trigger = [this](const TriggerBinding &binding, std::wstring *error) {
-        return trigger_->apply(binding, error);
+    services.apply_shortcuts = [this](const TriggerBinding &binding,
+                                  const std::optional<TriggerBinding> &cancellation, std::wstring *error) {
+        return apply_shortcuts(binding, cancellation, error);
     };
     services.set_trigger_suspended = [this](bool suspended) { trigger_->set_suspended(suspended); };
     services.save = [this](const WinPreferences &updated) {
@@ -333,17 +339,106 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
 void App::apply_trigger_at_launch() {
     std::wstring error;
     const TriggerBinding saved = preferences_->current().trigger;
-    if (trigger_->apply(saved, &error)) return;
-    std::wstring fallback_error;
-    if (saved != default_trigger() && trigger_->apply(default_trigger(), &fallback_error)) {
-        tray_detail_ = L"Shortcut unavailable; using Alt twice";
-    } else {
-        tray_detail_ = L"Shortcut unavailable";
+    if (!trigger_->apply(saved, &error)) {
+        std::wstring fallback_error;
+        if (saved != default_trigger() && trigger_->apply(default_trigger(), &fallback_error)) {
+            tray_detail_ = L"Shortcut unavailable; using Alt twice";
+        } else {
+            tray_detail_ = L"Shortcut unavailable";
+        }
+        tray_->notify(L"LemonVox shortcut unavailable", error.empty() ? tray_detail_ : error, true);
     }
-    tray_->notify(L"LemonVox shortcut unavailable", error.empty() ? tray_detail_ : error, true);
+    const auto &cancellation = preferences_->current().cancellation;
+    if (!cancellation) return;
+    std::wstring cancellation_error;
+    if (trigger_->apply_cancellation(cancellation, &cancellation_error)) return;
+    tray_detail_ = L"Cancellation shortcut unavailable; use X or the tray menu";
+    tray_->notify(L"LemonVox cancellation shortcut unavailable",
+        cancellation_error.empty() ? tray_detail_ : cancellation_error, true);
+}
+
+bool App::apply_shortcuts(const TriggerBinding &binding, const std::optional<TriggerBinding> &cancellation,
+    std::wstring *error) {
+    if (!trigger_) {
+        if (error) *error = L"The shortcut listener is not running";
+        return false;
+    }
+    if (controller_->busy()) {
+        if (error) *error = L"Finish or cancel the current dictation before changing shortcuts";
+        return false;
+    }
+    if (cancellation && binding == *cancellation) {
+        if (error) *error = L"The cancellation shortcut must differ from the dictation shortcut";
+        return false;
+    }
+    const std::optional<TriggerBinding> previous_trigger = trigger_->active();
+    const std::optional<TriggerBinding> previous_cancellation = trigger_->active_cancellation();
+    std::wstring reason;
+
+    // Removing cancellation happens last: preserving the old hook while a
+    // regular shortcut is validated makes a failed regular rebind leave both
+    // previous shortcuts active. Add/change paths can restore the already-live
+    // hook configuration if the regular shortcut rejects.
+    if (previous_cancellation && !cancellation) {
+        if (!trigger_->apply(binding, &reason)) {
+            if (error) *error = reason;
+            return false;
+        }
+        if (trigger_->apply_cancellation(cancellation, &reason)) return true;
+        std::wstring ignored;
+        if (previous_trigger) trigger_->apply(*previous_trigger, &ignored);
+        if (error) *error = reason;
+        return false;
+    }
+
+    if (previous_cancellation != cancellation && !trigger_->apply_cancellation(cancellation, &reason)) {
+        if (error) *error = reason;
+        return false;
+    }
+    if (trigger_->apply(binding, &reason)) return true;
+    if (previous_cancellation != cancellation) {
+        std::wstring ignored;
+        trigger_->apply_cancellation(previous_cancellation, &ignored);
+    }
+    if (error) *error = reason;
+    return false;
+}
+
+void App::toggle_dictation() {
+    if (!controller_) return;
+    if (controller_->phase() == WorkflowPhase::recording) {
+        controller_->stop();
+        return;
+    }
+    if (!controller_->busy()) start_dictation();
+}
+
+void App::start_dictation() {
+    if (!controller_ || controller_->busy()) return;
+    // Arm before WorkflowCore performs target/model/capture preflight. The
+    // controller clears it synchronously on every terminal idle transition.
+    // Closing either shortcut recorder first prevents it from competing with
+    // a real cancellation chord.
+    if (settings_) settings_->set_shortcuts_editable(false);
+    trigger_->set_cancellation_armed(trigger_->active_cancellation().has_value());
+    if (!controller_->start()) {
+        trigger_->set_cancellation_armed(false);
+        if (settings_) settings_->set_shortcuts_editable(true);
+    }
+}
+
+void App::cancel_dictation() {
+    if (trigger_) trigger_->set_cancellation_armed(false);
+    if (controller_) controller_->cancel();
+    if (indicator_) indicator_->set_state({});
 }
 
 void App::on_phase(WorkflowPhase phase) {
+    // start_dictation() arms once before preflight. Do not re-arm on later
+    // non-idle phases: a consumed cancellation chord stays consumed until the
+    // cancel callback runs, and idle invalidates any stale queued callback.
+    if (trigger_ && phase == WorkflowPhase::idle) trigger_->set_cancellation_armed(false);
+    if (settings_) settings_->set_shortcuts_editable(phase == WorkflowPhase::idle);
     ui::IndicatorState state;
     state.mode = ui::indicator_mode_for_phase(phase);
     if (phase == WorkflowPhase::recording) recording_started_ = std::chrono::steady_clock::now();
@@ -378,7 +473,10 @@ void App::show_failure(const UserMessage &message) {
 }
 
 void App::open_settings() {
-    if (settings_) settings_->show(preferences_->current());
+    if (settings_) {
+        settings_->show(preferences_->current());
+        settings_->set_shortcuts_editable(!controller_->busy());
+    }
 }
 
 void App::refresh_tray() {
@@ -402,7 +500,7 @@ void App::copy_pending() {
 void App::quit() {
     if (quitting_) return;
     quitting_ = true;
-    controller_->cancel();
+    cancel_dictation();
     PostQuitMessage(0);
 }
 

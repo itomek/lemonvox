@@ -130,6 +130,29 @@ static void recorder_logic() {
     CHECK(record_key(VK_PROCESSKEY, MOD_CONTROL).outcome == RecordStep::Outcome::pending);
 }
 
+static void cancellation_recorder_logic() {
+    CHECK(record_cancellation_key(VK_ESCAPE, 0).outcome == RecordStep::Outcome::canceled);
+
+    auto step = record_cancellation_key(VK_MENU, MOD_ALT);
+    CHECK(step.outcome == RecordStep::Outcome::pending);
+    CHECK(step.display == L"Alt+…");
+    step = record_cancellation_key(VK_ESCAPE, MOD_ALT);
+    CHECK(step.outcome == RecordStep::Outcome::captured);
+    CHECK(step.binding == combo(MOD_ALT, VK_ESCAPE));
+    CHECK(step.display == L"Alt+Esc");
+    CHECK(cancellation_round_trips(step.binding));
+
+    step = record_cancellation_key(VK_ESCAPE, MOD_SHIFT);
+    CHECK(step.outcome == RecordStep::Outcome::captured);
+    CHECK(step.binding == combo(MOD_SHIFT, VK_ESCAPE));
+    CHECK(cancellation_round_trips(step.binding));
+
+    // AltGr reports Ctrl+Alt and must not become Alt+Esc cancellation.
+    CHECK(record_cancellation_key(VK_ESCAPE, MOD_CONTROL | MOD_ALT).outcome == RecordStep::Outcome::rejected);
+    CHECK(record_cancellation_key('K', MOD_ALT).outcome == RecordStep::Outcome::rejected);
+    CHECK(record_cancellation_key(VK_ESCAPE, MOD_WIN).outcome == RecordStep::Outcome::rejected);
+}
+
 static void endpoint_validation() {
     CHECK(validate_endpoint(L"http://127.0.0.1:13305/v1").empty());
     CHECK(validate_endpoint(L"  http://localhost:13305/v1/  ").empty());
@@ -207,7 +230,7 @@ static void layout_scales_without_overlap() {
         // Every label sits above or beside (never below) the control it names.
         CHECK(layout.rects[static_cast<int>(SettingsControl::asr_label)].bottom
             <= layout.rects[static_cast<int>(SettingsControl::asr_combo)].top);
-        if (dpi == 96) CHECK(layout.client.cy < 700);
+        if (dpi == 96) CHECK(layout.client.cy < 780);
     }
 }
 
@@ -217,6 +240,7 @@ int main() {
     device_choices();
     trigger_choices();
     recorder_logic();
+    cancellation_recorder_logic();
     endpoint_validation();
     newline_conversion();
     status_text();

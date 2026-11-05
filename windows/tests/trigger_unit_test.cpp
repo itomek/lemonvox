@@ -185,11 +185,21 @@ void normalizer_altgr() {
     assert(normalizer.key(fake, &event) && is_intervening(event));
     assert(normalizer.key(raw(VK_RMENU, true, 500), &event) && is_intervening(event));
     assert(normalizer.held_modifiers() == (MOD_CONTROL | MOD_ALT));
+    TriggerBinding alt_cancel;
+    alt_cancel.kind = TriggerKind::combination;
+    alt_cancel.modifiers = MOD_ALT;
+    alt_cancel.virtual_key = VK_ESCAPE;
+    TriggerBinding ctrl_cancel = alt_cancel;
+    ctrl_cancel.modifiers = MOD_CONTROL;
     // Repeats keep arriving as pairs and stay intervening.
     assert(normalizer.key(fake, &event) && is_intervening(event));
     assert(normalizer.key(raw(VK_RMENU, true, 530), &event) && is_intervening(event));
     fake.flags |= LLKHF_UP;
     assert(normalizer.key(fake, &event) && is_intervening(event));
+    // When synthetic Ctrl releases first, the remaining right Alt is still
+    // one AltGr pair. Esc between releases must not look like Alt+Esc.
+    assert(normalizer.held_modifiers() == (MOD_CONTROL | MOD_ALT));
+    assert(!cancellation_matches(alt_cancel, VK_ESCAPE, true, normalizer.held_modifiers()));
     assert(normalizer.key(raw(VK_RMENU, false, 560), &event) && is_intervening(event));
     assert(normalizer.held_modifiers() == 0);
     // After AltGr is released a real right Alt is Alt again.
@@ -201,9 +211,41 @@ void normalizer_altgr() {
     assert(normalizer.key(fake, &event));
     assert(normalizer.key(raw(VK_RMENU, true, 1000), &event) && is_intervening(event));
     assert(normalizer.key(raw(VK_RMENU, false, 1050), &event) && is_intervening(event));
+    // And when right Alt releases first, the pending synthetic Ctrl is still
+    // one AltGr pair, never a standalone Ctrl+Esc cancellation gesture.
+    assert(normalizer.held_modifiers() == (MOD_CONTROL | MOD_ALT));
+    assert(!cancellation_matches(ctrl_cancel, VK_ESCAPE, true, normalizer.held_modifiers()));
     fake.flags |= LLKHF_UP;
     assert(normalizer.key(fake, &event) && is_intervening(event));
     assert(normalizer.held_modifiers() == 0);
+
+    // A genuine Ctrl or Alt held alongside AltGr remains present after the
+    // synthetic pair releases.
+    KeyNormalizer real_ctrl;
+    assert(real_ctrl.key(raw(VK_LCONTROL, true, 2000), &event));
+    RawKeyEvent ctrl_fake = raw(VK_LCONTROL, true, 2100);
+    ctrl_fake.scan_code = kFakeCtrlScan;
+    assert(real_ctrl.key(ctrl_fake, &event));
+    assert(real_ctrl.key(raw(VK_RMENU, true, 2100), &event));
+    ctrl_fake.flags |= LLKHF_UP;
+    assert(real_ctrl.key(ctrl_fake, &event));
+    assert(real_ctrl.key(raw(VK_RMENU, false, 2110), &event));
+    assert(real_ctrl.held_modifiers() == MOD_CONTROL);
+    assert(real_ctrl.key(raw(VK_LCONTROL, false, 2120), &event));
+    assert(real_ctrl.held_modifiers() == 0);
+
+    KeyNormalizer real_alt;
+    assert(real_alt.key(raw(VK_LMENU, true, 2200), &event));
+    RawKeyEvent alt_fake = raw(VK_LCONTROL, true, 2300);
+    alt_fake.scan_code = kFakeCtrlScan;
+    assert(real_alt.key(alt_fake, &event));
+    assert(real_alt.key(raw(VK_RMENU, true, 2300), &event));
+    assert(real_alt.key(raw(VK_RMENU, false, 2310), &event));
+    alt_fake.flags |= LLKHF_UP;
+    assert(real_alt.key(alt_fake, &event));
+    assert(real_alt.held_modifiers() == MOD_ALT);
+    assert(real_alt.key(raw(VK_LMENU, false, 2320), &event));
+    assert(real_alt.held_modifiers() == 0);
 
     // Window-message form: no 0x200 marker, recognised by the identical timestamp.
     KeyNormalizer messages;
@@ -456,6 +498,56 @@ void recorder() {
     assert(serialize_trigger(recorder.binding()) == "combo:ctrl+alt:0x51");
 }
 
+void cancellation_shortcut_requires_an_active_held_modifier() {
+    TriggerBinding alt_cancel;
+    alt_cancel.kind = TriggerKind::combination;
+    alt_cancel.modifiers = MOD_ALT;
+    alt_cancel.virtual_key = VK_ESCAPE;
+    assert(is_cancellation_binding(alt_cancel));
+    assert(cancellation_matches(alt_cancel, VK_ESCAPE, true, MOD_ALT));
+    assert(!cancellation_matches(alt_cancel, VK_ESCAPE, false, MOD_ALT));
+    assert(!cancellation_matches(alt_cancel, VK_ESCAPE, true, 0));
+    assert(!cancellation_matches(alt_cancel, VK_ESCAPE, true, MOD_ALT | MOD_CONTROL));
+
+    TriggerBinding ctrl_cancel = alt_cancel;
+    ctrl_cancel.modifiers = MOD_CONTROL;
+    assert(is_cancellation_binding(ctrl_cancel));
+    assert(cancellation_matches(ctrl_cancel, VK_ESCAPE, true, MOD_CONTROL));
+
+    TriggerBinding shift_cancel = alt_cancel;
+    shift_cancel.modifiers = MOD_SHIFT;
+    assert(is_cancellation_binding(shift_cancel));
+    assert(serialize_cancellation_binding(shift_cancel) == "combo:shift:0x1B");
+    TriggerBinding parsed;
+    assert(parse_cancellation_binding("combo:shift:0x1B", parsed));
+    assert(parsed == shift_cancel);
+
+    TriggerBinding invalid = alt_cancel;
+    invalid.kind = TriggerKind::double_tap;
+    assert(!is_cancellation_binding(invalid));
+    invalid = alt_cancel;
+    invalid.modifiers = MOD_ALT | MOD_CONTROL;
+    assert(!is_cancellation_binding(invalid));
+    invalid = alt_cancel;
+    invalid.modifiers = MOD_WIN;
+    assert(!is_cancellation_binding(invalid));
+    invalid = alt_cancel;
+    invalid.virtual_key = 'X';
+    assert(!is_cancellation_binding(invalid));
+    assert(!parse_cancellation_binding("combo:ctrl+alt:0x1B", parsed));
+
+    // AltGr is represented as synthetic Ctrl plus right Alt. It must never
+    // satisfy the opt-in Alt+Esc cancellation chord.
+    KeyNormalizer normalizer;
+    LVNormalizedKeyEvent event;
+    RawKeyEvent fake_ctrl = raw(VK_LCONTROL, true, 100);
+    fake_ctrl.scan_code = kFakeCtrlScan;
+    assert(normalizer.key(fake_ctrl, &event));
+    assert(normalizer.key(raw(VK_RMENU, true, 100), &event));
+    assert(normalizer.held_modifiers() == (MOD_CONTROL | MOD_ALT));
+    assert(!cancellation_matches(alt_cancel, VK_ESCAPE, true, normalizer.held_modifiers()));
+}
+
 } // namespace
 
 int main() {
@@ -464,6 +556,7 @@ int main() {
     normalizer_altgr();
     double_tap_sequences();
     recorder();
+    cancellation_shortcut_requires_an_active_held_modifier();
     std::puts("trigger_unit_test: ok");
     return 0;
 }

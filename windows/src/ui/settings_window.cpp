@@ -63,6 +63,9 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"", Kind::combo},
     {L"&Custom shortcut", Kind::label},
     {L"", Kind::recorder},
+    {L"Cancel &dictation", Kind::label},
+    {L"", Kind::recorder},
+    {L"Clear", Kind::button},
     {L"&Insert into", Kind::label},
     {L"", Kind::combo},
     {L"&Microphone", Kind::label},
@@ -172,6 +175,7 @@ public:
         create_controls();
         update_font();
         populate(current);
+        set_shortcuts_editable(shortcuts_editable_);
         apply_theme();
         apply_layout(true, nullptr);
         saved_focus_ = control(SettingsControl::endpoint_edit);
@@ -190,7 +194,8 @@ public:
         if (message->hwnd != hwnd_ && !IsChild(hwnd_, message->hwnd)) return false;
         // While recording, keys go straight to the recorder untranslated so
         // Alt+letter cannot trigger a mnemonic and Enter/Esc stay recordable.
-        if (recording_ && message->hwnd == control(SettingsControl::recorder_edit)
+        if (recording_ && (message->hwnd == control(SettingsControl::recorder_edit)
+                || message->hwnd == control(SettingsControl::cancellation_recorder_edit))
             && message->message >= WM_KEYFIRST && message->message <= WM_KEYLAST && !is_plain_tab(*message)) {
             DispatchMessageW(message);
             return true;
@@ -262,12 +267,16 @@ private:
         }
         SetWindowSubclass(control(SettingsControl::recorder_edit), &Impl::recorder_proc, kSubclassId,
             reinterpret_cast<DWORD_PTR>(this));
+        SetWindowSubclass(control(SettingsControl::cancellation_recorder_edit), &Impl::recorder_proc, kSubclassId,
+            reinterpret_cast<DWORD_PTR>(this));
         SetWindowSubclass(control(SettingsControl::prompt_edit), &Impl::prompt_proc, kSubclassId,
             reinterpret_cast<DWORD_PTR>(this));
         SendMessageW(control(SettingsControl::endpoint_edit), EM_SETCUEBANNER, FALSE,
             reinterpret_cast<LPARAM>(L"http://127.0.0.1:13305/v1"));
         SendMessageW(control(SettingsControl::recorder_edit), EM_SETCUEBANNER, FALSE,
             reinterpret_cast<LPARAM>(L"Focus here, then press keys"));
+        SendMessageW(control(SettingsControl::cancellation_recorder_edit), EM_SETCUEBANNER, FALSE,
+            reinterpret_cast<LPARAM>(L"Hold Alt, Ctrl, or Shift, then press Esc"));
         for (const auto combo : {SettingsControl::asr_combo, SettingsControl::cleanup_combo}) {
             SendMessageW(control(combo), CB_SETCUEBANNER, 0, reinterpret_cast<LPARAM>(L"Choose a model"));
         }
@@ -299,6 +308,9 @@ private:
         services->SetHwndPropStr(control(SettingsControl::recorder_edit), static_cast<DWORD>(OBJID_CLIENT),
             CHILDID_SELF, kDescriptionProperty,
             L"While focused, press the shortcut to record it. Esc cancels.");
+        services->SetHwndPropStr(control(SettingsControl::cancellation_recorder_edit), static_cast<DWORD>(OBJID_CLIENT),
+            CHILDID_SELF, kDescriptionProperty,
+            L"While focused, hold Alt, Ctrl, or Shift and press Esc. Bare Esc cancels recording.");
         acc_services_ = services;
     }
 
@@ -309,7 +321,7 @@ private:
         acc_services_->ClearHwndProps(control(SettingsControl::status), static_cast<DWORD>(OBJID_CLIENT),
             CHILDID_SELF, &live, 1);
         for (const auto which : {SettingsControl::endpoint_edit, SettingsControl::cleanup_combo,
-                 SettingsControl::recorder_edit}) {
+                 SettingsControl::recorder_edit, SettingsControl::cancellation_recorder_edit}) {
             acc_services_->ClearHwndProps(control(which), static_cast<DWORD>(OBJID_CLIENT), CHILDID_SELF,
                 &description, 1);
         }
@@ -329,6 +341,11 @@ private:
             {L"Original field (recommended)", L"Field focused when processing finishes"},
             current.insert_current_target ? 1 : 0);
         rebuild_trigger();
+        cancellation_.reset();
+        if (current.cancellation && settings::cancellation_round_trips(*current.cancellation)) {
+            cancellation_ = current.cancellation;
+        }
+        update_cancellation_text();
         rebuild_devices(current.capture_device_id);
         populating_ = false;
     }
@@ -371,6 +388,11 @@ private:
     void update_recorder_text() {
         const std::wstring text = trigger_.kind == TriggerKind::combination ? describe_trigger(trigger_) : L"";
         SetWindowTextW(control(SettingsControl::recorder_edit), text.c_str());
+    }
+
+    void update_cancellation_text() {
+        const std::wstring text = cancellation_ ? describe_trigger(*cancellation_) : L"Not set";
+        SetWindowTextW(control(SettingsControl::cancellation_recorder_edit), text.c_str());
     }
 
     void set_status(StatusText status) {
@@ -421,39 +443,73 @@ private:
         if (services_.set_trigger_suspended) services_.set_trigger_suspended(suspended);
     }
 
-    void begin_recording() {
-        if (recording_) return;
+    enum class RecordingTarget { none, trigger, cancellation };
+
+    HWND recorder_control(RecordingTarget target) const {
+        return control(target == RecordingTarget::cancellation
+            ? SettingsControl::cancellation_recorder_edit : SettingsControl::recorder_edit);
+    }
+
+    void begin_recording(RecordingTarget target) {
+        if (recording_ || !shortcuts_editable_) return;
         recording_ = true;
+        recording_target_ = target;
         set_suspended(true);
-        SetWindowTextW(control(SettingsControl::recorder_edit), settings::kRecorderPrompt);
+        SetWindowTextW(recorder_control(target), settings::kRecorderPrompt);
     }
 
     void end_recording() {
         if (!recording_) return;
         recording_ = false;
+        recording_target_ = RecordingTarget::none;
         set_suspended(false);
         update_recorder_text();
+        update_cancellation_text();
     }
 
-    void on_recorder_key(std::uint32_t virtual_key) {
-        const RecordStep step = settings::record_key(virtual_key, held_modifiers());
+public:
+    void set_shortcuts_editable(bool editable) {
+        if (shortcuts_editable_ == editable && !hwnd_) return;
+        const bool recorder_focused = hwnd_ && (GetFocus() == control(SettingsControl::recorder_edit)
+            || GetFocus() == control(SettingsControl::cancellation_recorder_edit));
+        shortcuts_editable_ = editable;
+        if (!editable) end_recording();
+        if (!hwnd_) return;
+        for (const auto control_id : {SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
+                 SettingsControl::cancellation_recorder_edit, SettingsControl::cancellation_clear_button}) {
+            EnableWindow(control(control_id), editable ? TRUE : FALSE);
+        }
+        if (!editable && recorder_focused) SetFocus(control(SettingsControl::endpoint_edit));
+    }
+
+private:
+    void on_recorder_key(RecordingTarget target, std::uint32_t virtual_key) {
+        const RecordStep step = target == RecordingTarget::cancellation
+            ? settings::record_cancellation_key(virtual_key, held_modifiers())
+            : settings::record_key(virtual_key, held_modifiers());
+        const HWND recorder = recorder_control(target);
         switch (step.outcome) {
         case RecordStep::Outcome::pending:
-            SetWindowTextW(control(SettingsControl::recorder_edit), step.display.c_str());
+            SetWindowTextW(recorder, step.display.c_str());
             break;
         case RecordStep::Outcome::rejected:
-            SetWindowTextW(control(SettingsControl::recorder_edit), settings::kRecorderPrompt);
+            SetWindowTextW(recorder, settings::kRecorderPrompt);
             set_status({step.display, true});
             break;
         case RecordStep::Outcome::canceled:
-            SetFocus(control(SettingsControl::shortcut_combo));
+            SetFocus(target == RecordingTarget::cancellation
+                ? control(SettingsControl::cancellation_clear_button) : control(SettingsControl::shortcut_combo));
             break;
         case RecordStep::Outcome::captured:
-            trigger_ = step.binding;
+            if (target == RecordingTarget::cancellation) cancellation_ = step.binding;
+            else trigger_ = step.binding;
             recording_ = false;
+            recording_target_ = RecordingTarget::none;
             set_suspended(false);
             rebuild_trigger();
-            SetFocus(control(SettingsControl::shortcut_combo));
+            update_cancellation_text();
+            SetFocus(target == RecordingTarget::cancellation
+                ? control(SettingsControl::cancellation_clear_button) : control(SettingsControl::shortcut_combo));
             break;
         }
     }
@@ -498,21 +554,37 @@ private:
         preferences.cleanup_prompt = wide_to_utf8(prompt);
         preferences.insert_current_target = combo_selection(control(SettingsControl::insert_combo)) == 1;
         preferences.trigger = trigger_;
+        preferences.cancellation = cancellation_;
         preferences.capture_device_id = selected_device();
 
-        const bool trigger_changed = preferences.trigger != original_->trigger;
-        if (trigger_changed && services_.apply_trigger) {
+        if (preferences.cancellation && preferences.trigger == *preferences.cancellation) {
+            set_status({L"Use a different shortcut to cancel dictation.", true});
+            SetFocus(control(SettingsControl::cancellation_recorder_edit));
+            return;
+        }
+        const bool shortcuts_changed = preferences.trigger != original_->trigger
+            || preferences.cancellation != original_->cancellation;
+        if (shortcuts_changed && !shortcuts_editable_) {
+            set_status({L"Finish or cancel the current dictation before changing shortcuts.", true});
+            return;
+        }
+        if (shortcuts_changed && services_.apply_shortcuts) {
             std::wstring reason;
-            if (!services_.apply_trigger(preferences.trigger, &reason)) {
-                set_status({L"The shortcut " + describe_trigger(preferences.trigger) + L" is unavailable"
+            if (!services_.apply_shortcuts(preferences.trigger, preferences.cancellation, &reason)) {
+                const std::wstring label = preferences.cancellation != original_->cancellation && preferences.cancellation
+                    ? describe_trigger(*preferences.cancellation) : describe_trigger(preferences.trigger);
+                set_status({L"The shortcut " + label + L" is unavailable"
                         + (reason.empty() ? L"" : L": " + reason) + L". Choose another shortcut.",
                     true});
-                SetFocus(control(SettingsControl::shortcut_combo));
+                SetFocus(preferences.cancellation != original_->cancellation
+                    ? control(SettingsControl::cancellation_recorder_edit) : control(SettingsControl::shortcut_combo));
                 return;
             }
         }
         if (services_.save && !services_.save(preferences)) {
-            if (trigger_changed && services_.apply_trigger) services_.apply_trigger(original_->trigger, nullptr);
+            if (shortcuts_changed && services_.apply_shortcuts) {
+                services_.apply_shortcuts(original_->trigger, original_->cancellation, nullptr);
+            }
             set_status({L"Settings could not be saved. Try again.", true});
             return;
         }
@@ -671,6 +743,12 @@ private:
         case SettingsControl::shortcut_combo:
             on_shortcut_command(code);
             break;
+        case SettingsControl::cancellation_clear_button:
+            if (code == BN_CLICKED && shortcuts_editable_) {
+                cancellation_.reset();
+                update_cancellation_text();
+            }
+            break;
         default:
             break;
         }
@@ -711,7 +789,7 @@ private:
             }
             return 0;
         case kFocusRecorderMessage:
-            SetFocus(control(SettingsControl::recorder_edit));
+            if (shortcuts_editable_) SetFocus(control(SettingsControl::recorder_edit));
             return 0;
         case WM_DPICHANGED:
             dpi_ = HIWORD(wparam);
@@ -733,6 +811,7 @@ private:
             break;
         case WM_DESTROY:
             recording_ = false;
+            recording_target_ = RecordingTarget::none;
             set_suspended(false);
             clear_accessibility();
             break;
@@ -762,6 +841,8 @@ private:
     static LRESULT CALLBACK recorder_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR,
         DWORD_PTR data) {
         auto *self = reinterpret_cast<Impl *>(data);
+        const RecordingTarget target = hwnd == self->control(SettingsControl::cancellation_recorder_edit)
+            ? RecordingTarget::cancellation : RecordingTarget::trigger;
         switch (message) {
         case WM_GETDLGCODE: {
             const auto *pending = reinterpret_cast<const MSG *>(lparam);
@@ -771,7 +852,7 @@ private:
         }
         case WM_SETFOCUS: {
             const LRESULT result = DefSubclassProc(hwnd, message, wparam, lparam);
-            self->begin_recording();
+            self->begin_recording(target);
             HideCaret(hwnd);
             return result;
         }
@@ -779,14 +860,14 @@ private:
             self->end_recording();
             break;
         case WM_KEYDOWN: case WM_SYSKEYDOWN:
-            if (self->recording_) {
-                self->on_recorder_key(static_cast<std::uint32_t>(wparam));
+            if (self->recording_ && self->recording_target_ == target) {
+                self->on_recorder_key(target, static_cast<std::uint32_t>(wparam));
                 return 0;
             }
             break;
         case WM_KEYUP: case WM_SYSKEYUP: case WM_CHAR: case WM_SYSCHAR: case WM_DEADCHAR: case WM_SYSDEADCHAR:
         case WM_IME_STARTCOMPOSITION: case WM_IME_COMPOSITION: case WM_IME_ENDCOMPOSITION: case WM_IME_CHAR:
-            if (self->recording_) return 0;
+            if (self->recording_ && self->recording_target_ == target) return 0;
             break;
         case WM_CONTEXTMENU: case WM_PASTE: case WM_CUT: case WM_CLEAR:
             return 0;
@@ -833,8 +914,11 @@ private:
     DeviceChoices device_choices_;
     TriggerChoices trigger_choices_;
     TriggerBinding trigger_;
+    std::optional<TriggerBinding> cancellation_;
     bool recording_ = false;
+    RecordingTarget recording_target_ = RecordingTarget::none;
     bool suspended_ = false;
+    bool shortcuts_editable_ = true;
     bool populating_ = false;
     std::uint64_t generation_ = 0;
     std::wstring last_endpoint_;
@@ -860,6 +944,7 @@ void SettingsWindow::close() { impl_->destroy(); }
 bool SettingsWindow::is_open() const { return impl_->hwnd() != nullptr; }
 HWND SettingsWindow::hwnd() const { return impl_->hwnd(); }
 bool SettingsWindow::pre_translate(MSG *message) { return impl_->pre_translate(message); }
+void SettingsWindow::set_shortcuts_editable(bool editable) { impl_->set_shortcuts_editable(editable); }
 bool SettingsWindow::dark_mode_active() const { return impl_->dark(); }
 
 } // namespace lemonvox::win

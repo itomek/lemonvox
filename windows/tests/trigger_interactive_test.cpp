@@ -6,14 +6,20 @@
 #include "common/trigger_binding.h"
 #include "support/interactive_lock.h"
 #include "trigger/global_trigger.h"
+#include "trigger/key_normalizer.h"
 
 #include <windows.h>
 
 #include <atomic>
 #include <cstdio>
+#include <deque>
+#include <functional>
 #include <initializer_list>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace lemonvox::win;
@@ -32,20 +38,25 @@ HWND g_window = nullptr;
 HWND g_edit = nullptr;
 DWORD g_ui_thread = 0;
 std::atomic<int> g_fired{0};
+std::atomic<int> g_canceled{0};
+std::atomic<int> g_escape_keyups{0};
 std::atomic<bool> g_wrong_thread{false};
+WNDPROC g_edit_proc = nullptr;
 
 struct Key {
     WORD vk;
     bool down;
+    ULONG_PTR extra_info = 0;
 };
 
-INPUT make_input(WORD vk, bool down) {
+INPUT make_input(WORD vk, bool down, ULONG_PTR extra_info = 0) {
     INPUT input{};
     input.type = INPUT_KEYBOARD;
     const UINT scan = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX);
     input.ki.wVk = vk;
     input.ki.wScan = static_cast<WORD>(scan & 0xFF);
     input.ki.dwFlags = ((scan & 0xFF00) == 0xE000 ? KEYEVENTF_EXTENDEDKEY : 0u) | (down ? 0u : KEYEVENTF_KEYUP);
+    input.ki.dwExtraInfo = extra_info;
     return input;
 }
 
@@ -55,7 +66,7 @@ bool foreground_is_ours() {
 
 bool send(std::initializer_list<Key> keys) {
     std::vector<INPUT> inputs;
-    for (const Key &key : keys) inputs.push_back(make_input(key.vk, key.down));
+    for (const Key &key : keys) inputs.push_back(make_input(key.vk, key.down, key.extra_info));
     if (!foreground_is_ours()) {
         std::fprintf(stderr, "test window lost the foreground; refusing to inject\n");
         return false;
@@ -109,11 +120,48 @@ bool typed_text_reaches_edit() {
     return true;
 }
 
+TriggerBinding cancellation(std::uint32_t modifiers) {
+    TriggerBinding binding;
+    binding.kind = TriggerKind::combination;
+    binding.modifiers = modifiers;
+    binding.virtual_key = VK_ESCAPE;
+    return binding;
+}
+
 bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
     std::wstring error;
     REQUIRE(trigger.apply(default_trigger(), &error));
     REQUIRE(trigger.active() && *trigger.active() == default_trigger());
+    // Shift+Escape is a safe interactive stand-in for a user-configured
+    // cancellation chord. Alt+Escape remains opt-in because Windows reserves
+    // it for window switching and needs a separate real-desktop check.
+    const TriggerBinding cancel = cancellation(MOD_SHIFT);
+    REQUIRE(trigger.apply_cancellation(std::optional<TriggerBinding>{cancel}, &error));
+    REQUIRE(trigger.active_cancellation() && *trigger.active_cancellation() == cancel);
     Sleep(200);
+
+    // Idle ordinary Escape and a released modifier followed by Escape reach
+    // Windows unchanged: neither can invoke cancellation.
+    REQUIRE(send({{VK_ESCAPE, true}, {VK_ESCAPE, false}}));
+    REQUIRE(send({{VK_LSHIFT, true}, {VK_LSHIFT, false}, {VK_ESCAPE, true}, {VK_ESCAPE, false}}));
+    REQUIRE(settle_and_expect(0));
+    REQUIRE(g_canceled.load() == 0);
+
+    // Only an armed, exact held-modifier Escape is consumed and delivered to
+    // the UI callback. The matching key-up is consumed too, avoiding an
+    // unmatched Escape release in the foreground control.
+    trigger.set_cancellation_armed(true);
+    REQUIRE(send({{VK_LSHIFT, true}, {VK_ESCAPE, true}, {VK_ESCAPE, false}, {VK_LSHIFT, false}}));
+    const ULONGLONG cancel_deadline = GetTickCount64() + 2000;
+    while (g_canceled.load() != 1 && GetTickCount64() < cancel_deadline) Sleep(10);
+    REQUIRE(g_canceled.load() == 1);
+    REQUIRE(!trigger.cancellation_armed());
+    REQUIRE(settle_and_expect(0));
+
+    // Disarmed, the same configured chord is not intercepted.
+    REQUIRE(send({{VK_LSHIFT, true}, {VK_ESCAPE, true}, {VK_ESCAPE, false}, {VK_LSHIFT, false}}));
+    REQUIRE(settle_and_expect(0));
+    REQUIRE(g_canceled.load() == 1);
 
     // Double Alt fires exactly once, and leaves the window out of menu mode.
     REQUIRE(double_alt());
@@ -197,6 +245,7 @@ bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
     // After shutdown nothing fires.
     trigger.shutdown();
     REQUIRE(!trigger.active());
+    REQUIRE(!trigger.active_cancellation());
     REQUIRE(double_alt());
     REQUIRE(settle_and_expect(6));
     REQUIRE(!in_menu_mode());
@@ -217,6 +266,11 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
     default:
         return DefWindowProcW(hwnd, message, wparam, lparam);
     }
+}
+
+LRESULT CALLBACK edit_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    if ((message == WM_KEYUP || message == WM_SYSKEYUP) && wparam == VK_ESCAPE) g_escape_keyups.fetch_add(1);
+    return CallWindowProcW(g_edit_proc, hwnd, message, wparam, lparam);
 }
 
 void pump_for(DWORD ms) {
@@ -264,6 +318,71 @@ bool modifiers_released() {
     return false;
 }
 
+class QueuedExecutor final : public Executor {
+public:
+    bool post(std::function<void()> task) override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        tasks_.push_back(std::move(task));
+        return true;
+    }
+
+    void drain() {
+        std::deque<std::function<void()>> tasks;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            tasks.swap(tasks_);
+        }
+        for (auto &task : tasks) task();
+    }
+
+private:
+    std::mutex mutex_;
+    std::deque<std::function<void()>> tasks_;
+};
+
+bool wait_for_disarmed(const GlobalTrigger &trigger, DWORD timeout_ms = 2000) {
+    const ULONGLONG deadline = GetTickCount64() + timeout_ms;
+    while (trigger.cancellation_armed() && GetTickCount64() < deadline) Sleep(10);
+    return !trigger.cancellation_armed();
+}
+
+bool stale_cancellation_callback_is_invalidated() {
+    QueuedExecutor executor;
+    std::atomic<int> canceled{0};
+    GlobalTrigger trigger(executor, [] {}, [&canceled] { canceled.fetch_add(1); });
+    std::wstring error;
+    const TriggerBinding cancel = cancellation(MOD_SHIFT);
+    REQUIRE(trigger.apply(default_trigger(), &error));
+    REQUIRE(trigger.apply_cancellation(std::optional<TriggerBinding>{cancel}, &error));
+    trigger.set_cancellation_armed(true);
+    Sleep(100);
+
+    // Consume a physical Escape down but do not drain the callback yet.
+    g_escape_keyups = 0;
+    REQUIRE(send({{VK_LSHIFT, true}, {VK_ESCAPE, true}}));
+    REQUIRE(wait_for_disarmed(trigger));
+
+    // Tagged LemonVox input must pass through even while the physical Escape
+    // key-up remains armed for suppression. Its up reaches the foreground
+    // EDIT; the physical companion up below does not.
+    REQUIRE(send({{VK_ESCAPE, true, kLemonVoxInjectedTag}, {VK_ESCAPE, false, kLemonVoxInjectedTag}}));
+    const ULONGLONG tagged_deadline = GetTickCount64() + 2000;
+    while (g_escape_keyups.load() != 1 && GetTickCount64() < tagged_deadline) pump_for(10);
+    REQUIRE(g_escape_keyups.load() == 1);
+    REQUIRE(send({{VK_ESCAPE, false}, {VK_LSHIFT, false}}));
+    pump_for(100);
+    REQUIRE(g_escape_keyups.load() == 1);
+
+    // An idle/next-session transition invalidates the queued old callback so
+    // it cannot cancel the newly armed session when the executor later drains.
+    trigger.set_cancellation_armed(false);
+    trigger.set_cancellation_armed(true);
+    executor.drain();
+    REQUIRE(canceled.load() == 0);
+    trigger.shutdown();
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -296,8 +415,25 @@ int main() {
         std::fprintf(stderr, "could not create the test window\n");
         return 1;
     }
+    g_edit_proc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(g_edit, GWLP_WNDPROC,
+        reinterpret_cast<LONG_PTR>(&edit_proc)));
+    if (!g_edit_proc) {
+        std::fprintf(stderr, "could not subclass the test edit control\n");
+        DestroyWindow(g_window);
+        return 1;
+    }
     if (!bring_to_foreground()) {
         std::fprintf(stderr, "test window could not become foreground; refusing to inject input\n");
+        DestroyWindow(g_window);
+        return 1;
+    }
+
+    if (!stale_cancellation_callback_is_invalidated()) {
+        DestroyWindow(g_window);
+        return 1;
+    }
+    if (!modifiers_released()) {
+        std::fprintf(stderr, "cancellation test left a modifier held\n");
         DestroyWindow(g_window);
         return 1;
     }
@@ -319,10 +455,15 @@ int main() {
     bool ok = false;
     {
         UiThreadExecutor executor;
-        GlobalTrigger trigger(executor, [] {
-            if (GetCurrentThreadId() != g_ui_thread) g_wrong_thread = true;
-            g_fired.fetch_add(1);
-        });
+        GlobalTrigger trigger(executor,
+            [] {
+                if (GetCurrentThreadId() != g_ui_thread) g_wrong_thread = true;
+                g_fired.fetch_add(1);
+            },
+            [] {
+                if (GetCurrentThreadId() != g_ui_thread) g_wrong_thread = true;
+                g_canceled.fetch_add(1);
+            });
         std::atomic<bool> done{false};
         std::thread driver([&] {
             ok = scenario(trigger, blocked_vk);
@@ -339,13 +480,14 @@ int main() {
         driver.join();
         trigger.shutdown();
         executor.drain();
-        if (g_fired.load() != 6) ok = false;
+        if (g_fired.load() != 6 || g_canceled.load() != 1) ok = false;
         executor.shutdown();
     }
 
     UnregisterHotKey(blocker, 1);
     DestroyWindow(blocker);
     DestroyWindow(g_window);
-    std::printf("trigger_interactive_test: %s (fired %d)\n", ok ? "ok" : "FAILED", g_fired.load());
+    std::printf("trigger_interactive_test: %s (fired %d, canceled %d)\n", ok ? "ok" : "FAILED",
+        g_fired.load(), g_canceled.load());
     return ok ? 0 : 1;
 }

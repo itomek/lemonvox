@@ -28,6 +28,21 @@ struct TriggerBinding {
 // The Windows default: Alt pressed twice on either side (AltGr never counts).
 TriggerBinding default_trigger();
 
+// An opt-in cancellation gesture is exactly one held Alt, Ctrl, or Shift key
+// plus Escape. It is separate from ordinary global trigger validation so a
+// Shift+Escape cancellation gesture cannot become a global typing shortcut.
+bool is_cancellation_binding(const TriggerBinding &binding);
+// Stable storage form for an opt-in cancellation gesture. Invalid values
+// serialize to an empty string; an absent registry value means cancellation is
+// not configured.
+std::string serialize_cancellation_binding(const TriggerBinding &binding);
+bool parse_cancellation_binding(const std::string &text, TriggerBinding &binding);
+// Returns true only for an Escape key-down with exactly the configured
+// modifier state. Callers provide their native modifier tracking so AltGr
+// (Ctrl+Alt) cannot match an Alt-only cancellation binding.
+bool cancellation_matches(const TriggerBinding &binding, std::uint32_t virtual_key,
+    bool down, std::uint32_t held_modifiers);
+
 // Stable ASCII storage form, e.g. "double:alt:any" or "combo:ctrl+shift:0x20".
 std::string serialize_trigger(const TriggerBinding &binding);
 // Returns false and leaves `binding` unchanged for malformed or unsupported input.
