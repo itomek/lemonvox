@@ -1,0 +1,54 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build LemonVox",
+            "detail": "Quit a running .build copy, then build the app for this OS into .build (Windows: windows/scripts/dev.ps1, Debug, no tests; macOS: scripts/build.sh).",
+            "type": "process",
+            "command": "/bin/bash",
+            "args": ["-c", "echo 'LemonVox has no Linux host yet; only Windows (windows/) and macOS (macos/) can be built.' >&2; exit 1"],
+            "windows": {
+                "command": "powershell.exe",
+                "args": [
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File", "${workspaceFolder}\\windows\\scripts\\dev.ps1"
+                ]
+            },
+            "osx": {
+                "command": "/bin/bash",
+                "args": ["-c", "pkill -f \"$0/.build/LemonVox.app/Contents/MacOS/\"; exec bash \"$0/scripts/build.sh\"", "${workspaceFolder}"]
+            },
+            "group": { "kind": "build", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+            "problemMatcher": [
+                "$msCompile",
+                "$gcc"
+            ],
+            "inAgents": true
+        },
+        {
+            "label": "Run LemonVox",
+            "detail": "Build (Windows: windows/scripts/dev.ps1 -Run), then launch LemonVox from .build. The task runs until the app quits.",
+            "type": "process",
+            "command": "/bin/bash",
+            "args": ["-c", "echo 'LemonVox has no Linux host yet.' >&2; exit 1"],
+            "windows": {
+                "command": "powershell.exe",
+                "args": [
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File", "${workspaceFolder}\\windows\\scripts\\dev.ps1",
+                    "-Run"
+                ]
+            },
+            "osx": {
+                "command": "/bin/bash",
+                "args": ["-c", "pkill -f \"$0/.build/LemonVox.app/Contents/MacOS/\"; bash \"$0/scripts/build.sh\" && exec /usr/bin/open -n -W \"$0/.build/LemonVox.app\"", "${workspaceFolder}"]
+            },
+            "presentation": { "reveal": "always", "panel": "dedicated" },
+            "problemMatcher": [],
+            "inAgents": true
+        }
+    ]
+}
