@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug LemonVox",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/.build/LemonVox.app/Contents/MacOS/LemonVoxPrototype",
+            "windows": {
+                "program": "${workspaceFolder}\\.build\\windows-debug\\src\\app\\LemonVox.exe"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build LemonVox"
+        }
+    ]
+}
