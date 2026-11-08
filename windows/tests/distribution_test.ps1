@@ -78,7 +78,7 @@ Assert ((Get-FileHash $package[0].FullName -Algorithm SHA256).Hash -eq $original
 
 $wingetArgs = @{
     Executable = (Join-Path $fixture 'LemonVox.exe'); Version = '1.2.3'
-    PackageIdentifier = 'itomek.LemonVox'; Publisher = 'LemonVox contributors'
+    PackageIdentifier = 'LemonVox.LemonVox'; Publisher = 'LemonVox'
     InstallerUrl = 'https://github.com/itomek/lemonvox/releases/download/v1.2.3/LemonVox-1.2.3-windows-x64.exe'
     Output = (Join-Path $Output 'winget')
 }
@@ -93,7 +93,7 @@ $bad = $wingetArgs.Clone(); $bad.Executable = $fakeExe
 Rejects { & $wingetScript @bad } 'Accepted a non-executable as x64'
 Assert (-not (Test-Path $bad.Output)) 'Invalid EXE created output'
 & $wingetScript @wingetArgs
-$installer = Get-Content (Join-Path $wingetArgs.Output 'itomek.LemonVox.installer.yaml') -Raw
+$installer = Get-Content (Join-Path $wingetArgs.Output 'LemonVox.LemonVox.installer.yaml') -Raw
 Assert ($installer.Contains($sourceHash)) 'WinGet does not hash the actual EXE'
 Assert ($installer.Contains($wingetArgs.InstallerUrl)) 'WinGet URL changed'
 Assert ($installer -match 'InstallerType: portable' -and $installer -notmatch 'Scope:') 'Wrong WinGet portable lifecycle'
@@ -111,7 +111,7 @@ if ($SchemaPython) {
     $mismatched = Join-Path $Output 'mismatched-manifests'
     New-Item -ItemType Directory $mismatched | Out-Null
     Copy-Item (Join-Path $wingetArgs.Output '*.yaml') $mismatched
-    $locale = Join-Path $mismatched 'itomek.LemonVox.locale.en-US.yaml'
+    $locale = Join-Path $mismatched 'LemonVox.LemonVox.locale.en-US.yaml'
     (Get-Content $locale -Raw).Replace('"1.2.3"', '"1.2.4"') | Set-Content -Encoding UTF8 $locale
     # The documents remain individually schema-valid; only our cross-file
     # consistency check should reject this version mismatch.

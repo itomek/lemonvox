@@ -51,7 +51,7 @@ $size = [int]((Get-ChildItem $target -File | Measure-Object Length -Sum).Sum / 1
 New-Item -Force $uninstallKey | Out-Null
 $uninstall = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$target\uninstall.ps1`""
 $values = @{
-    DisplayName = 'LemonVox'; DisplayVersion = $version; Publisher = 'LemonVox contributors'
+    DisplayName = 'LemonVox'; DisplayVersion = $version; Publisher = 'LemonVox'
     DisplayIcon = "$installedExe,0"; InstallLocation = $target; UninstallString = $uninstall
     QuietUninstallString = "$uninstall -Quiet"; NoModify = 1; NoRepair = 1; EstimatedSize = $size
 }
