@@ -87,8 +87,8 @@ windows\scripts\new-winget-manifest.ps1 `
 winget validate --manifest .build\winget-preview
 ```
 
-That URL is intentionally unpublished. Preview output contains `PREVIEW.txt` and must
-not be submitted. For a real release, regenerate using the final versioned public EXE
+That URL is intentionally unpublished. Every preview YAML starts with an unpublished
+preview warning and must not be submitted. For a real release, regenerate using the final versioned public EXE
 URL and the exact published EXE bytes, without `-Preview`. The generator requires HTTPS,
 a version in the URL path, no embedded credentials/query/fragment, an actual x64 PE
 executable, and a new output directory. It computes the EXE's SHA256 itself.

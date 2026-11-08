@@ -85,3 +85,10 @@ Files: `.github/workflows/windows.yml`, `.github/workflows/release.yml`,
   Independent review found no actionable defects. Final previews are rebuilt from the
   saved commit; installed MSIX, final-URL WinGet lifecycle and public submissions remain
   explicit account/publication gates, not claimed as completed.
+
+- Final preview regression: native WinGet rejected PREVIEW.txt beside manifests. The
+  new Version 0.0.0 -Preview regression failed before the fix and passed afterwards;
+  preview warnings now live in YAML comments. Native and JSON schema paths pass.
+- Final Release build (not only Debug) passed all 24 Windows tests. Final preview
+  binaries were built from clean source 03a4659; the follow-up changes affect only
+  manifest comments, their test and documentation. Independent follow-up review is clean.

@@ -82,11 +82,8 @@ ManifestVersion: 1.12.0
 "@
 New-Item -ItemType Directory $outputPath | Out-Null
 $encoding = New-Object Text.UTF8Encoding($false)
-[IO.File]::WriteAllText((Join-Path $outputPath "$PackageIdentifier.yaml"), $versionManifest, $encoding)
-[IO.File]::WriteAllText((Join-Path $outputPath "$PackageIdentifier.locale.en-US.yaml"), $localeManifest, $encoding)
-[IO.File]::WriteAllText((Join-Path $outputPath "$PackageIdentifier.installer.yaml"), $installerManifest, $encoding)
-if ($Preview) {
-    'UNPUBLISHED PREVIEW. URL availability and installation are unverified. Do not submit to winget-pkgs.' |
-        Set-Content -Encoding ASCII (Join-Path $outputPath 'PREVIEW.txt')
-}
+$previewLabel = if ($Preview) { "# UNPUBLISHED PREVIEW: URL/install unverified. Do not submit to winget-pkgs.`n" } else { '' }
+[IO.File]::WriteAllText((Join-Path $outputPath "$PackageIdentifier.yaml"), $previewLabel + $versionManifest, $encoding)
+[IO.File]::WriteAllText((Join-Path $outputPath "$PackageIdentifier.locale.en-US.yaml"), $previewLabel + $localeManifest, $encoding)
+[IO.File]::WriteAllText((Join-Path $outputPath "$PackageIdentifier.installer.yaml"), $previewLabel + $installerManifest, $encoding)
 Write-Output "Prepared WinGet manifests: $outputPath (EXE SHA256 $hash)"

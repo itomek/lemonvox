@@ -124,6 +124,23 @@ if ($SchemaPython) {
     Assert ($mismatchExit -ne 0) 'Accepted mismatched manifest versions'
 }
 Rejects { & $wingetScript @wingetArgs } 'Overwrote WinGet output'
+$previewArgs = $wingetArgs.Clone()
+$previewArgs.Version = '0.0.0'; $previewArgs.Preview = $true
+$previewArgs.InstallerUrl = 'https://github.com/itomek/lemonvox/releases/download/v0.0.0/LemonVox-0.0.0-windows-x64.exe'
+$previewArgs.Output = Join-Path $Output 'preview-manifests'
+& $wingetScript @previewArgs
+Assert (@(Get-ChildItem $previewArgs.Output -File).Count -eq 3) 'Preview output contains non-manifest files'
+foreach ($yamlFile in Get-ChildItem $previewArgs.Output -Filter '*.yaml') {
+    Assert ((Get-Content $yamlFile.FullName -TotalCount 1) -match 'UNPUBLISHED PREVIEW') 'Preview manifest is unlabeled'
+}
+if ($winget) {
+    & $winget.Source validate --manifest $previewArgs.Output --disable-interactivity
+    Assert ($LASTEXITCODE -eq 0) 'Preview label breaks native WinGet validation'
+}
+if ($SchemaPython) {
+    & $SchemaPython (Join-Path $PSScriptRoot 'validate_winget.py') $previewArgs.Output
+    Assert ($LASTEXITCODE -eq 0) 'Preview label breaks JSON schema validation'
+}
 $bad = $wingetArgs.Clone(); $bad.Output = Join-Path $Output 'invalid-version'; $bad.Version = '0.0.0'
 Rejects { & $wingetScript @bad } 'Preview version accepted without -Preview'
 Write-Output 'distribution_test passed: SDK MSIX validation, package contents, assets, input rejection, no overwrite and WinGet schema'
