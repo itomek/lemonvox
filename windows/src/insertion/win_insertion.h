@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -28,6 +29,9 @@ struct InsertionOptions {
     // How long the pasted text stays on the clipboard before the previous
     // content is restored. There is no cross-process paste acknowledgement.
     DWORD restore_delay_ms = 600;
+    // Thread-safe activity sequence from the global keyboard/mouse listener.
+    // Without it, transient retries cannot follow a focused-HWND handoff.
+    std::function<std::uint64_t()> input_generation;
     // Test hooks, invoked on the insertion worker thread.
     std::function<void(OperationId)> insert_started;
     // Called immediately before SendInput; returning false refuses the paste.

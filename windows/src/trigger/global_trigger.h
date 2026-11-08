@@ -14,6 +14,7 @@ namespace lemonvox::win {
 // System-wide trigger. Owns one dedicated listener thread with its own message
 // loop; double_tap bindings install WH_KEYBOARD_LL + WH_MOUSE_LL hooks there and
 // combination bindings use RegisterHotKey on that thread's message-only window.
+// Hooks also observe input activity for safe target acquisition in both modes.
 // The hooks only observe: every event is passed on with CallNextHookEx.
 //
 // on_trigger runs through executor.post(); it never runs while suspended or
@@ -41,6 +42,9 @@ public:
     // Number of times the health check found the keyboard hook silently
     // removed (LowLevelHooksTimeout) and reinstalled it. Diagnostics only.
     std::uint32_t hook_reinstalls() const;
+    // Monotonic input activity sequence, independent of event timestamps.
+    // Zero means keyboard/mouse observation is not fully available.
+    std::uint64_t input_generation() const;
     // Unhooks, unregisters and joins the listener thread. Idempotent.
     void shutdown();
 

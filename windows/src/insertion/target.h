@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -55,7 +56,7 @@ Win32FocusFacts win32_focus_facts(HWND focus, bool caret);
 // initialized COM; the object is not thread-safe.
 class TargetProbe {
 public:
-    TargetProbe();
+    explicit TargetProbe(std::function<std::uint64_t()> input_generation = {});
     ~TargetProbe();
     TargetProbe(const TargetProbe &) = delete;
     TargetProbe &operator=(const TargetProbe &) = delete;
@@ -67,7 +68,9 @@ public:
 
 private:
     IUIAutomation *automation_ = nullptr;
-    IUIAutomationElement *focused_element(DWORD process_id, HWND focus);
+    std::function<std::uint64_t()> input_generation_;
+    IUIAutomationElement *focused_element(DWORD process_id, HWND focus, bool &stale);
+    bool probe_once(ProbedTarget &target, bool &stale);
 };
 
 // Adapter-owned token storage. Tokens are opaque indexes, never pointers.
