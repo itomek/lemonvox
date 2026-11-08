@@ -34,6 +34,7 @@ $compiler = (Get-Content (Join-Path $build 'CMakeCache.txt') | Select-String '^C
 $stage = Join-Path $outputPath 'LemonVox'
 New-Item -ItemType Directory $stage | Out-Null
 Copy-Item $exe $stage
+Copy-Item (Join-Path $build 'src\ui\lemonvox.ico') $stage
 Copy-Item (Join-Path $root 'windows\packaging\install.ps1') $stage
 Copy-Item (Join-Path $root 'windows\packaging\uninstall.ps1') $stage
 Copy-Item (Join-Path $root 'windows\packaging\README.txt') $stage
@@ -51,6 +52,14 @@ $zip = Join-Path $outputPath "LemonVox-$Version-windows-x64.zip"
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
 $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 "$hash  $(Split-Path -Leaf $zip)" | Set-Content -Encoding ASCII "$zip.sha256"
+
+# WinGet's portable path downloads this exact EXE, not the script-install ZIP.
+$standalone = Join-Path $outputPath "LemonVox-$Version-windows-x64.exe"
+Copy-Item -LiteralPath $exe -Destination $standalone
+Copy-Item -LiteralPath (Join-Path $stage 'VERSION.txt') -Destination (Join-Path $outputPath 'VERSION-windows-x64.txt')
+$exeHash = (Get-FileHash -Algorithm SHA256 $standalone).Hash.ToLowerInvariant()
+@("$hash  $(Split-Path -Leaf $zip)", "$exeHash  $(Split-Path -Leaf $standalone)") |
+    Set-Content -Encoding ASCII (Join-Path $outputPath 'SHA256SUMS-windows-x64.txt')
 
 $exeSize = (Get-Item $exe).Length
 $zipSize = (Get-Item $zip).Length

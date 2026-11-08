@@ -6,7 +6,6 @@ on:
       source_commit:
         description: Exact reviewed main commit to build
         required: true
-        default: b90844ea38d2b29637922d1ea622ab38042f7c6a
         type: string
       version:
         description: Release version (X.Y.Z)
@@ -15,6 +14,10 @@ on:
       build_number:
         description: Increasing release build number (greater than latest published build)
         required: true
+        type: string
+      windows_store_version:
+        description: Optional Store package version X.Y.Z.0 (requires Windows publisher variables)
+        required: false
         type: string
 
 permissions:
@@ -25,7 +28,71 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  windows:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: release
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      STORE_VERSION: ${{ inputs.windows_store_version }}
+      STORE_PACKAGE_NAME: ${{ vars.WINDOWS_STORE_PACKAGE_NAME }}
+      STORE_PUBLISHER: ${{ vars.WINDOWS_STORE_PUBLISHER }}
+      STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.source_commit }}
+      - name: Verify exact reviewed main source
+        shell: pwsh
+        run: |
+          if ($env:SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or (git rev-parse HEAD) -cne $env:SOURCE_COMMIT) { throw 'Expected exact reviewed source SHA' }
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify main' }
+          git merge-base --is-ancestor $env:SOURCE_COMMIT origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Source is not on main' }
+          if ($env:RELEASE_VERSION -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or $env:RELEASE_VERSION -eq '0.0.0') { throw 'Expected a public product version' }
+          if ($env:STORE_VERSION -and (-not $env:STORE_PACKAGE_NAME -or -not $env:STORE_PUBLISHER -or -not $env:STORE_PUBLISHER_DISPLAY_NAME)) { throw 'Configure the exact reserved Partner Center identity first' }
+      - name: Install manifest schema validation tools
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.2 jsonschema==4.23.0
+      - name: Build and validate Windows distribution
+        shell: pwsh
+        run: |
+          windows\scripts\package.ps1 -Output "$env:RUNNER_TEMP\windows-package" -Version $env:RELEASE_VERSION
+          windows\tests\distribution_test.ps1 -PackageDirectory "$env:RUNNER_TEMP\windows-package\LemonVox" -IconPath "$env:RUNNER_TEMP\windows-package\LemonVox\lemonvox.ico" -Output "$env:RUNNER_TEMP\windows-package-tests" -SchemaPython python
+      - name: Prepare Windows draft assets and WinGet candidate
+        shell: pwsh
+        run: |
+          $assets = "$env:RUNNER_TEMP\windows-release"
+          New-Item -ItemType Directory $assets | Out-Null
+          Get-ChildItem "$env:RUNNER_TEMP\windows-package" -File | Copy-Item -Destination $assets
+          $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/v$env:RELEASE_VERSION/LemonVox-$env:RELEASE_VERSION-windows-x64.exe"
+          windows\scripts\new-winget-manifest.ps1 -Executable "$assets\LemonVox-$env:RELEASE_VERSION-windows-x64.exe" -Version $env:RELEASE_VERSION -PackageIdentifier itomek.LemonVox -Publisher 'LemonVox contributors' -InstallerUrl $url -Output "$env:RUNNER_TEMP\winget-candidate" -Preview
+          python windows/tests/validate_winget.py "$env:RUNNER_TEMP\winget-candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'WinGet candidate schema failed' }
+          Compress-Archive -Path "$env:RUNNER_TEMP\winget-candidate\*" -DestinationPath "$assets\LemonVox-$env:RELEASE_VERSION-winget-candidate.zip"
+          if ($env:STORE_VERSION) {
+            windows\scripts\package-msix.ps1 -PackageDirectory "$env:RUNNER_TEMP\windows-package\LemonVox" -PackageName $env:STORE_PACKAGE_NAME -Publisher $env:STORE_PUBLISHER -PublisherDisplayName $env:STORE_PUBLISHER_DISPLAY_NAME -StoreVersion $env:STORE_VERSION -Output "$env:RUNNER_TEMP\store-candidate"
+            Get-ChildItem "$env:RUNNER_TEMP\store-candidate" -File | Copy-Item -Destination $assets
+          }
+          Get-ChildItem $assets -File | Where-Object Name -ne 'SHA256SUMS-windows-x64.txt' | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          } | Set-Content -Encoding ASCII "$assets\SHA256SUMS-windows-x64.txt"
+      - name: Upload validated Windows assets for the single draft release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release
+          path: ${{ runner.temp }}/windows-release/*
+          if-no-files-found: error
+          retention-days: 7
   release:
+    needs: windows
     # Manual dispatch still requires the protected release environment approval.
     if: ${{ github.ref == 'refs/heads/main' }}
     environment: release
@@ -69,6 +136,24 @@ jobs:
           assert all(r['tag_name'] != 'v'+os.environ['RELEASE_VERSION'] for r in releases), 'Release already exists'
           tags=json.load(open(os.environ['RUNNER_TEMP']+'/tags.json'))
           assert all(t['ref'] != 'refs/tags/v'+os.environ['RELEASE_VERSION'] for t in tags), 'Tag already exists; reconcile before release'
+          PY
+      - name: Download validated Windows artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-release
+          path: ${{ runner.temp }}/windows-release
+      - name: Verify Windows artifact provenance and hashes
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'windows-release'
+          version = (root / 'VERSION-windows-x64.txt').read_text().splitlines()
+          assert version[0] == os.environ['RELEASE_VERSION']
+          assert 'source: ' + os.environ['SOURCE_COMMIT'] in version, 'Windows source mismatch or dirty tree'
+          for entry in (root / 'SHA256SUMS-windows-x64.txt').read_text().splitlines():
+              digest, name = entry.split('  ', 1)
+              assert pathlib.Path(name).name == name, 'Invalid artifact name'
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest, name
           PY
       - name: Import approved signing identity into temporary Keychain
         env:
@@ -142,7 +227,7 @@ jobs:
           # Create the tag atomically. An existing/concurrently created tag
           # fails here instead of silently releasing a different source commit.
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$SOURCE_COMMIT" >/dev/null
-          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon, macOS 26+. Requires Lemonade separately. Installs as LemonVox.app. Built from $SOURCE_COMMIT."
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" "$RUNNER_TEMP/windows-release/"* --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon macOS 26+ and Windows 11 x64. Requires Lemonade separately. macOS installs as LemonVox.app. Windows direct artifacts are unsigned; optional MSIX and WinGet candidates still require their documented installed-package and publication checks. Built from $SOURCE_COMMIT."
       - name: Remove temporary signing material
         if: ${{ always() }}
         run: |

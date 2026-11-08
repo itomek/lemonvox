@@ -63,6 +63,8 @@ Capture audio, transcribe through Lemonade, apply configurable conservative clea
 
 Reuse the pipeline and settings; implement and test each platform's shortcut, indicator, capture, permissions, insertion, and packaging. Each native shell must finish capture with Stop or the configured dictation shortcut, cancel/discard with X and its configurable cancellation shortcut, preserve idle keyboard delivery, expose Auto/Light/Dark in native settings, and use platform semantic styling. On Ubuntu, validate GNOME Wayland separately from X11. Investigate portal/compositor integration and provide an explicit manual-paste path where automatic insertion is unavailable. Report support by tested desktop/session rather than assuming framework support proves OS integration.
 
+Windows distribution is part of this milestone. Deliver a launchable x64 EXE and direct-download package, Microsoft Store MSIX packaging and publication, and a WinGet community package. Verify install, launch, upgrade with settings retained, and uninstall for each supported channel. Record source/version/checksum correspondence, signing and publisher identity requirements, and the separate Lemonade prerequisite. A local ZIP alone does not complete the Store or WinGet acceptance criteria. See the [Windows distribution design](superpowers/specs/2026-11-08-windows-distribution-design.md) for the agreed channels and remaining publication work.
+
 ## Technical references
 
 - [Lemonade API](https://lemonade-server.ai/docs/api/openai/): transcription and chat request formats.
