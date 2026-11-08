@@ -1,0 +1,88 @@
+name: Protected Windows draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact reviewed main commit to build
+        required: true
+        type: string
+      version:
+        description: Windows release version (X.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: release
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.source_commit }}
+      - name: Validate reviewed source and unused release version
+        shell: pwsh
+        run: |
+          if ($env:SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or (git rev-parse HEAD) -cne $env:SOURCE_COMMIT) { throw 'Expected exact reviewed source SHA' }
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify main' }
+          git merge-base --is-ancestor $env:SOURCE_COMMIT origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Source is not on main' }
+          if ($env:RELEASE_VERSION -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or $env:RELEASE_VERSION -eq '0.0.0') { throw 'Expected a public version' }
+          $tags = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/v$env:RELEASE_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot reconcile tags' }
+          if (@($tags | ConvertFrom-Json | Where-Object ref -CEQ "refs/tags/v$env:RELEASE_VERSION").Count) { throw 'Tag already exists; reconcile before release' }
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot reconcile releases' }
+          if (@($releases | ConvertFrom-Json | Where-Object tag_name -CEQ "v$env:RELEASE_VERSION").Count) { throw 'Release already exists; do not replace it' }
+      - name: Install schema validation tools
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.2 jsonschema==4.23.0
+      - name: Build, package and validate Windows
+        shell: pwsh
+        run: |
+          windows\scripts\package.ps1 -Output "$env:RUNNER_TEMP\package" -Version $env:RELEASE_VERSION
+          windows\tests\distribution_test.ps1 -PackageDirectory "$env:RUNNER_TEMP\package\LemonVox" -IconPath "$env:RUNNER_TEMP\package\LemonVox\lemonvox.ico" -Output "$env:RUNNER_TEMP\distribution-tests" -SchemaPython python
+          if ((Get-Content "$env:RUNNER_TEMP\package\VERSION-windows-x64.txt") -cnotcontains "source: $env:SOURCE_COMMIT") { throw 'Source metadata differs or checkout is dirty' }
+      - name: Prepare EXE, ZIP and WinGet candidate assets
+        shell: pwsh
+        run: |
+          $assets = "$env:RUNNER_TEMP\assets"
+          New-Item -ItemType Directory $assets | Out-Null
+          Get-ChildItem "$env:RUNNER_TEMP\package" -File | Copy-Item -Destination $assets
+          $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/v$env:RELEASE_VERSION/LemonVox-$env:RELEASE_VERSION-windows-x64.exe"
+          windows\scripts\new-winget-manifest.ps1 -Executable "$assets\LemonVox-$env:RELEASE_VERSION-windows-x64.exe" -Version $env:RELEASE_VERSION -PackageIdentifier LemonVox.LemonVox -Publisher LemonVox -InstallerUrl $url -Output "$env:RUNNER_TEMP\winget-candidate" -Preview
+          python windows/tests/validate_winget.py "$env:RUNNER_TEMP\winget-candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate schema validation failed' }
+          Compress-Archive -Path "$env:RUNNER_TEMP\winget-candidate\*" -DestinationPath "$assets\LemonVox-$env:RELEASE_VERSION-winget-candidate.zip"
+          Get-ChildItem $assets -File | Where-Object Name -NE 'SHA256SUMS-windows-x64.txt' | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          } | Set-Content -Encoding ASCII "$assets\SHA256SUMS-windows-x64.txt"
+      - name: Create Windows draft for final publication review
+        shell: pwsh
+        run: |
+          # The tag is created atomically at the tested source. No automatic
+          # retries or replacement of an existing tag/release are permitted.
+          gh api "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$env:RELEASE_VERSION" -f "sha=$env:SOURCE_COMMIT"
+          if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; reconcile before retrying' }
+          $files = @(Get-ChildItem "$env:RUNNER_TEMP\assets" -File | ForEach-Object FullName)
+          $notes = "Windows 11 x64. Includes a standalone EXE and a ZIP with per-user installer and Start menu shortcut. Requires Lemonade separately with downloaded transcription/chat models. Direct Windows binaries are unsigned. WinGet package ID: LemonVox.LemonVox (candidate, not yet indexed). Built and validated from $env:SOURCE_COMMIT. Windows-only release; macOS binaries and update feeds are unchanged."
+          gh release create "v$env:RELEASE_VERSION" @files --repo $env:GITHUB_REPOSITORY --verify-tag --target $env:SOURCE_COMMIT --title "LemonVox $env:RELEASE_VERSION (Windows)" --draft --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Draft creation failed after tag creation; reconcile before retrying' }

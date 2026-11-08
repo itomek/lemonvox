@@ -4,6 +4,29 @@ Windows distribution is part of the Windows milestone. The supported build targe
 Windows 11 x64. Lemonade and its downloaded transcription/chat models are separate
 prerequisites in every channel. The app runs at normal user integrity.
 
+The required public channels are GitHub Releases (standalone EXE and installer ZIP)
+and the WinGet community package `LemonVox.LemonVox`, publisher `LemonVox`.
+Microsoft Store publication and Partner Center registration are not required.
+
+## Windows-only publication
+
+Use **Protected Windows draft release** (`windows-release.yml`) on `main`, supplying
+the full reviewed main source SHA and a new product version. It uses the existing
+protected `release` environment, builds/tests the exact source, and creates a draft
+containing the EXE, ZIP, source/version metadata, Windows checksums and a labeled
+WinGet candidate. It never overwrites an existing tag or release. Reconcile an
+uncertain/failed run before retrying.
+
+Review and publish that Windows draft, download the public EXE and verify its hash,
+test it, then regenerate the WinGet manifests without preview comments using those
+exact published bytes. Submit the three manifests under
+`manifests/l/LemonVox/LemonVox/<version>/` in `microsoft/winget-pkgs`.
+WinGet availability follows acceptance/indexing, not merely opening the PR.
+
+Windows publication does not submit to Apple, change the macOS update feed, replace
+the older macOS `v0.5.0` draft, or require Microsoft Store credentials. Optional MSIX
+tooling and the older combined draft workflow are described below for reference.
+
 ## Direct download and local launch
 
 ```powershell
@@ -23,7 +46,7 @@ For remote testing, the EXE accepts `--sample-wav <path>` and an isolated
 `--settings-key Software\LemonVoxRemoteDebug` profile. Those options replace the
 microphone input, not the transcription/cleanup/insertion pipeline.
 
-## Microsoft Store MSIX
+## Optional Microsoft Store MSIX
 
 The SDK tool comes with the Windows C++ build requirements; no WinUI runtime is added.
 Prepare an unsigned, schema-validated local package:
@@ -75,13 +98,13 @@ suitable identity and authorized deployment path exist.
 The initial community package uses WinGet portable EXE support. It downloads the
 standalone EXE, not the ZIP, and does not run `install.ps1`. Its alias and uninstall
 registration are managed by WinGet; do not assume the ZIP's Start menu/startup behavior.
-The intended package id is `itomek.LemonVox` and command alias is `lemonvox`; the id is
+The intended package id is `LemonVox.LemonVox` and command alias is `lemonvox`; the id is
 not claimed to be available in the public index yet.
 
 ```powershell
 windows\scripts\new-winget-manifest.ps1 `
   -Executable .build\windows-package\LemonVox-0.0.0-windows-x64.exe -Version 0.0.0 `
-  -PackageIdentifier itomek.LemonVox -Publisher 'LemonVox contributors' `
+  -PackageIdentifier LemonVox.LemonVox -Publisher 'LemonVox' `
   -InstallerUrl 'https://github.com/itomek/lemonvox/releases/download/v0.0.0/LemonVox-0.0.0-windows-x64.exe' `
   -Output .build\winget-preview -Preview
 winget validate --manifest .build\winget-preview
@@ -100,7 +123,7 @@ not support a `Scope` field in portable manifests. Installing a local manifest m
 require machine configuration; these scripts do not enable that setting.
 
 Submit the three YAML files to `microsoft/winget-pkgs` only after review and lifecycle
-validation. After acceptance, verify public `winget install --id itomek.LemonVox --exact
+validation. After acceptance, verify public `winget install --id LemonVox.LemonVox --exact
 --scope user`, launch `lemonvox`, and verify upgrade/uninstall. Those commands are not
 claimed to work before acceptance. The Microsoft Store `msstore` source is a separate
 distribution source with its own future product identifier.
@@ -124,6 +147,9 @@ still remain mandatory before public submission. These are build/test dependenci
 not app runtime dependencies.
 
 ## Protected draft releases
+
+The independent Windows-only workflow above is the current Windows publishing path.
+The remainder of this section describes the older combined macOS/Windows workflow.
 
 The existing release workflow still requires the protected `release` environment and
 an exact reviewed main commit. A read-only Windows job builds and validates artifacts

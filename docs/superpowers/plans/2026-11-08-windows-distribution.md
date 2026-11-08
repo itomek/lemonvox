@@ -92,3 +92,11 @@ Files: `.github/workflows/windows.yml`, `.github/workflows/release.yml`,
 - Final Release build (not only Debug) passed all 24 Windows tests. Final preview
   binaries were built from clean source 03a4659; the follow-up changes affect only
   manifest comments, their test and documentation. Independent follow-up review is clean.
+
+- Scope update: owner authorized WinGet-only plus GitHub publication, using ID
+  LemonVox.LemonVox and publisher LemonVox. Store/Partner Center are optional.
+- Added independent protected Windows draft workflow so the Windows release does not
+  depend on the macOS pipeline or replace the older v0.5.0 macOS draft. Preparing
+  Windows v0.5.1, then anonymous download/hash/run checks and upstream WinGet submission.
+- New-ID native WinGet and pinned schema tests passed; workflow lint passed and
+  independent read-only review found no blocking defects. Publication is still pending.

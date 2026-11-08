@@ -73,7 +73,7 @@ jobs:
           New-Item -ItemType Directory $assets | Out-Null
           Get-ChildItem "$env:RUNNER_TEMP\windows-package" -File | Copy-Item -Destination $assets
           $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/v$env:RELEASE_VERSION/LemonVox-$env:RELEASE_VERSION-windows-x64.exe"
-          windows\scripts\new-winget-manifest.ps1 -Executable "$assets\LemonVox-$env:RELEASE_VERSION-windows-x64.exe" -Version $env:RELEASE_VERSION -PackageIdentifier itomek.LemonVox -Publisher 'LemonVox contributors' -InstallerUrl $url -Output "$env:RUNNER_TEMP\winget-candidate" -Preview
+          windows\scripts\new-winget-manifest.ps1 -Executable "$assets\LemonVox-$env:RELEASE_VERSION-windows-x64.exe" -Version $env:RELEASE_VERSION -PackageIdentifier LemonVox.LemonVox -Publisher 'LemonVox' -InstallerUrl $url -Output "$env:RUNNER_TEMP\winget-candidate" -Preview
           python windows/tests/validate_winget.py "$env:RUNNER_TEMP\winget-candidate"
           if ($LASTEXITCODE -ne 0) { throw 'WinGet candidate schema failed' }
           Compress-Archive -Path "$env:RUNNER_TEMP\winget-candidate\*" -DestinationPath "$assets\LemonVox-$env:RELEASE_VERSION-winget-candidate.zip"

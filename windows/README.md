@@ -113,9 +113,9 @@ unless `-RemoveSettings`.
 
 The direct-download artifact is unsigned; SmartScreen may warn. Public release and signing
 remain separate final steps after the artifacts are prepared and reviewed.
-Store MSIX packaging and a WinGet community package are now part of the Windows milestone;
+GitHub EXE/ZIP releases and the `LemonVox.LemonVox` WinGet community package are part of the Windows milestone;
 the [distribution design](../docs/superpowers/specs/2026-11-08-windows-distribution-design.md)
-records those channels, their validation gates and the Partner Center steps still required.
+records the earlier channel design; the owner subsequently made Store/MSIX publication optional.
 See [distribution commands and publication checklist](DISTRIBUTION.md) for the MSIX packager,
 WinGet generator, local tests and protected draft release inputs.
 

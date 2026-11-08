@@ -1,5 +1,12 @@
 # Windows distribution design
 
+**Scope update (2026-11-08):** The owner removed Microsoft Store publication from
+the milestone. Required channels are GitHub Releases (EXE and installer ZIP) and
+WinGet community publishing with ID `LemonVox.LemonVox` and publisher `LemonVox`.
+Partner Center is not a prerequisite. MSIX work below is retained as historical,
+optional tooling. `windows-release.yml` provides the independent protected Windows
+draft path; macOS release and its existing draft are not modified by that path.
+
 ## Intent and scope
 
 Make LemonVox easy to install and launch on Windows, with Microsoft Store and
