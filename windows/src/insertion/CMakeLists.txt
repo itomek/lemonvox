@@ -14,7 +14,7 @@ target_include_directories(insertion_unit_test PRIVATE "${LV_INSERTION_TESTS}")
 lemonvox_win_test(insertion_unit_test)
 
 add_executable(insertion_interactive_test "${LV_INSERTION_TESTS}/insertion_interactive_test.cpp")
-target_link_libraries(insertion_interactive_test PRIVATE lv_insertion)
+target_link_libraries(insertion_interactive_test PRIVATE lv_insertion lv_trigger)
 target_include_directories(insertion_interactive_test PRIVATE "${LV_INSERTION_TESTS}")
 lemonvox_win_test(insertion_interactive_test)
 set_tests_properties(insertion_interactive_test PROPERTIES LABELS interactive)

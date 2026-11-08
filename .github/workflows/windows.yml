@@ -26,8 +26,12 @@ jobs:
           $os = Get-CimInstance Win32_OperatingSystem
           "$($os.Caption) $($os.Version) $env:PROCESSOR_ARCHITECTURE"
           & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property catalog_productDisplayVersion
-      - name: Build and run hosted-safe tests without signing credentials
+      - name: Install manifest schema validation tools
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.2 jsonschema==4.23.0
+      - name: Build, test and package without signing credentials
         shell: pwsh
         # Interactive desktop, real Lemonade and microphone tests run only on owner machines.
         run: |
-          windows\scripts\build.ps1 -Output "$env:RUNNER_TEMP\lemonvox-windows" -ExcludeLabels 'interactive|lemonade|audio-device'
+          windows\scripts\package.ps1 -Output "$env:RUNNER_TEMP\lemonvox-windows" -Version 0.0.0
+          windows\tests\distribution_test.ps1 -PackageDirectory "$env:RUNNER_TEMP\lemonvox-windows\LemonVox" -IconPath "$env:RUNNER_TEMP\lemonvox-windows\LemonVox\lemonvox.ico" -Output "$env:RUNNER_TEMP\distribution-tests" -SchemaPython python

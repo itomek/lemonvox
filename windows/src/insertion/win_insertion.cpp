@@ -97,7 +97,7 @@ void WinInsertion::run_worker() {
     RegisterClassExW(&window_class);
     clipboard_owner_ = CreateWindowExW(0, kWorkerOwnerClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, nullptr);
     {
-        TargetProbe probe;
+        TargetProbe probe(options_.input_generation);
         for (;;) {
             MsgWaitForMultipleObjectsEx(1, &wake_, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             pump_worker_messages();
@@ -198,13 +198,15 @@ void WinInsertion::capture_original(OperationId operation, TargetCompletion comp
                     result.error = AdapterError::unavailable;
                 } else {
                     result.target.token.value = table_->allocate(operation, target.identity);
-                    if (canceled(operation)) {
-                        table_->invalidate(operation);
-                        result = {};
-                        result.error = AdapterError::canceled;
-                    }
                 }
             }
+        }
+        // Probing may wait for a transient UIA element. Cancellation wins
+        // even if that element never recovers or focus changes during the wait.
+        if (canceled(operation)) {
+            table_->invalidate(operation);
+            result = {};
+            result.error = AdapterError::canceled;
         }
         post(std::move(completion), operation, std::move(result));
     });
@@ -237,11 +239,11 @@ void WinInsertion::inspect(OperationId operation, TargetToken original, TargetCo
             } else if (current.facts.editable && !current.facts.secure) {
                 result.target.token.value = table_->allocate(operation, current.identity);
             }
-            if (canceled(operation)) {
-                table_->invalidate(operation);
-                result = {};
-                result.error = AdapterError::canceled;
-            }
+        }
+        if (canceled(operation)) {
+            table_->invalidate(operation);
+            result = {};
+            result.error = AdapterError::canceled;
         }
         post(std::move(completion), operation, std::move(result));
     });

@@ -54,6 +54,16 @@ no Enter, focus unchanged and the clipboard restored. To check a real microphone
 `<output>\src\capture\lemonvox_mic_probe.exe --seconds 5` yourself; it prints only duration and
 levels.
 
+`insertion_interactive_test` also uses a real HWND-backed UI Automation provider to reproduce
+transient `UIA_E_ELEMENTNOTAVAILABLE` failures. Target acquisition retries this specific failure
+up to three times at 50 ms intervals, allowing an automatic input-host-to-editor focus handoff
+while the same window remains foreground and no new user input arrives. After acquisition,
+normal exact-field checks still apply. Regressions cover recovery during capture and inspection,
+persistent failures, changed focus/window, password and read-only fields, and cancellation.
+The listener counts keyboard and mouse events in both double-tap and regular-shortcut modes;
+event timestamps are not used to decide whether input intervened. Without complete input
+observation, a retry conservatively requires the original focused HWND.
+
 `lemonvox_ui_demo.exe` (in `<output>\src\ui`) shows the tray icon and indicator cycling through
 every state; `--smoke` runs the cycle once and verifies the indicator never became foreground,
 active or focused (ctest `ui_demo_smoke`).
@@ -89,8 +99,10 @@ only.
 powershell -NoProfile -ExecutionPolicy Bypass -File windows\scripts\package.ps1 -Output $env:TEMP\lv-pkg -Version 0.1.0
 ```
 
-builds Release, runs the hosted-safe tests and writes `LemonVox-<version>-windows-x64.zip` and
-`.sha256`. `VERSION.txt` in the zip records the version, source commit (flagging uncommitted
+builds Release, runs the hosted-safe tests and writes `LemonVox-<version>-windows-x64.zip`,
+its `.sha256`, the standalone `LemonVox-<version>-windows-x64.exe`, and
+`SHA256SUMS-windows-x64.txt`. `VERSION.txt` in the zip (also exported as
+`VERSION-windows-x64.txt`) records the version, source commit (flagging uncommitted
 changes), architecture and compiler. The zip contains `LemonVox.exe`, `install.ps1`,
 `uninstall.ps1`, `README.txt`, license files.
 
@@ -99,9 +111,13 @@ menu shortcut, an Apps & features entry and optionally `-StartAtSignIn`. Re-runn
 place and keeps settings. `uninstall.ps1` removes files, shortcuts and the entry, keeping settings
 unless `-RemoveSettings`.
 
-The artifact is unsigned; SmartScreen may warn. Signing needs a code-signing certificate and
-separate credential approval and is out of scope, as is automatic update and any release. A
-future MSIX or signed installer can replace the script installer without code changes.
+The direct-download artifact is unsigned; SmartScreen may warn. Public release and signing
+remain separate final steps after the artifacts are prepared and reviewed.
+Store MSIX packaging and a WinGet community package are now part of the Windows milestone;
+the [distribution design](../docs/superpowers/specs/2026-11-08-windows-distribution-design.md)
+records those channels, their validation gates and the Partner Center steps still required.
+See [distribution commands and publication checklist](DISTRIBUTION.md) for the MSIX packager,
+WinGet generator, local tests and protected draft release inputs.
 
 ## Validation
 

@@ -7,6 +7,7 @@
 
 #include <cwchar>
 #include <iterator>
+#include <utility>
 
 namespace lemonvox::win {
 
@@ -16,6 +17,8 @@ constexpr DWORD kUiaTimeoutMs = 2000;
 constexpr int kChromiumTreeAttempts = 3;
 constexpr DWORD kChromiumTreeDelayMs = 100;
 constexpr int kMsaaFocusHops = 8;
+constexpr int kStaleElementRetries = 3;
+constexpr DWORD kStaleElementDelayMs = 50;
 
 void wait_dispatching(DWORD milliseconds) {
     const ULONGLONG deadline = GetTickCount64() + milliseconds;
@@ -156,12 +159,17 @@ struct UiaFacts {
     bool available = false;
     bool editable = false;
     bool secure = false;
+    bool stale = false;
 };
 
 UiaFacts uia_facts(IUIAutomationElement *element) {
     UiaFacts facts;
     CONTROLTYPEID type = 0;
-    if (FAILED(element->get_CurrentControlType(&type))) return facts;
+    const HRESULT type_result = element->get_CurrentControlType(&type);
+    if (FAILED(type_result)) {
+        facts.stale = type_result == UIA_E_ELEMENTNOTAVAILABLE;
+        return facts;
+    }
     facts.available = true;
     BOOL password = FALSE;
     if (SUCCEEDED(element->get_CurrentIsPassword(&password))) facts.secure = password != FALSE;
@@ -200,7 +208,8 @@ Win32FocusFacts win32_focus_facts(HWND focus, bool caret) {
     return facts;
 }
 
-TargetProbe::TargetProbe() {
+TargetProbe::TargetProbe(std::function<std::uint64_t()> input_generation)
+    : input_generation_(std::move(input_generation)) {
     IUIAutomation *automation = nullptr;
     if (FAILED(CoCreateInstance(__uuidof(CUIAutomation8), nullptr, CLSCTX_INPROC_SERVER,
             __uuidof(IUIAutomation), reinterpret_cast<void **>(&automation)))) {
@@ -225,21 +234,62 @@ TargetProbe::~TargetProbe() {
     release(automation_);
 }
 
-IUIAutomationElement *TargetProbe::focused_element(DWORD process_id, HWND focus) {
+IUIAutomationElement *TargetProbe::focused_element(DWORD process_id, HWND focus, bool &stale) {
     if (!automation_) return nullptr;
     IUIAutomationElement *element = nullptr;
-    if (SUCCEEDED(automation_->GetFocusedElement(&element)) && element) {
+    const HRESULT focused_result = automation_->GetFocusedElement(&element);
+    stale = stale || focused_result == UIA_E_ELEMENTNOTAVAILABLE;
+    if (SUCCEEDED(focused_result) && element) {
         int owner = 0;
         if (SUCCEEDED(element->get_CurrentProcessId(&owner)) && static_cast<DWORD>(owner) == process_id) {
             return element;
         }
         release(element);
     }
-    if (SUCCEEDED(automation_->ElementFromHandle(focus, &element)) && element) return element;
+    const HRESULT handle_result = automation_->ElementFromHandle(focus, &element);
+    stale = stale || handle_result == UIA_E_ELEMENTNOTAVAILABLE;
+    if (SUCCEEDED(handle_result) && element) return element;
     return nullptr;
 }
 
 bool TargetProbe::probe(ProbedTarget &target) {
+    const std::uint64_t input = input_generation_ ? input_generation_() : 0;
+    bool stale = false;
+    if (!probe_once(target, stale)) return false;
+    const TargetIdentity original = target.identity;
+    // A modifier release can briefly invalidate a modern app's UIA element
+    // while its menu/focus transition is still being processed. Reacquire it
+    // rather than saving a permanently missing original target. Only retry
+    // this specific transient error. Notepad can also restore focus from its
+    // WinUI input host to the native editor during the transition, so there
+    // is no stable focused HWND to preserve yet. Require the same foreground
+    // process/window and no new user input before accepting that first snapshot.
+    const auto acquisition_unchanged = [&] {
+        if (input != 0) {
+            if (input_generation_() != input) return false;
+        } else {
+            // Without complete input observation, never accept a focus handoff.
+            return foreground_focus_matches(original);
+        }
+        if (GetForegroundWindow() != original.foreground) return false;
+        DWORD process_id = 0;
+        GetWindowThreadProcessId(original.foreground, &process_id);
+        return process_id == original.process_id;
+    };
+    for (int attempt = 0; stale && !target.facts.editable && !target.facts.secure &&
+         attempt < kStaleElementRetries; ++attempt) {
+        wait_dispatching(kStaleElementDelayMs);
+        if (!acquisition_unchanged()) return false;
+        stale = false;
+        if (!probe_once(target, stale) || !acquisition_unchanged() ||
+            target.identity.foreground != original.foreground ||
+            target.identity.process_id != original.process_id ||
+            target.identity.process_start != original.process_start) return false;
+    }
+    return true;
+}
+
+bool TargetProbe::probe_once(ProbedTarget &target, bool &stale) {
     target = {};
     HWND foreground = GetForegroundWindow();
     if (!foreground) return false;
@@ -263,7 +313,7 @@ bool TargetProbe::probe(ProbedTarget &target) {
     const Win32FocusFacts win32 = win32_focus_facts(focus, caret);
     UiaFacts uia;
     bool msaa_protected = false;
-    IUIAutomationElement *element = focused_element(process_id, focus);
+    IUIAutomationElement *element = focused_element(process_id, focus, stale);
     // Chromium apps report only a bare contents pane until their web
     // accessibility is on. Edge turns it on for UI Automation clients after a
     // moment; Chrome only for MSAA clients, so follow MSAA accFocus once
@@ -274,7 +324,7 @@ bool TargetProbe::probe(ProbedTarget &target) {
              ++attempt) {
             element->Release();
             wait_dispatching(kChromiumTreeDelayMs);
-            element = focused_element(process_id, focus);
+            element = focused_element(process_id, focus, stale);
         }
     }
     if (element) {
@@ -282,6 +332,7 @@ bool TargetProbe::probe(ProbedTarget &target) {
         uia = uia_facts(element);
         element->Release();
     }
+    stale = !uia.available && (stale || uia.stale);
     const bool win32_editable = win32.edit_class && !win32.read_only;
     target.facts.editable = uia.available ? (uia.editable || win32_editable) : (win32_editable || win32.caret);
     // MSAA only ever adds a secure signal; UI Automation stays the source of

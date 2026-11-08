@@ -113,6 +113,7 @@ bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
     std::wstring error;
     REQUIRE(trigger.apply(default_trigger(), &error));
     REQUIRE(trigger.active() && *trigger.active() == default_trigger());
+    REQUIRE(trigger.input_generation() != 0);
     Sleep(200);
 
     // Double Alt fires exactly once, and leaves the window out of menu mode.
@@ -127,7 +128,9 @@ bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
     REQUIRE(!in_menu_mode());
 
     // The hook never swallows ordinary typing.
+    const auto before_typing = trigger.input_generation();
     REQUIRE(typed_text_reaches_edit());
+    REQUIRE(trigger.input_generation() > before_typing);
     REQUIRE(settle_and_expect(2));
 
     // Alt+letter chords don't trigger.
@@ -160,10 +163,18 @@ bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
     f11.kind = TriggerKind::combination;
     f11.modifiers = MOD_CONTROL | MOD_ALT | MOD_SHIFT;
     f11.virtual_key = VK_F11;
+    // Rebinding while a modifier is held must not leave it logically stuck
+    // when its release happens in combination mode and we later switch back.
+    REQUIRE(send({{VK_LCONTROL, true}}));
+    Sleep(50);
     REQUIRE(trigger.apply(f11, &error));
+    REQUIRE(send({{VK_LCONTROL, false}}));
+    const auto before_combo = trigger.input_generation();
+    REQUIRE(before_combo != 0);
     REQUIRE(combo(VK_F11));
     REQUIRE(wait_for(4));
     REQUIRE(settle_and_expect(4));
+    REQUIRE(trigger.input_generation() > before_combo);
     REQUIRE(double_alt());
     REQUIRE(settle_and_expect(4));
     REQUIRE(!in_menu_mode());
@@ -188,14 +199,15 @@ bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
 
     // Back to double tap: the hotkey is released and the hook works again.
     REQUIRE(trigger.apply(default_trigger(), &error));
-    REQUIRE(combo(VK_F11));
-    REQUIRE(settle_and_expect(5));
     REQUIRE(double_alt());
     REQUIRE(wait_for(6));
+    REQUIRE(settle_and_expect(6));
+    REQUIRE(combo(VK_F11));
     REQUIRE(settle_and_expect(6));
 
     // After shutdown nothing fires.
     trigger.shutdown();
+    REQUIRE(trigger.input_generation() == 0);
     REQUIRE(!trigger.active());
     REQUIRE(double_alt());
     REQUIRE(settle_and_expect(6));

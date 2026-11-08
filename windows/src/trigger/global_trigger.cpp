@@ -26,6 +26,8 @@ constexpr wchar_t kWindowClass[] = L"LemonVoxTriggerListener";
 struct Shared {
     std::atomic<bool> alive{true};
     std::atomic<bool> suspended{false};
+    std::atomic<std::uint64_t> input_generation{1};
+    std::atomic<bool> observing_input{false};
     std::function<void()> on_trigger;
 };
 
@@ -192,7 +194,14 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
                 : with_code(L"Couldn't register " + label, code);
             return false;
         }
-        remove_hooks();
+        if (!keyboard_hook) {
+            DWORD code = 0;
+            if (!install_hooks(&code)) {
+                UnregisterHotKey(hwnd, id);
+                *error = with_code(L"Couldn't observe input for target selection", code);
+                return false;
+            }
+        }
         if (hotkey_id != 0) UnregisterHotKey(hwnd, hotkey_id);
         hotkey_id = id;
     } else {
@@ -209,6 +218,9 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
             hotkey_id = 0;
         }
     }
+    // Combination mode observes activity without feeding the tap normalizer.
+    // A modifier released there must not remain logically held after rebinding.
+    normalizer.reset();
     set_active(binding);
     return true;
 }
@@ -236,11 +248,14 @@ bool GlobalTrigger::Impl::install_hooks(DWORD *code) {
     normalizer.reset();
     lv_double_tap_cancel(&detector);
     last_hook_tick = GetTickCount();
+    ++shared->input_generation;
+    shared->observing_input = mouse_hook != nullptr;
     SetTimer(hwnd, kHealthTimer, kHealthIntervalMs, nullptr);
     return true;
 }
 
 void GlobalTrigger::Impl::remove_hooks() {
+    shared->observing_input = false;
     if (hwnd) KillTimer(hwnd, kHealthTimer);
     if (keyboard_hook) UnhookWindowsHookEx(keyboard_hook);
     if (mouse_hook) UnhookWindowsHookEx(mouse_hook);
@@ -280,6 +295,8 @@ void GlobalTrigger::Impl::sync_reset() {
 
 void GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
     last_hook_tick = GetTickCount();
+    if (info.dwExtraInfo != kLemonVoxInjectedTag) ++shared->input_generation;
+    if (hotkey_id != 0) return;
     sync_reset();
     RawKeyEvent raw;
     raw.vk_code = info.vkCode;
@@ -299,6 +316,8 @@ void GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
 
 void GlobalTrigger::Impl::on_mouse(WPARAM message, const MSLLHOOKSTRUCT &info) {
     last_hook_tick = GetTickCount();
+    if (info.dwExtraInfo != kLemonVoxInjectedTag) ++shared->input_generation;
+    if (hotkey_id != 0) return;
     switch (message) {
     case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN: case WM_XBUTTONDOWN:
         if (info.dwExtraInfo == kLemonVoxInjectedTag) return;
@@ -362,6 +381,10 @@ bool GlobalTrigger::suspended() const {
 
 std::uint32_t GlobalTrigger::hook_reinstalls() const {
     return impl_->reinstalls.load();
+}
+
+std::uint64_t GlobalTrigger::input_generation() const {
+    return impl_->shared->observing_input.load() ? impl_->shared->input_generation.load() : 0;
 }
 
 void GlobalTrigger::shutdown() {
