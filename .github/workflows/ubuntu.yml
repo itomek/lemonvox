@@ -36,6 +36,7 @@ jobs:
           bash scripts/test-core.sh --output "$RUNNER_TEMP/lemonvox-core"
           python3 ubuntu/tests/extension_contract_test.py
           gjs -m ubuntu/tests/extension_policy_test.mjs
+          mkdir -p "$RUNNER_TEMP/lemonvox-extension"
           (
             cd ubuntu/extension
             gnome-extensions pack --out-dir "$RUNNER_TEMP/lemonvox-extension" \

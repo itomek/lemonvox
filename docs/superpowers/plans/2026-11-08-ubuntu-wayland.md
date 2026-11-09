@@ -51,7 +51,7 @@ Interfaces: adapters from Task 1; D-Bus contract from Task 2. GtkApplication app
 ### Task 4: Audio end-to-end and packaging (#20)
 Files: ubuntu/tests/audio-loopback*, ubuntu/packaging/*, scripts/build-ubuntu.sh, .github/workflows/ubuntu.yml, .vscode/{tasks,launch}.json, ubuntu/README.md.
 - [x] Generate known synthetic audio; play into isolated virtual source and capture production adapter; verify format/levels, cancellation and cleanup. Mock HTTP failure cases; separately verify actual Lemonade ASR when available.
-- [ ] Build installable package and desktop/session activation files; install/launch/upgrade/remove in disposable prefix. Prepare Snap metadata and separate Store submission issue, report confinement/integration evidence.
+- [x] Build installable package and desktop/session activation files; install/launch/upgrade/remove with disposable XDG settings. Prepare Snap metadata and separate Store submission issue, report confinement/integration evidence.
 - [ ] Add Ubuntu hosted CI; run full Linux gates and independent final review; deliver PR and update issue evidence accurately. Do not close acceptance criteria lacking actual native proof.
 
 ## Progress
@@ -61,8 +61,8 @@ Files: ubuntu/tests/audio-loopback*, ubuntu/packaging/*, scripts/build-ubuntu.sh
 
 - Native adapter and host implementation compile; preference/log tests and real audio/ASR workflow pass. Native service tests cover Stop, cancel/late reply, error recovery and running Auto appearance updates.
 - Default cancellation changed to Ctrl+Super+Escape after read-only inspection found Ubuntu reserves Ctrl+Alt+Escape for cycle-panels; OS bindings unchanged.
-- Final extension/native desktop proof, package lifecycle, independent review and PR/CI delivery remain in progress.
+- Native desktop proof, package lifecycle and independent review passed; PR #74 tracks final hosted CI and integration.
 
 - Final independent product review PASS after fixing transport and queued-WAV shutdown retention, with no-drain lifetime regressions and ASAN/UBSan.
 - Native GNOME 46 headless Wayland proof passes with editable-field focus, actual Copy/Ctrl+V, no submit, active/idle/rebound cancel and disable cleanup. Software rendering uses condition-based keyboard readiness.
-- Actual apt install 0.0.0 → upgrade 0.2.0 → removal passed; disposable XDG settings hash remained unchanged. Final clean-source A/B package, reinstall, browser/Electron matrix and PR/CI remain.
+- Actual apt install 0.0.0 → upgrade 0.2.0 → removal passed; disposable XDG settings hash remained unchanged. Clean-source A/B packages are byte-identical; reinstall/activation and the native Chrome/Electron matrix passed. PR #74 remains the final CI/integration gate.

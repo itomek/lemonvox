@@ -1,7 +1,7 @@
 # Ubuntu package verification
 
-Status: reviewed product code, initial install, upgrade and removal checks pass.
-Final clean-source reproducibility, reinstall and CI remain pending.
+Status: reviewed product code, install, upgrade, removal, clean-source
+reproducibility and reinstall checks pass. Hosted CI is tracked in PR #74.
 
 ## Initial development artifact
 
@@ -56,5 +56,21 @@ was published and no credentials were changed.
   `72b42e97f6775a7c354ff9f325b23127195ee9e42b8531a4b6e2c93deb7fdca9`.
   This test did not write or replace the user's normal settings.
 
-The reviewed candidate is a dirty-tree test artifact. Final installed-package
-source correspondence will use a clean reviewed commit and newly built artifact.
+The reviewed candidate is a dirty-tree test artifact. Clean-source installed
+package correspondence is verified below.
+
+## Clean-source delivery verification
+
+- Source: `b554f606b24ff53559b13eb27ed5a561e35f2885`, clean working tree.
+- Two independent Release build directories passed all nine CTests.
+- Both 0.2.0 archives compared byte-for-byte equal with SHA-256
+  `d8e3cac91281127a0ffc8a3cb7b85a4224da2babd7c769f07dd7e0ff988b19fa`.
+- Artifact inspection passed 6/6. Apt reinstalled the clean-source package;
+  `/usr/bin/lemonvox --version` reports `0.2.0 (build b554f60)` and installed
+  build-info records the full revision with `source_dirty: false`.
+- Installed D-Bus activation and private service regression passed again.
+- The hosted extension pack step initially crashed because GNOME 46's packer
+  requires its output directory to exist. The exact command reproduced exit
+  139 locally; creating the directory first made it succeed. CI now does so.
+- Subsequent delivery-only documentation/CI changes do not change product code.
+  Final hosted checks and integration are linked from PR #74 and INDEX #11.

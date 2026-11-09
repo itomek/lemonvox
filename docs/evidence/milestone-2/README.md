@@ -44,7 +44,10 @@ separate private-compositor matrix. See `ubuntu/tests/gnome-report.md`.
 Actual apt installation, upgrade to 0.2.0, D-Bus activation and removal passed
 with disposable settings retained. Independent product review passed after
 transport and queued-WAV lifetime fixes and focused ASAN/UBSan verification.
-Clean-source package reproducibility and public CI/merge remain delivery gates.
+Two independent clean-source package builds compared byte-for-byte equal;
+the installed clean-source package passed D-Bus activation/service regression.
+See `ubuntu/tests/package-report.md` for the source revision and artifact hash.
+PR #74 tracks hosted CI and integration; INDEX #11 records milestone delivery.
 Public Snap publication is tracked in #73 and requires confinement/extension
 integration proof plus publisher access and Store review. Physical microphone
 and keyboard hardware are not required for the remote tests and have not been
