@@ -7,6 +7,11 @@ import GLib from 'gi://GLib';
 const BUS_NAME = 'com.itomek.LemonVox';
 const OBJECT_PATH = '/com/itomek/LemonVox';
 const readyFile = ARGV[0];
+// Exercise the boundary between readable backend state and asynchronous proxy
+// notification. This affects only this synthetic service, never the app.
+const signalDelayMs = Number(GLib.getenv('LEMONVOX_TEST_SIGNAL_DELAY_MS') ?? '0');
+if (!Number.isInteger(signalDelayMs) || signalDelayMs < 0 || signalDelayMs > 2000)
+    throw new Error('invalid synthetic signal delay');
 if (!readyFile)
     throw new Error('synthetic backend ready-file argument is required');
 
@@ -84,8 +89,15 @@ class SyntheticBackend {
 
     _set(property, value) {
         this[`_${property.toLowerCase()}`] = value;
-        this.object.emit_property_changed(property, new GLib.Variant(
-            typeof value === 'boolean' ? 'b' : 's', value));
+        const emit = () => {
+            this.object.emit_property_changed(property, new GLib.Variant(
+                typeof value === 'boolean' ? 'b' : 's', value));
+            return GLib.SOURCE_REMOVE;
+        };
+        if (signalDelayMs)
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, signalDelayMs, emit);
+        else
+            emit();
     }
 }
 
