@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LemonVox
+Comment=Speech-to-text dictation with Lemonade
+Exec=lemonvox --settings
+Icon=audio-input-microphone-symbolic
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=true
+DBusActivatable=true
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=Settings
+Exec=lemonvox --settings

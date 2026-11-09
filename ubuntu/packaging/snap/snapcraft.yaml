@@ -1,0 +1,57 @@
+# This is intentionally a strict, devel-grade evaluation recipe. See
+# LIMITATIONS.md before distributing it: a strict snap cannot install the host
+# GNOME Shell extension that Ubuntu 24.04 LemonVox needs for global shortcuts.
+name: lemonvox
+base: core24
+version: git
+summary: Local-first Lemonade dictation client for Ubuntu GNOME Wayland
+description: |
+  LemonVox captures audio only after an explicit user action and sends it to a
+  separately configured Lemonade endpoint. This devel snap is an integration
+  experiment, not a release candidate, until host GNOME Shell extension
+  delivery and strict-confinement behavior are proven.
+grade: devel
+confinement: strict
+
+platforms:
+  amd64:
+
+apps:
+  lemonvox:
+    command: usr/bin/lemonvox
+    extensions: [gnome]
+    plugs:
+      - audio-record
+      - audio-playback
+      - network
+      - wayland
+      - desktop
+      - desktop-legacy
+      - gsettings
+
+parts:
+  lemonvox:
+    plugin: nil
+    source: ../../..
+    build-packages:
+      - build-essential
+      - cmake
+      - pkg-config
+      - libgtk-4-dev
+      - libadwaita-1-dev
+      - libsoup-3.0-dev
+      - libgstreamer1.0-dev
+      - libgstreamer-plugins-base1.0-dev
+    stage-packages:
+      - libgtk-4-1
+      - libadwaita-1-0
+      - libsoup-3.0-0
+      - gstreamer1.0-plugins-base
+      - gstreamer1.0-pulseaudio
+      - gstreamer1.0-plugins-good
+    override-build: |
+      cmake -S ubuntu -B build -DCMAKE_BUILD_TYPE=Release
+      cmake --build build --parallel
+      install -D -m 0755 build/lemonvox "$CRAFT_PART_INSTALL/usr/bin/lemonvox"
+      install -D -m 0644 ubuntu/packaging/com.itomek.LemonVox.desktop \
+        "$CRAFT_PART_INSTALL/meta/gui/com.itomek.LemonVox.desktop"

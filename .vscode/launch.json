@@ -5,13 +5,16 @@
             "name": "Debug LemonVox",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/.build/LemonVox.app/Contents/MacOS/LemonVoxPrototype",
+            "program": "${workspaceFolder}/.build/ubuntu/lemonvox",
             "windows": {
                 "program": "${workspaceFolder}\\.build\\windows-debug\\src\\app\\LemonVox.exe"
             },
             "args": [],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "Build LemonVox"
+            "preLaunchTask": "Build LemonVox",
+            "osx": {
+                "program": "${workspaceFolder}/.build/LemonVox.app/Contents/MacOS/LemonVoxPrototype"
+            }
         }
     ]
 }

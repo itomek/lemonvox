@@ -1,0 +1,8 @@
+{
+  "uuid": "lemonvox@itomek.com",
+  "name": "LemonVox",
+  "description": "Global dictation controls for LemonVox on Ubuntu GNOME Wayland.",
+  "url": "https://github.com/itomek/lemonvox",
+  "shell-version": ["46"],
+  "settings-schema": "org.gnome.shell.extensions.lemonvox"
+}

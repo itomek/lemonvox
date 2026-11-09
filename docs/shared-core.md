@@ -15,8 +15,12 @@ toolkit or an authorization to change Mac behavior.
 
 The current Mac shell remains Swift/AppKit. Windows is proposed to use C++/WinRT
 with WinUI 3 and Win32 adapters; Ubuntu is proposed to use C++ with GTK4,
-libadwaita and GLib/GIO portal adapters. Those are proposals until separate
-platform build proofs select bindings and dependency versions.
+libadwaita and GLib/GIO adapters. The Ubuntu implementation now lives in
+[`ubuntu/`](../ubuntu/README.md), with libsoup3 transport, GStreamer capture and
+a GNOME Shell integration for the tested Ubuntu 24.04 GNOME 46 Wayland
+session. It uses explicit Copy because secure cross-app target inspection is
+unproven. See the platform validation evidence before claiming later desktop
+support.
 
 ## Adapter contract
 

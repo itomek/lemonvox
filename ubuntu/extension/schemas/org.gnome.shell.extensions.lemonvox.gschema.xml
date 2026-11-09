@@ -1,0 +1,19 @@
+<schemalist>
+  <schema id="org.gnome.shell.extensions.lemonvox" path="/org/gnome/shell/extensions/lemonvox/">
+    <key name="toggle-shortcut" type="as">
+      <default>['&lt;Control&gt;&lt;Alt&gt;space']</default>
+      <summary>Dictation shortcut</summary>
+      <description>Starts dictation or finishes an active recording.</description>
+    </key>
+    <key name="cancel-shortcut" type="as">
+      <default>['&lt;Control&gt;&lt;Super&gt;Escape']</default>
+      <summary>Cancellation shortcut</summary>
+      <description>Cancels an active LemonVox operation. It is unregistered while idle.</description>
+    </key>
+    <key name="appearance" type="s">
+      <default>'auto'</default>
+      <summary>Application appearance</summary>
+      <description>One of auto, light, or dark. Shell chrome follows the system Shell theme.</description>
+    </key>
+  </schema>
+</schemalist>
