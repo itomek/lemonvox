@@ -1,0 +1,12 @@
+Package: lemonvox
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: @ARCH@
+Maintainer: LemonVox contributors <noreply@invalid>
+Depends: libc6 (>= 2.38), libstdc++6 (>= 13), libgcc-s1 (>= 12), libglib2.0-0t64 (>= 2.80), libadwaita-1-0 (>= 1.5), libgtk-4-1 (>= 4.14), libsoup-3.0-0 (>= 3.4), libgstreamer1.0-0 (>= 1.24), libgstreamer-plugins-base1.0-0 (>= 1.24), gstreamer1.0-pulseaudio, gstreamer1.0-plugins-good, pipewire-pulse, gnome-shell (>= 46), gsettings-desktop-schemas
+Homepage: https://github.com/itomek/lemonvox
+Description: Local-first desktop dictation for Ubuntu GNOME Wayland
+ LemonVox records only after an explicit start, sends audio to a separately
+ configured Lemonade service, and offers a manual Copy result when safe
+ cross-application insertion cannot be established.

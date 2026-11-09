@@ -15,6 +15,8 @@ The local Mac prototype uses Swift/AppKit and a small C++ session core. It suppo
 
 The Windows port is a native Win32 tray app built on the same C++ core, with a global Alt-twice trigger, a nonactivating indicator, Settings and a per-user installer. See [Windows build, usage and validation](windows/README.md).
 
-In VS Code, run the **Run LemonVox** task (also available from the Agents window's Tasks) or press F5 (**Debug LemonVox**). Both build into `.build` for the current OS first. Debugging uses the CodeLLDB extension on Windows and macOS (see `.vscode/extensions.json`). Ubuntu has no host yet, so these tasks report that and stop.
+In VS Code, run the **Run LemonVox** task (also available from the Agents window's Tasks) or press F5 (**Debug LemonVox**). Both build into `.build` for the current OS first. Debugging uses the CodeLLDB extension on Windows and macOS (see `.vscode/extensions.json`). Ubuntu builds the GTK4/libadwaita host in `.build/ubuntu`; see [Ubuntu build, setup and validation](ubuntu/README.md).
+
+The Ubuntu port targets Ubuntu 24.04+ GNOME Wayland with native Settings and a GNOME Shell extension for shortcuts and the recording bar. Its supported result path is explicit Copy followed by manual paste. X11 is outside scope. See [Ubuntu setup and validation](ubuntu/README.md) for the exact tested desktop and remaining release gates.
 
 Licensed under the [MIT License](LICENSE).

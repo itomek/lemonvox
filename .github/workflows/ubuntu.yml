@@ -1,0 +1,99 @@
+name: Ubuntu checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ubuntu-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install build and synthetic-audio dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            cmake ninja-build g++ pkg-config \
+            libgtk-4-dev libadwaita-1-dev libsoup-3.0-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-good gstreamer1.0-pulseaudio \
+            gjs gnome-shell libglib2.0-bin desktop-file-utils \
+            espeak-ng pulseaudio-utils pipewire-pulse
+      - name: Build, test and stage Ubuntu package without publication
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          bash scripts/test-core.sh --output "$RUNNER_TEMP/lemonvox-core"
+          python3 ubuntu/tests/extension_contract_test.py
+          gjs -m ubuntu/tests/extension_policy_test.mjs
+          mkdir -p "$RUNNER_TEMP/lemonvox-extension"
+          (
+            cd ubuntu/extension
+            gnome-extensions pack --out-dir "$RUNNER_TEMP/lemonvox-extension" \
+              --schema=schemas/org.gnome.shell.extensions.lemonvox.gschema.xml \
+              --extra-source=dbus.js --extra-source=keybindings.js \
+              --extra-source=policy.js --extra-source=ui.js \
+              --extra-source=dbus-interface.xml .
+          )
+          test -n "$(find "$RUNNER_TEMP/lemonvox-extension" -maxdepth 1 -name '*.zip' -print -quit)"
+          bash scripts/build-ubuntu.sh \
+            --output "$RUNNER_TEMP/lemonvox-ubuntu" \
+            --version 0.0.0 \
+            --build-dir "$RUNNER_TEMP/lemonvox-ubuntu-build"
+          bash scripts/build-ubuntu.sh \
+            --output "$RUNNER_TEMP/lemonvox-ubuntu-repeat" \
+            --version 0.0.0 \
+            --build-dir "$RUNNER_TEMP/lemonvox-ubuntu-build"
+          cmp \
+            "$(find "$RUNNER_TEMP/lemonvox-ubuntu" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)" \
+            "$(find "$RUNNER_TEMP/lemonvox-ubuntu-repeat" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)"
+          desktop-file-validate ubuntu/packaging/com.itomek.LemonVox.desktop
+          LEMONVOX_DEB="$(find "$RUNNER_TEMP/lemonvox-ubuntu" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)" \
+            python3 ubuntu/tests/packaging_test.py
+
+      - name: Retain installable development package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ubuntu-development-package
+          path: |
+            ${{ runner.temp }}/lemonvox-ubuntu/lemonvox_*.deb
+            ${{ runner.temp }}/lemonvox-ubuntu/SHA256SUMS-ubuntu-*.txt
+            ${{ runner.temp }}/lemonvox-ubuntu/VERSION-ubuntu-*.txt
+          retention-days: 7
+
+  gnome-wayland:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install disposable Wayland test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gnome-shell gjs gir1.2-gtk-4.0 libglib2.0-bin dbus-daemon ripgrep
+      - name: Prove GNOME extension focus, shortcuts and manual paste
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          LEMONVOX_EVIDENCE_DIR: ${{ runner.temp }}/lemonvox-gnome-evidence
+        run: |
+          mkdir -p "$LEMONVOX_EVIDENCE_DIR"
+          bash ubuntu/tests/extension_native_shell_test.sh
+      - name: Retain synthetic GNOME evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gnome-wayland-evidence
+          path: ${{ runner.temp }}/lemonvox-gnome-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7

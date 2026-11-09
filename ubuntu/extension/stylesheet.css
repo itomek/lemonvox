@@ -1,0 +1,10 @@
+/* Layout only: native GNOME Shell theme supplies color, contrast and motion. */
+.lemonvox-bar {
+    spacing: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+}
+
+.lemonvox-status {
+    min-width: 10em;
+}
