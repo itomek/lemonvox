@@ -13,6 +13,7 @@ readonly introspection_log="$test_root/gnome-shell-introspection.log"
 shell_pid=''
 backend_pid=''
 fixture_pid=''
+phase='startup'
 
 print_diagnostics() {
     printf '\n--- GNOME Shell log (last 100 lines) ---\n' >&2
@@ -38,7 +39,7 @@ cleanup() {
 trap cleanup EXIT
 
 fail() {
-    printf 'FAIL: %s\n' "$1" >&2
+    printf 'FAIL [%s]: %s\n' "$phase" "$1" >&2
     print_diagnostics
     exit 1
 }
@@ -177,6 +178,17 @@ wait_for_eval() {
     done
     printf '%s\n' "$observed" >"$introspection_log"
     fail "Shell Eval did not report $expected"
+}
+
+# Backend property reads can complete before the Shell proxy processes its
+# PropertiesChanged notification. Wait for the consumer, including successful
+# native key registration, before sending another key or disabling controls.
+wait_for_extension_state() {
+    local state="$1"
+    local active="$2"
+    wait_for_eval \
+        "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const e = Main.extensionManager.lookup('$uuid').stateObj; const b = e?._bindings; return e?._client?.snapshot.state === '$state' && b?._active === $active && b._toggleInstalled && b._cancelInstalled === $active && !b._rebindSource ? 'extension-state-ready' : 'extension-state-pending'; })" \
+        extension-state-ready
 }
 
 wait_for_fixture_event() {
@@ -356,6 +368,9 @@ eval_extension="$(shell_eval \
     fail 'private Shell Eval did not observe the extension as active'
 }
 
+phase='idle-key-passthrough'
+wait_for_extension_state idle false
+
 # First prove the virtual keyboard reaches the focused fixture, then prove an
 # idle LemonVox instance does not claim its configured cancellation chord.
 send_shortcut '' 'Clutter.KEY_Escape'
@@ -363,10 +378,12 @@ wait_for_fixture_event 'escape:1'
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_Escape'
 wait_for_fixture_event 'escape:2'
 
+phase='default-toggle'
 # The default toggle is a compositor-native binding. It routes to the service,
 # reveals the non-focusable native bar and does not take focus from the client.
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Alt_L' 'Clutter.KEY_space'
 wait_for_backend_state recording
+wait_for_extension_state recording true
 wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const bar = Main.extensionManager.lookup('$uuid').stateObj._bar; return bar.actor.visible && !bar.actor.can_focus && bar._stop.visible && bar._cancel.visible && !bar._copy.visible && !bar._settings.visible && global.display.focus_window?.get_title() === 'LemonVox Native Fixture' ? 'recording-bar-focus-preserved' : 'recording-bar-check-failed'; })" \
     recording-bar-focus-preserved
@@ -379,17 +396,19 @@ wait_for_fixture_event 'escape:3'
 sleep 0.2
 assert_backend_state recording
 
+phase='active-cancel'
 # The configured cancellation chord is active only during work: it cancels the
 # synthetic backend and is withheld from the focused client.
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_Escape'
 wait_for_backend_state idle
-sleep 0.2
+wait_for_extension_state idle false
 assert_fixture_event 'escape:3'
 wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const bar = Main.extensionManager.lookup('$uuid').stateObj._bar; return !bar.actor.visible && global.display.focus_window?.get_title() === 'LemonVox Native Fixture' ? 'idle-bar-hidden-focus-preserved' : 'idle-bar-check-failed'; })" \
     idle-bar-hidden-focus-preserved
 assert_fixture_focus focused
 
+phase='error-recovery'
 # A backend error stays actionable at idle: it displays Settings plus an X but
 # does not reactivate the cancellation binding. SIGUSR1 is test-only plumbing
 # on the disposable synthetic backend, not a production extension hook.
@@ -409,6 +428,7 @@ wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'error-still-visible' : 'error-dismissed')" \
     error-dismissed
 
+phase='manual-copy-paste'
 # Copy is the sole supported result path. A test-only synthetic result makes
 # the real bar Copy handler populate the Shell clipboard; Ctrl+V then pastes
 # into the already-focused empty GTK entry. No Return key is injected.
@@ -434,25 +454,33 @@ wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'copy-bar-still-visible' : 'copy-bar-hidden')" \
     copy-bar-hidden
 
+phase='rebind-shortcuts'
 # Settings updates rebind both compositor shortcuts without accepting the old
 # toggle. The private schema directory is the staged extension, never a host
 # settings path.
 readonly schema_dir="$test_root/data/gnome-shell/extensions/$uuid/schemas"
 GSETTINGS_SCHEMA_DIR="$schema_dir" gsettings set org.gnome.shell.extensions.lemonvox toggle-shortcut "['<Control><Super>F10']"
 GSETTINGS_SCHEMA_DIR="$schema_dir" gsettings set org.gnome.shell.extensions.lemonvox cancel-shortcut "['<Control><Super>F11']"
-sleep 0.2
+wait_for_eval \
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const b = Main.extensionManager.lookup('$uuid').stateObj._bindings; return !b._rebindSource && b._toggleInstalled && b._lastGood.toggle[0] === '<Control><Super>F10' && b._lastGood.cancel[0] === '<Control><Super>F11' ? 'shortcuts-rebound' : 'shortcuts-pending'; })" \
+    shortcuts-rebound
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Alt_L' 'Clutter.KEY_space'
 sleep 0.2
 assert_backend_state idle
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F10'
 wait_for_backend_state recording
+wait_for_extension_state recording true
+phase='rebound-cancel'
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F11'
 wait_for_backend_state idle
+wait_for_extension_state idle false
 
+phase='disable-cancel'
 # Put the service back into an active operation so disable must issue its
 # best-effort Cancel before removing the only visible controls.
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F10'
 wait_for_backend_state recording
+wait_for_extension_state recording true
 
 disable_result="$(gdbus call --session \
     --dest org.gnome.Shell \

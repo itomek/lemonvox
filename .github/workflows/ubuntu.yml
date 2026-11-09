@@ -85,6 +85,7 @@ jobs:
       - name: Prove GNOME extension focus, shortcuts and manual paste
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
+          LEMONVOX_TEST_SIGNAL_DELAY_MS: "500"
           LEMONVOX_EVIDENCE_DIR: ${{ runner.temp }}/lemonvox-gnome-evidence
         run: |
           mkdir -p "$LEMONVOX_EVIDENCE_DIR"

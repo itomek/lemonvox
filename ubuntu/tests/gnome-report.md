@@ -1,5 +1,21 @@
 # GNOME Shell integration evidence
 
+## Integrated CI synchronization regression
+
+After PR #74 passed all checks, its main-branch GNOME rerun failed waiting for
+the synthetic backend to become idle. The original log does not identify which
+cancellation phase failed. Eight fresh local runs passed. Code review found
+that the rebound-cancel and disable-cancel steps waited only for a backend
+property read, which can precede delivery to the extension's asynchronous proxy.
+
+Delaying the synthetic service's property notifications by 500 ms reproduced
+the same failure with the old test: backend remained recording. Waiting for
+the extension snapshot, successful native binding registration and completed
+settings rebind made that same delayed test pass. Production extension/app
+code is unchanged. CI now exercises the delayed case; failures include the
+current interaction phase. This establishes the test synchronization defect,
+without claiming that the original failure's exact phase is known.
+
 ## Environment and scope
 
 Verified on Ubuntu 24.04.5 with GNOME Shell 46.0 and Mutter 46.2, using a
