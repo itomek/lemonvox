@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            cmake ninja-build g++ pkg-config \
+            cmake ninja-build g++ pkg-config apt-utils gnupg \
             libgtk-4-dev libadwaita-1-dev libsoup-3.0-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-good gstreamer1.0-pulseaudio \
@@ -58,6 +58,7 @@ jobs:
             "$(find "$RUNNER_TEMP/lemonvox-ubuntu" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)" \
             "$(find "$RUNNER_TEMP/lemonvox-ubuntu-repeat" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)"
           desktop-file-validate ubuntu/packaging/com.itomek.LemonVox.desktop
+          bash ubuntu/tests/apt_repository_test.sh
           LEMONVOX_DEB="$(find "$RUNNER_TEMP/lemonvox-ubuntu" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)" \
             python3 ubuntu/tests/packaging_test.py
 
