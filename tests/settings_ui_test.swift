@@ -124,8 +124,7 @@ import AppKit
         precondition(pane.appVersion.accessibilityLabel() == "Running \(AppIdentity.running.name) version and build")
         precondition(!pane.appVersion.frame.intersects(pane.shortcutStatus.frame))
         precondition(pane.appearance.frame.maxY < pane.cancellationTrigger.frame.minY)
-        precondition(pane.currentField.frame.maxY < pane.appearance.frame.minY)
-        precondition(pane.shortcutStatus.frame.maxY < pane.currentField.frame.minY)
+        precondition(pane.shortcutStatus.frame.maxY < pane.appearance.frame.minY)
         precondition(pane.categoryList.enclosingScrollView?.contentInsets.top == 8,
                      "The Settings category list needs a native top inset")
         let categoryCell = pane.tableView(pane.categoryList, viewFor: nil, row: 0) as? NSTableCellView
@@ -155,12 +154,12 @@ import AppKit
         precondition(pane.accessibilityStatus.visibleRect.contains(pane.accessibilityStatus.bounds), "Accessibility guidance must be visible at minimum height")
         pane.categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
         let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:asr.id,cleanupModel:gemma.id,cleanupPrompt:"Preserved prompt")
-        var savedPreferences: (TriggerChoice,TriggerChoice,AppearanceChoice,Bool)?
-        pane.showPreferences(trigger:.defaultMac,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
-            savedPreferences=(trigger,cancellation,appearance,current)
+        var savedPreferences: (TriggerChoice,TriggerChoice,AppearanceChoice)?
+        pane.showPreferences(trigger:.defaultMac,cancellation:.defaultMacCancellation,appearance:.dark) { trigger,cancellation,appearance in
+            savedPreferences=(trigger,cancellation,appearance)
         }
         precondition(pane.trigger.choice == .defaultMac && pane.cancellationTrigger.choice == .defaultMacCancellation)
-        precondition(pane.appearance.indexOfSelectedItem == 2 && pane.currentField.state == .off)
+        precondition(pane.appearance.indexOfSelectedItem == 2)
         pane.trigger.mode.selectItem(at:1); pane.trigger.modeChanged(); pane.trigger.beginRecording()
         precondition(pane.trigger.capture(key:9,flags:[.command,.option],repeating:false))
         precondition(pane.trigger.choice == .combo(key:9,modifiers:2304) && !pane.trigger.recording)
@@ -182,14 +181,14 @@ import AppKit
         precondition(pane.shortcutStatus.stringValue.contains("must be different"))
         pane.cancellationTrigger.update(.defaultMacCancellation)
         precondition(pane.shortcutStatus.stringValue.isEmpty)
-        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { _,_,_,_ in
+        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark) { _,_,_ in
             throw TriggerError.unavailable
         }
         pane.saveSettings()
         precondition(pane.window.isVisible && pane.categoryList.selectedRow == 0)
         precondition(pane.shortcutStatus.stringValue.contains("Shortcut unavailable"))
-        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
-            savedPreferences=(trigger,cancellation,appearance,current)
+        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark) { trigger,cancellation,appearance in
+            savedPreferences=(trigger,cancellation,appearance)
         }
         pane.prompt.string = "Unsaved synthetic draft"
         pane.appearance.selectItem(at:2)
@@ -276,8 +275,8 @@ import AppKit
                                 pane.window.close()
                         precondition(closed && !pane.window.isVisible)
                         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
-                        pane.showPreferences(trigger:.combo(key:9,modifiers:2304),cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
-                            savedPreferences=(trigger,cancellation,appearance,current)
+                        pane.showPreferences(trigger:.combo(key:9,modifiers:2304),cancellation:.defaultMacCancellation,appearance:.dark) { trigger,cancellation,appearance in
+                            savedPreferences=(trigger,cancellation,appearance)
                         }
                         Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
                             MainActor.assumeIsolated {
@@ -288,7 +287,7 @@ import AppKit
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
                                 precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
                                 precondition(savedPreferences?.0 == .combo(key:9,modifiers:2304))
-                                precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark && savedPreferences?.3 == false)
+                                precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark)
                                 try? FileManager.default.removeItem(at:directory)
                                 print("PASS: Settings opens during delayed discovery; selectors independent; offline/retry preserves choices; close/reopen and save preserve config; errors redacted")
                                 NSApp.terminate(nil)

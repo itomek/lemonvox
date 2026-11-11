@@ -75,7 +75,6 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var sampleTimer: Timer?
     var sampleOperation: Task<Void, Never>?
     var pendingText: String?
-    var useCurrentField = UserDefaults.standard.bool(forKey: "currentField")
     var triggerChoice = UserDefaults.standard.data(forKey:"triggerChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
         ?? TriggerChoice.migrate(UserDefaults.standard.object(forKey:"shortcut") as? Int)
     var cancellationChoice = UserDefaults.standard.data(forKey:"cancellationChoice").flatMap { try? JSONDecoder().decode(TriggerChoice.self,from:$0) }
@@ -102,22 +101,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     let transport = LocalHTTP()
     var meter: Timer?
     var inserting = false
-    lazy var paste = PasteTransaction(clipboard:SystemClipboard())
-    lazy var workflowTargeting = SystemWorkflowTargeting(
-        trusted: { AXIsProcessTrusted() },
-        focused: {
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
-            return focusedElement()
-        },
-        metadata: { element in
-            let metadata = insertionMetadata(element)
-            return WorkflowNativeTargetMetadata(editable: metadata.editable, secure: metadata.secure)
-        },
-        frontmost: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
-        dispatch: { postPaste(to: $0) }
-    )
+    lazy var paste = PasteTransaction(clipboard:SystemClipboard(), modifiersReleased: { pasteModifiersReleased() })
     lazy var workflowAdapter = WorkflowNativeAdapter(capture: capture, transport: transport,
-        paste: paste, targeting: workflowTargeting)
+        paste: paste, posting: SystemWorkflowEventPosting())
     lazy var workflow: WorkflowBridge = {
         var callbacks = WorkflowBridgeCallbacks()
         callbacks.phaseChanged = { [weak self] operation, phase in self?.workflowPhaseChanged(operation, phase) }
@@ -135,15 +121,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
     var targetPreflight = TargetPreflightState()
     var pendingLaunchEpoch: UInt64?
     var preflightTask: Task<Void, Never>?
-    // Smoke-only staged facts enter the same production warmup path without
-    // querying AX or starting a provider/capture request.
-    var syntheticPreflight: (originalPID: pid_t?, frontmostPID: pid_t?)?
     // Explicit smoke runs may inspect the configuration crossing the native
     // preflight boundary without starting capture, transport or inference.
     var syntheticWorkflowStart: ((WorkflowBridgeConfig) -> UInt64)?
     var configuring = false
     var settingsLoaded = false
-    var deferredPreferences: (trigger: TriggerChoice, cancellation: TriggerChoice, appearance: AppearanceChoice, current: Bool)?
+    var deferredPreferences: (trigger: TriggerChoice, cancellation: TriggerChoice, appearance: AppearanceChoice)?
     lazy var updater=UpdateCoordinator(safety:{ [weak self] in
         guard let self else { return UpdateSafety(sessionBusy:true) }
         return UpdateSafety(sessionBusy:self.workflowBusy || self.sampleSession.state != LV_IDLE,
@@ -200,7 +183,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             "appearance":appearanceChoice.rawValue,
             "pendingTriggerRecovery":pendingPermissionTrigger != nil,
             "lastInsertionFallback":lastInsertionFallback as Any? ?? NSNull(),
-            "insertAtCompletion":useCurrentField,
+            "pasteAtCurrentFocus":true,
             "targetPreflightStatus":targetPreflight.status.rawValue,
             "targetWarmupAttempts":targetPreflight.warmupAttempts,
             "originalTargetCaptured":targetPreflight.originalCaptured,
@@ -219,6 +202,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         panel.appearance = appearance
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.removeObject(forKey: "currentField")
         NSApp.setActivationPolicy(.prohibited)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = LemonIcon.image(size:20,template:true)
@@ -256,14 +240,22 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             print("PASS: everyday menu, contextual Cancel/Copy, processing disabled, template accessible icon")
             Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
         } else if CommandLine.arguments.contains("--smoke-focus-change") || CommandLine.arguments.contains("--smoke-focus-cancel") {
-            syntheticPreflight = (originalPID: 101, frontmostPID: CommandLine.arguments.contains("--smoke-focus-change") ? 202 : 101)
+            var starts = 0
+            syntheticWorkflowStart = { snapshot in
+                precondition(snapshot.pasteAtCurrentFocus)
+                starts += 1
+                return 0
+            }
             beginWorkflow()
-            if CommandLine.arguments.contains("--smoke-focus-cancel") { cancel() }
-            Timer.scheduledTimer(withTimeInterval:0.7,repeats:false) { [weak self] _ in
+            let canceled = CommandLine.arguments.contains("--smoke-focus-cancel")
+            if canceled { cancel() }
+            Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    precondition(!self.workflowBusy && !self.workflowCreated && !self.capture.isRecording)
-                    print("PASS: synthetic focus warmup cancellation leaves workflow idle with no capture")
+                    precondition(starts == (canceled ? 0 : 1))
+                    precondition(!self.workflowBusy && !self.capture.isRecording)
+                    precondition(self.targetPreflight.warmupAttempts == 0)
+                    print("PASS: focus-free workflow launch and cancellation before capture")
                     self.cancel(); NSApp.terminate(nil)
                 }
             }
@@ -304,21 +296,18 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             runShowCheck()
         } else if CommandLine.arguments.contains("--smoke-settings-snapshot") {
             config = DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:"first-asr",cleanupModel:"first-cleanup",cleanupPrompt:"first synthetic prompt")
-            useCurrentField = false
-            syntheticPreflight = (originalPID:101,frontmostPID:101)
             syntheticWorkflowStart = { [weak self] snapshot in
                 precondition(snapshot.asrModel == "first-asr" && snapshot.cleanupModel == "first-cleanup")
-                precondition(snapshot.cleanupPrompt == "first synthetic prompt" && !snapshot.insertCurrentTarget)
+                precondition(snapshot.cleanupPrompt == "first synthetic prompt" && snapshot.pasteAtCurrentFocus)
                 precondition(snapshot.preferenceEndpoint == "http://127.0.0.1:13305/v1")
-                precondition(self?.config.asrModel == "next-asr" && self?.useCurrentField == true)
-                print("PASS: preflight keeps the starting models, endpoint, prompt and target policy while Settings changes")
+                precondition(self?.config.asrModel == "next-asr")
+                print("PASS: preflight keeps the starting models, endpoint and prompt while Settings changes")
                 Timer.scheduledTimer(withTimeInterval:0.1,repeats:false) { _ in NSApp.terminate(nil) }
                 return 0
             }
             beginWorkflow()
             configure()
             config = DictationConfig(endpoint:"http://127.0.0.1:13306/v1",asrModel:"next-asr",cleanupModel:"next-cleanup",cleanupPrompt:"next synthetic prompt")
-            useCurrentField = true
             settings.window.close()
         } else if CommandLine.arguments.contains("--smoke-settings-recording") {
             sampleMode = true
@@ -381,7 +370,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             var rejected = false
             do {
                 try commitGeneralPreferences(trigger: originalTrigger, cancellation: conflicting,
-                                             appearance: appearanceChoice, current: useCurrentField)
+                                             appearance: appearanceChoice)
             } catch {
                 rejected = true
             }
@@ -559,13 +548,13 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if configuring { settings.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
         modifierTrigger?.reset(); configuring=true
         let draft = deferredPreferences ?? (trigger: triggerChoice, cancellation: cancellationChoice,
-                                            appearance: appearanceChoice, current: useCurrentField)
+                                            appearance: appearanceChoice)
         settings.window.appearance = draft.appearance.appKitAppearance
         settings.showPreferences(trigger:draft.trigger, cancellation:draft.cancellation,
-                                 appearance:draft.appearance, current:draft.current) { [weak self] trigger,cancellation,appearance,current in
+                                 appearance:draft.appearance) { [weak self] trigger,cancellation,appearance in
             guard let self else { return }
             try self.commitGeneralPreferences(trigger:trigger, cancellation:cancellation,
-                                              appearance:appearance, current:current)
+                                              appearance:appearance)
         }
         settings.show(config:config, save: { [weak self] updated in
             guard let self else { return }
@@ -670,14 +659,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         UserDefaults.standard.set(trigger, forKey: "triggerChoice")
         UserDefaults.standard.set(cancellation, forKey: "cancellationChoice")
         UserDefaults.standard.set(appearanceChoice.rawValue, forKey: "appearanceChoice")
-        UserDefaults.standard.set(useCurrentField, forKey: "currentField")
+        UserDefaults.standard.removeObject(forKey: "currentField")
     }
 
     private func commitGeneralPreferences(trigger: TriggerChoice, cancellation: TriggerChoice,
-                                          appearance: AppearanceChoice, current: Bool) throws {
+                                          appearance: AppearanceChoice) throws {
         guard trigger != cancellation, case .combo = cancellation else { throw TriggerError.unavailable }
         if sessionActive {
-            deferredPreferences = (trigger, cancellation, appearance, current)
+            deferredPreferences = (trigger, cancellation, appearance)
             return
         }
         guard validateCancellationCandidate(cancellation) else { throw TriggerError.unavailable }
@@ -691,7 +680,6 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         cancellationChoice = cancellation
         appearanceChoice = appearance
-        useCurrentField = current
         try persistGeneralPreferences()
         applyAppearance()
         settings.window.appearance = appearanceChoice.appKitAppearance
@@ -702,7 +690,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         deferredPreferences = nil
         do {
             try commitGeneralPreferences(trigger: deferred.trigger, cancellation: deferred.cancellation,
-                                         appearance: deferred.appearance, current: deferred.current)
+                                         appearance: deferred.appearance)
         } catch {
             panel.show("Shortcut unavailable · previous retained")
         }
@@ -725,42 +713,16 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             pathEndsV1: components?.path.split(separator: "/").last == "v1")
         return WorkflowBridgeConfig(endpoint: endpoint, preferenceEndpoint: config.endpoint,
             asrModel: config.asrModel, cleanupModel: config.cleanupModel,
-            cleanupPrompt: config.cleanupPrompt, insertCurrentTarget: useCurrentField)
-    }
-
-    private func editableTargetForStart() -> WorkflowNativeTarget? {
-        guard let target = workflowTargeting.focusedTarget() else { return nil }
-        guard target.editable else {
-            workflowTargeting.release(target)
-            return nil
-        }
-        return target
+            cleanupPrompt: config.cleanupPrompt, insertCurrentTarget: true, pasteAtCurrentFocus: true)
     }
 
     private func beginWorkflow() {
         let sessionConfiguration = workflowConfiguration()
-        let stagedPreflight = syntheticPreflight
-        if stagedPreflight == nil {
-            if let element = focusedElement(), insertionMetadata(element).secure {
-                panel.show("Secure field · dictation unavailable")
-                return
-            }
-        }
         pendingText = nil
-        // Snapshot before Chromium/Electron focus preparation so a changed
-        // frontmost PID can only abort the warmup, never redefine its target.
-        let originalPID = stagedPreflight?.originalPID ?? workflowTargeting.frontmostPID()
-        if stagedPreflight == nil { FocusAccessibility.prepareIfNeeded() }
-        let initialOriginal = stagedPreflight == nil ? editableTargetForStart() : nil
-        targetPreflight.begin(initialTargetCaptured: initialOriginal != nil)
+        // No target or field is captured: ordinary paste follows focus at dispatch.
+        targetPreflight.begin(initialTargetCaptured: false)
         let epoch = launchTracker.begin()
         pendingLaunchEpoch = epoch
-        if let initialOriginal,
-            originalPID != initialOriginal.pid || workflowTargeting.frontmostPID() != originalPID {
-            workflowTargeting.release(initialOriginal)
-            abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
-            return
-        }
         panel.overlay.isSample = false
         panel.overlay.progressLabel = "CHECKING LOCAL MODELS"
         setShortcutEditingEnabled(false)
@@ -768,59 +730,16 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         activateCancellationBinding()
         preflightTask = Task { [weak self] in
             guard let self else { return }
-            var original = initialOriginal
-            var handedOff = false
             defer {
-                if !handedOff, let original {
-                    self.workflowTargeting.release(original)
-                }
                 if self.pendingLaunchEpoch == epoch {
                     self.pendingLaunchEpoch = nil
                     self.preflightTask = nil
-                    if !handedOff {
-                        self.deactivateCancellationBinding()
-                        self.setShortcutEditingEnabled(true)
-                    }
                     self.applyDeferredPreferencesIfIdle()
                 }
             }
-            guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
-            if original == nil {
-                for _ in 0..<8 {
-                    try? await Task.sleep(nanoseconds: 60_000_000)
-                    guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
-                    self.targetPreflight.warmupAttempt()
-                    let frontmostPID = stagedPreflight?.frontmostPID ?? self.workflowTargeting.frontmostPID()
-                    guard frontmostPID == originalPID else {
-                        self.abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
-                        return
-                    }
-                    let candidate = stagedPreflight == nil ? self.editableTargetForStart() : nil
-                    if let candidate {
-                        guard originalPID == candidate.pid,
-                            self.workflowTargeting.frontmostPID() == originalPID else {
-                            self.workflowTargeting.release(candidate)
-                            self.abortPreflight(epoch: epoch, message: "Target changed before recording · try again")
-                            return
-                        }
-                        original = candidate
-                        self.targetPreflight.captureWarmedTarget()
-                        break
-                    }
-                }
-            }
-            guard !Task.isCancelled, self.pendingLaunchEpoch == epoch else { return }
-            self.workflowAdapter.prepareForStart(original: original, originalPID: originalPID, useCurrentField: sessionConfiguration.insertCurrentTarget)
-            guard self.launchTracker.armStart(epoch: epoch) else {
-                self.targetPreflight.abandon()
-                self.workflowAdapter.discardPreparedStart()
-                original = nil
-                self.deactivateCancellationBinding()
-                self.setShortcutEditingEnabled(true)
-                return
-            }
+            guard !Task.isCancelled, self.pendingLaunchEpoch == epoch,
+                  self.launchTracker.armStart(epoch: epoch) else { return }
             self.workflowCreated = true
-            handedOff = true
             self.targetPreflight.handoff()
             let operation: UInt64
             if self.syntheticRun, let start = self.syntheticWorkflowStart { operation = start(sessionConfiguration) }
@@ -832,21 +751,6 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 self.setShortcutEditingEnabled(true)
             }
         }
-    }
-
-    private func abortPreflight(epoch: UInt64, message: String) {
-        guard pendingLaunchEpoch == epoch else { return }
-        targetPreflight.targetChanged()
-        launchTracker.cancel()
-        pendingLaunchEpoch = nil
-        preflightTask?.cancel()
-        preflightTask = nil
-        syntheticPreflight = nil
-        diagnostics.record(.canceled)
-        deactivateCancellationBinding()
-        setShortcutEditingEnabled(true)
-        panel.show(message)
-        applyDeferredPreferencesIfIdle()
     }
 
     private func workflowWaitingForMicrophone() {
@@ -1036,13 +940,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         launchTracker.cancel()
         deactivateCancellationBinding()
         pendingLaunchEpoch = nil
-        syntheticPreflight = nil
         preflightTask?.cancel(); preflightTask = nil
         if let operation, activeCore {
             workflow.cancel()
             workflowAdapter.finalizeOperation(operation)
         }
-        if workflowCreated { workflowAdapter.discardPreparedStart() }
         if hadPreflight || activeCore { targetPreflight.cancel() }
         stopMeter()
         sampleOperation?.cancel(); sampleOperation = nil
@@ -1139,11 +1041,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                 try? await Task.sleep(nanoseconds:300_000_000)
             } else {
                 let clipboard=SystemClipboard()
-                let before=try? clipboard.snapshot() // Opaque bytes stay in-process only.
-                let result=await PasteTransaction(clipboard:clipboard).insert(synthetic,validate:validateProbe,dispatch:{ postPaste(to:pid) })
+                let result=await PasteTransaction(clipboard:clipboard).insert(synthetic,validate:validateProbe,dispatch:{ postPasteAtCurrentFocus() })
                 print("Paste probe dispatched=\(result == .dispatched)")
-                let restored=try? clipboard.snapshot()
-                print("Clipboard restored to opaque original: \(before != nil && before == restored)")
+                print("Clipboard retains synthetic transcript: \(NSPasteboard.general.string(forType:.string) == synthetic)")
             }
             var after:CFTypeRef?
             AXUIElementCopyAttributeValue(target,kAXValueAttribute as CFString,&after)

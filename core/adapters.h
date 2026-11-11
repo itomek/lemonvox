@@ -85,6 +85,8 @@ struct PreferencesSnapshot {
     std::string cleanup_model;
     std::string cleanup_prompt;
     bool insert_current_target = false;
+    // Dispatch ordinary paste at current keyboard focus without inspecting a field.
+    bool paste_at_current_focus = false;
 };
 
 using VoidCompletion = std::function<void(OperationId, Completion)>;

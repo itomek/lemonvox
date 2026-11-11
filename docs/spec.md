@@ -19,7 +19,7 @@ Cancellation stops the current operation and discards its pending result. The co
 
 ### Target field
 
-The Mac prototype defaults to the original field while it remains focused in the same app. Settings also offers the field selected when processing finishes; broader app validation will refine this policy. If the destination cannot be established safely, offer an explicit copy action for manual paste.
+macOS and Ubuntu paste the completed transcript once into whatever currently has keyboard focus. Moving the cursor or switching applications during recording or processing changes the destination. No recognized editable or Accessibility field is required, including when no field is selected; the destination handles the ordinary paste. Keep focus where the person put it and never send Enter. The transcript replaces the clipboard and follows its normal lifetime. Offer Copy only when clipboard access or native paste dispatch is unavailable. macOS waits up to five seconds for held shortcut modifiers to be released, with cancellation active throughout. The original-field versus completion-field preference is removed on macOS and Ubuntu; previously saved values have no effect. Windows retains its existing targeting policy pending issue #80.
 
 ### Cleanup
 
@@ -29,13 +29,13 @@ For example, “um send Alex the 14 invoices on Friday” should become “Send 
 
 ## Configuration and data
 
-Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, appearance, and target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Right Command–Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
+Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, and appearance. Windows retains its existing target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Right Command–Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
 
 Appearance choices are Auto, Light, and Dark. Auto follows the OS setting; native shells use their platform semantic colors and controls rather than application-specific color treatments.
 
 Local inference is preferred. Lemonade manages model loading, inference, GPU acceleration, and provider routing. An explicitly configured provider can be reached through Lemonade; settings should make the selected endpoint and routing implications clear.
 
-Audio and transcripts are transient in the first version. Keep them in memory where practical, clean up temporary audio on completion or cancellation, and keep dictated content out of logs. Settings persist locally. Any future saved dictation data stays on the person's machine by default. Server-side retention depends on the configured Lemonade deployment and provider.
+Audio and in-process transcripts are transient in the first version; a pasted or explicitly copied transcript remains on the desktop clipboard. Keep them in memory where practical, clean up temporary audio on completion or cancellation, and keep dictated content out of logs. Settings persist locally. Any future saved dictation data stays on the person's machine by default. Server-side retention depends on the configured Lemonade deployment and provider.
 
 ## Proposed implementation
 
