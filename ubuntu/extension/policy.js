@@ -79,3 +79,32 @@ export function parsePalette(value) {
         cardForeground: colors[3],
     };
 }
+
+// Each operation may deliver once, even when unrelated properties refresh the
+// snapshot before ClearResult reaches the backend. A result present at extension
+// startup stays available for Copy rather than being replayed into a new target.
+export class ResultDelivery {
+    constructor() {
+        this._initialized = false;
+        this._seen = '';
+        this._active = false;
+    }
+
+    take(snapshot) {
+        const active = activeState(snapshot.state);
+        if (!this._initialized) {
+            this._initialized = true;
+            this._seen = snapshot.result || '';
+            this._active = active;
+            return false;
+        }
+        if (active && !this._active)
+            this._seen = '';
+        this._active = active;
+        if (!snapshot.available || active || snapshot.error || !snapshot.result ||
+            snapshot.result === this._seen)
+            return false;
+        this._seen = snapshot.result;
+        return true;
+    }
+}

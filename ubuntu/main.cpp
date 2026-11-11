@@ -87,7 +87,7 @@ private:
         callbacks.completed = [this](lv::OperationId, lv::WorkflowOutcome outcome) {
             error_ = false;
             message_ = outcome.kind == lv::WorkflowOutcomeKind::copy_fallback ?
-                "Ready to copy. Choose Copy, then paste into your field." : "Done.";
+                "Delivering transcript. Copy is available if paste cannot be sent." : "Done.";
             changed();
         };
         callbacks.failed = [this](lv::OperationId, lv::WorkflowFailure failure) {
@@ -161,7 +161,7 @@ private:
         if (!core_) return;
         if (command == "ShowSettings") { show_settings(); return; }
         if (command == "Quit") { core_->cancel(); g_application_quit(G_APPLICATION(app_)); return; }
-        if (command == "ClearResult") { error_ = false; clear_result(); message_ = "Copied. Paste into your field."; changed(); return; }
+        if (command == "ClearResult") { error_ = false; clear_result(); message_ = "Done."; changed(); return; }
         if (command == "Copy") {
             if (!result_.empty()) {
                 auto *display = gdk_display_get_default();

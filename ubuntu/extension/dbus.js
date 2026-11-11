@@ -32,8 +32,7 @@ function propertyBoolean(proxy, name) {
     return property ? property.deep_unpack() === true : false;
 }
 
-// The Shell owns no dictation data. It only holds Result long enough to copy it
-// after an explicit click, then asks the application to discard it.
+// The Shell holds Result until delivery, then asks the application to discard it.
 export class BackendClient {
     constructor(onChanged) {
         this._onChanged = onChanged;

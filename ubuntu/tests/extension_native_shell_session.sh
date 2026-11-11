@@ -162,7 +162,7 @@ wait_for_fixture_text() {
         sleep 0.05
     done
     printf '%s\n' "$observed" >"$introspection_log"
-    fail 'GTK target field did not receive the explicit copied text'
+    fail 'GTK target field did not receive the automatic paste'
 }
 
 wait_for_eval() {
@@ -428,31 +428,20 @@ wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'error-still-visible' : 'error-dismissed')" \
     error-dismissed
 
-phase='manual-copy-paste'
-# Copy is the sole supported result path. A test-only synthetic result makes
-# the real bar Copy handler populate the Shell clipboard; Ctrl+V then pastes
-# into the already-focused empty GTK entry. No Return key is injected.
+phase='automatic-paste'
+# Only the synthetic backend publishes text. The production extension performs
+# the paste shortcut into the already-focused GTK field.
 readonly synthetic_copy_text='Synthetic manual copy text'
 kill -USR2 "$backend_pid"
-wait_for_eval \
-    "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const extension = Main.extensionManager.lookup('$uuid').stateObj; const bar = extension._bar; return bar.actor.visible && bar._copy.visible && !bar._stop.visible && !bar._cancel.visible && !bar._settings.visible && global.display.focus_window?.get_title() === 'LemonVox Native Fixture' ? 'explicit-copy-visible' : 'explicit-copy-check-failed'; })" \
-    explicit-copy-visible
-assert_fixture_focus focused
-copy_click="$(shell_eval \
-    "import('resource:///org/gnome/shell/ui/main.js').then(Main => { Main.extensionManager.lookup('$uuid').stateObj._bar._copy.emit('clicked', null); return 'copy-clicked'; })")" || fail 'could not click private Copy control'
-[[ "$copy_click" == *copy-clicked* ]] || {
-    printf '%s\n' "$copy_click" >"$introspection_log"
-    fail 'private Copy control did not emit clicked'
-}
-sleep 0.2
-send_shortcut 'Clutter.KEY_Control_L' 'Clutter.KEY_v'
 wait_for_fixture_text "$synthetic_copy_text"
 wait_for_backend_result ''
 assert_fixture_focus focused
-[[ ! -s "$fixture_activation" ]] || fail 'explicit Copy unexpectedly activated the target field'
+[[ ! -s "$fixture_activation" ]] || fail 'automatic paste unexpectedly activated the target field'
+sleep 0.2
+wait_for_fixture_text "$synthetic_copy_text"
 wait_for_eval \
-    "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'copy-bar-still-visible' : 'copy-bar-hidden')" \
-    copy-bar-hidden
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'result-bar-still-visible' : 'result-bar-hidden')" \
+    result-bar-hidden
 
 phase='rebind-shortcuts'
 # Settings updates rebind both compositor shortcuts without accepting the old

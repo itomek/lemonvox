@@ -1,6 +1,7 @@
 // The policy module deliberately has no GNOME Shell imports, so this test runs
 // in GJS without changing the user's desktop session.
 import {
+    ResultDelivery,
     activeState,
     barModel,
     normalizeBackendState,
@@ -114,3 +115,17 @@ testConflictingShortcutsAreRejected();
 testPaletteAcceptsOnlyFourNativeSemanticRgbaValues();
 
 print('PASS: GNOME Shell shortcut and bar policy');
+
+const delivery = new ResultDelivery();
+const snapshot = {available: true, state: 'idle', error: false, result: ''};
+equal(delivery.take({...snapshot, result: 'old result'}), false, 'startup does not replay a retained result');
+equal(delivery.take(snapshot), false, 'empty result is ignored');
+equal(delivery.take({...snapshot, result: 'new result'}), true, 'new result is delivered');
+equal(delivery.take(snapshot), false, 'optimistic ClearResult does not arm duplicate delivery');
+equal(delivery.take({...snapshot, result: 'new result'}), false, 'repeated property change is ignored');
+equal(delivery.take({...snapshot, state: 'recording'}), false, 'next recording arms delivery');
+equal(delivery.take({...snapshot, result: 'new result'}), true, 'identical text in another recording is delivered');
+equal(delivery.take({...snapshot, state: 'recording'}), false, 'active session does not paste');
+equal(delivery.take({...snapshot, error: true, result: 'error result'}), false, 'error does not paste');
+equal(delivery.take({...snapshot, available: false, result: 'offline result'}), false, 'offline result does not paste');
+print('PASS: new result delivery is once per operation');
