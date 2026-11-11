@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs explicit Copy -> paste checks against disposable Chrome and Electron
+# Runs automatic paste checks against disposable Chrome and Electron
 # Wayland clients inside a private GNOME Shell. It never uses the live desktop,
 # a real browser profile, microphone hardware, or X11.
 set -euo pipefail

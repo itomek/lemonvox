@@ -295,46 +295,36 @@ start_electron() {
     wait_for_event electron focus
 }
 
-exercise_explicit_copy() {
+exercise_automatic_paste() {
     local client="$1"
     local title="$2"
     local start=''
-    local clicked=''
+    local input_count=''
 
     assert_client_focus "$client" "$title"
     clear_clipboard
     start="$(event_offset)"
-
-    # SIGUSR2 drives only the disposable synthetic D-Bus service. The actual
-    # extension receives the normal Result property change and displays its
-    # production Copy control.
-    kill -USR2 "$backend_pid"
-    wait_for_copy_bar "$client" "$title"
-    assert_client_focus "$client" "$title"
-    assert_no_event_since "$start" "$client" input
-    assert_no_event_since "$start" "$client" submit
-    assert_no_event_since "$start" "$client" blur
-
-    clicked="$(shell_eval \
-        "import('resource:///org/gnome/shell/ui/main.js').then(Main => { Main.extensionManager.lookup('$uuid').stateObj._bar._copy.emit('clicked', null); return 'copy-clicked'; })")" || fail "could not click the native Copy control for ${client}"
-    [[ "$clicked" == *copy-clicked* ]] || fail "native Copy control did not emit for ${client}"
-    wait_for_clipboard "$synthetic_copy_text"
-    wait_for_backend_result ''
-    assert_no_event_since "$start" "$client" input
-    assert_no_event_since "$start" "$client" submit
-    assert_no_event_since "$start" "$client" blur
-
-    # This is the only input injection: an ordinary paste shortcut into the
-    # already-focused browser field. No Enter or text keys are synthesized.
-    send_shortcut 'Clutter.KEY_Control_L' 'Clutter.KEY_v'
-    wait_for_event "$client" input "$synthetic_copy_text"
-    assert_no_event_since "$start" "$client" submit
-    assert_no_event_since "$start" "$client" blur
-    assert_client_focus "$client" "$title"
+    # Arm a fresh operation even when two recordings produce identical text.
+    gdbus call --session --dest com.itomek.LemonVox \
+        --object-path /com/itomek/LemonVox \
+        --method com.itomek.LemonVox.Toggle >/dev/null
     wait_for_eval \
-        "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? '$client-copy-bar-still-visible' : '$client-copy-bar-hidden')" \
-        "$client-copy-bar-hidden"
-    printf 'PASS: %s Wayland field retained focus and accepted explicit Copy via Ctrl+V without submit\n' "$client"
+        "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._client.snapshot.state === 'recording' ? 'recording-ready' : 'recording-pending')" \
+        recording-ready
+    assert_no_event_since "$start" "$client" input
+    kill -USR2 "$backend_pid"
+    wait_for_event "$client" input "$synthetic_copy_text"
+    wait_for_backend_result ''
+    assert_no_event_since "$start" "$client" submit
+    assert_no_event_since "$start" "$client" blur
+    assert_client_focus "$client" "$title"
+    sleep 0.2
+    input_count="$(tail -n "+$((start + 1))" "$events_file" | rg -Fc -- "\"client\":\"$client\",\"type\":\"input\"")"
+    [[ "$input_count" == 1 ]] || fail "$client received more than one automatic paste"
+    wait_for_eval \
+        "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? '$client-result-bar-still-visible' : '$client-result-bar-hidden')" \
+        "$client-result-bar-hidden"
+    printf 'PASS: %s Wayland field received one automatic paste without submit or focus change\n' "$client"
 }
 
 # --unsafe-mode applies only to this fresh, headless test compositor; it
@@ -385,12 +375,12 @@ wait_for_eval \
 
 start_server
 start_chrome
-exercise_explicit_copy chrome "$chrome_title"
+exercise_automatic_paste chrome "$chrome_title"
 terminate_group "$chrome_pid"
 chrome_pid=''
 
 start_electron
-exercise_explicit_copy electron "$electron_title"
+exercise_automatic_paste electron "$electron_title"
 
 if rg -q '(JS ERROR|ERROR.*lemonvox@itomek\.com|SyntaxError)' "$shell_log"; then
     fail 'GNOME Shell logged an extension JavaScript error during the matrix'

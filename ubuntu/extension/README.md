@@ -15,10 +15,16 @@ only for a non-idle operation, so the configured chord is ordinary input while
 LemonVox is idle.
 
 The extension exposes a Shell bar during active work, with Stop while recording
-and Cancel while active. It keeps the active application focused. A result can
-only be copied after an explicit click; it is never rendered in the Shell and
-the extension calls `ClearResult` after a successful clipboard write. It never
-attempts automatic cross-application text insertion.
+and Cancel while active. When processing finishes, it writes the result to the
+clipboard and sends Ctrl+V to the application that currently has focus.
+It preserves focus and sends no Enter. The destination handles the ordinary
+paste, including when no text field is selected. The extension clears the result
+after dispatch and suppresses duplicate delivery from property refreshes.
+
+Copy remains available if no application window has focus or the paste shortcut
+cannot be dispatched. A result already present when the extension starts remains
+available for Copy. Physical modifiers still held when processing finishes delay
+the paste for up to five seconds, then leave Copy available.
 
 The application must own this session D-Bus API, preferably through standard
 D-Bus activation:

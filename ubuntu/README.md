@@ -58,15 +58,12 @@ configurable and must be distinct regular key combinations; Alt twice is
 unavailable on this integration. If a shortcut cannot be claimed, use the
 visible controls and choose another combination.
 
-GNOME Wayland does not provide proven cross-app secure-field inspection here.
-LemonVox therefore offers **Copy**, then lets you paste into the field you
-choose. It never injects keys, submits text or overwrites/restores clipboard
-contents automatically. Copy changes the clipboard only on your explicit
-click. It clears the app's retained result; otherwise results expire after
-five minutes, a new dictation, Cancel or Quit. The clipboard then belongs to
-the desktop and follows its normal lifetime. The Shell extension reads the
-transient result over the same-user session D-Bus; other applications running
-as that user can also query this interface while the result is retained.
+When processing finishes, the GNOME extension sends Ctrl+V to whichever
+application currently has focus. Moving the cursor or switching applications
+during processing changes the paste destination. A recognized text field is
+not required. Paste replaces the clipboard with the transcript and never sends
+Enter. Copy remains available when the paste gesture cannot be dispatched.
+The extension waits briefly for held shortcut modifiers to be released.
 
 Upgrade with `sudo apt install ./new-package.deb`. Remove with
 `sudo apt remove lemonvox`; local per-user settings remain in
