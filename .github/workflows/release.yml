@@ -122,7 +122,8 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$RELEASE_BUILD" =~ ^[1-9][0-9]*$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/latest-release.json"
+          # Latest may be Windows-only; inspect all pages for the last public macOS release.
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --slurp > "$RUNNER_TEMP/latest-release.json"
           PREVIOUS_BUILD=$(python3 scripts/latest-release-build.py "$RUNNER_TEMP/latest-release.json")
           test "$RELEASE_BUILD" -gt "$PREVIOUS_BUILD"
           echo "PREVIOUS_BUILD=$PREVIOUS_BUILD" >> "$GITHUB_ENV"
