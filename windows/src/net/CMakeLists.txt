@@ -1,4 +1,4 @@
-add_library(lv_net STATIC endpoint_facts.cpp winhttp_transport.cpp model_catalog.cpp)
+add_library(lv_net STATIC winhttp_transport.cpp model_catalog.cpp)
 target_link_libraries(lv_net PUBLIC lv_common PRIVATE winhttp)
 lemonvox_win_target(lv_net)
 

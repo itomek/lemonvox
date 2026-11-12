@@ -110,7 +110,7 @@ AdwPreferencesPage *page(AdwPreferencesWindow *window, const char *title, const 
     group(p, "Server required",
         "Install and run Lemonade or another OpenAI-compatible server separately on this computer. "
         "It must provide audio transcription, chat completions and model-discovery metadata supported by LemonVox. "
-        "Only loopback HTTP/HTTPS endpoints are supported. Generic OpenAI API compatibility alone is insufficient. "
+        "Local and remote HTTP/HTTPS endpoints are supported. Generic OpenAI API compatibility alone is insufficient. "
         "Lemonade 2026.44.1 is the tested baseline; other servers are unverified.");
     adw_preferences_window_add(window, p); return p;
 }
@@ -176,7 +176,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
 #endif
     adw_preferences_group_add(appearance, GTK_WIDGET(version));
     auto *models_page = page(preferences, "Models", "audio-input-microphone-symbolic");
-    auto *connection = group(models_page, "Server connection", "Only a loopback HTTP/HTTPS endpoint is supported. The separate server manages models, providers and credentials; models marked remote provider send text through that configured provider.");
+    auto *connection = group(models_page, "Server connection", "Local and remote HTTP/HTTPS endpoints are supported. The separate server manages models, providers and credentials; models marked remote provider send text through that configured provider.");
     endpoint_ = entry(connection, "API endpoint", settings_.endpoint);
     auto *refresh_button = gtk_button_new_with_label("Refresh models");
     g_signal_connect(refresh_button, "clicked", G_CALLBACK(refresh_clicked), this);

@@ -706,7 +706,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let url = components?.url
         let endpoint = WorkflowBridgeEndpointFacts(
             canonicalBaseURL: url?.absoluteString ?? config.endpoint,
-            schemeAllowed: ["http", "https"].contains(components?.scheme ?? ""),
+            schemeAllowed: ["http", "https"].contains(components?.scheme ?? "") && !(components?.host ?? "").isEmpty,
             hostLoopback: ["127.0.0.1", "localhost", "::1", "[::1]"].contains(components?.host ?? ""),
             noUserinfo: components?.user == nil && components?.password == nil,
             noQueryFragment: components?.query == nil && components?.fragment == nil,

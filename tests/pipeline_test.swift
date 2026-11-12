@@ -25,10 +25,10 @@ actor FakeHTTP: HTTPTransport {
         do { try await body(); fatalError("Expected rejection") } catch { }
     }
     static func main() async throws {
-        for endpoint in ["https://example.com/v1", "http://127.0.0.1.evil.test/v1", "http://user:pass@127.0.0.1/v1", "http://127.0.0.1/v1?x=1", "http://127.0.0.1/v1#fragment", "http://127.0.0.1/v2"] {
+        for endpoint in ["http:///v1", "ftp://example.com/v1", "http://user:pass@127.0.0.1/v1", "http://127.0.0.1/v1?x=1", "http://127.0.0.1/v1#fragment", "http://127.0.0.1/v2"] {
             await rejected { _ = try config(endpoint).baseURL() }
         }
-        for endpoint in ["http://127.0.0.1:13305/v1", "https://localhost/v1", "http://[::1]:13305/v1"] {
+        for endpoint in ["http://127.0.0.1:13305/v1", "https://localhost/v1", "http://[::1]:13305/v1", "https://example.com/v1", "http://192.168.1.231:13305/api/v1", "http://[fd00::2]/v1"] {
             _ = try config(endpoint).baseURL()
         }
         await rejected { _ = try DictationConfig(endpoint: "http://127.0.0.1:13305/v1", asrModel: "asr\nnext", cleanupModel: "chat", cleanupPrompt: "prompt").baseURL() }

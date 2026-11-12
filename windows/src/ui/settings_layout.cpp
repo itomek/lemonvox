@@ -2,6 +2,7 @@
 
 #include "common/utf.h"
 #include "protocol.h"
+#include "net/endpoint_facts.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -36,11 +37,6 @@ std::wstring modifier_prefix(std::uint32_t modifiers) {
     if (modifiers & MOD_ALT) text += L"Alt+";
     if (modifiers & MOD_SHIFT) text += L"Shift+";
     if (modifiers & MOD_WIN) text += L"Win+";
-    return text;
-}
-
-std::wstring lower(std::wstring text) {
-    for (auto &c : text) c = static_cast<wchar_t>(std::towlower(c));
     return text;
 }
 
@@ -179,69 +175,7 @@ std::wstring validate_endpoint(const std::wstring &endpoint) {
     if (text.empty()) return std::wstring(L"Enter the server endpoint, for example ") + kExampleEndpoint + L".";
     const std::wstring malformed = std::wstring(L"Enter an endpoint like ") + kExampleEndpoint
         + L" (http or https, ending in /v1, without credentials or query).";
-    const size_t scheme_end = text.find(L"://");
-    if (scheme_end == std::wstring::npos) return malformed;
-    const std::wstring scheme = lower(text.substr(0, scheme_end));
-    const std::wstring rest = text.substr(scheme_end + 3);
-    const size_t authority_end = rest.find_first_of(L"/?#");
-    const std::wstring authority = rest.substr(0, authority_end);
-    const std::wstring path_and_more = authority_end == std::wstring::npos ? L"" : rest.substr(authority_end);
-
-    std::wstring host;
-    std::wstring port;
-    bool has_port = false;
-    bool host_ok = true;
-    if (!authority.empty() && authority[0] == L'[') {
-        const size_t close = authority.find(L']');
-        if (close == std::wstring::npos) {
-            host_ok = false;
-        } else {
-            host = authority.substr(0, close + 1);
-            const std::wstring after = authority.substr(close + 1);
-            if (!after.empty()) {
-                host_ok = after[0] == L':';
-                has_port = true;
-                port = after.substr(1);
-            }
-        }
-    } else {
-        const size_t colon = authority.find(L':');
-        host = authority.substr(0, colon);
-        has_port = colon != std::wstring::npos;
-        if (has_port) port = authority.substr(colon + 1);
-    }
-    bool port_ok = true;
-    if (has_port) {
-        port_ok = !port.empty() && port.size() <= 5
-            && std::all_of(port.begin(), port.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; });
-        if (port_ok) {
-            const unsigned long number = std::wcstoul(port.c_str(), nullptr, 10);
-            port_ok = number >= 1 && number <= 65535;
-        }
-    }
-
-    std::wstring path = path_and_more.substr(0, path_and_more.find_first_of(L"?#"));
-    while (!path.empty() && path.back() == L'/') path.pop_back();
-    const size_t slash = path.rfind(L'/');
-    const std::wstring last_segment = slash == std::wstring::npos ? path : path.substr(slash + 1);
-
-    const std::wstring lowered_host = lower(host);
-    const bool loopback = lowered_host == L"127.0.0.1" || lowered_host == L"localhost" || lowered_host == L"[::1]";
-    const std::string canonical = wide_to_utf8(text);
-    LVEndpointFacts facts{};
-    facts.canonical_base_url = {reinterpret_cast<const std::uint8_t *>(canonical.data()), canonical.size()};
-    facts.scheme_allowed = scheme == L"http" || scheme == L"https";
-    facts.host_loopback = loopback;
-    facts.no_userinfo = authority.find(L'@') == std::wstring::npos;
-    facts.no_query_fragment = rest.find_first_of(L"?#") == std::wstring::npos;
-    facts.path_ends_v1 = last_segment == L"v1";
-    if (facts.no_userinfo && host_ok && port_ok && !host.empty() && !loopback) {
-        return std::wstring(L"LemonVox only connects to a server on this PC. Use a loopback endpoint such as ")
-            + kExampleEndpoint + L".";
-    }
-    if (!host_ok || !port_ok || canonical.empty() || lv_protocol_validate_endpoint(&facts) != LV_PROTOCOL_OK) {
-        return malformed;
-    }
+    if (!lemonvox::win::endpoint_is_valid(wide_to_utf8(text))) return malformed;
     return L"";
 }
 
@@ -310,7 +244,7 @@ StatusText catalog_status(const SettingsCatalogResult &result, const std::wstrin
             false};
     }
     case Status::configuration:
-        return {std::wstring(L"Enter a loopback server endpoint such as ") + kExampleEndpoint + L".", true};
+        return {std::wstring(L"Enter an HTTP/HTTPS server endpoint such as ") + kExampleEndpoint + L".", true};
     case Status::network:
         return {L"Server unavailable at " + endpoint + L" \u2014 start your server and press Refresh models.", true};
     case Status::http:

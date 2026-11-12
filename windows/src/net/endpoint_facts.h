@@ -14,7 +14,7 @@ namespace lemonvox::win {
 //
 // On success the facts describe the URL; the caller must still run
 // lemonvox::Protocol::validate_endpoint, which rejects non-http(s) schemes,
-// non-loopback hosts, userinfo, query/fragment and paths not ending in "v1".
+// userinfo, query/fragment and paths not ending in "v1".
 // canonical_base_url is "<scheme>://<host>[:<port>]<path>" with the scheme and
 // host lowercased and trailing slashes removed, e.g. "http://127.0.0.1:13305/v1";
 // the core appends "/models" etc. to it.

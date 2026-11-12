@@ -48,7 +48,7 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"Server &endpoint", Kind::label},
     {L"", Kind::edit},
     {L"&Refresh models", Kind::button},
-    {L"Requires separate Lemonade or another OpenAI-compatible server on this PC. Only loopback endpoints are supported.", Kind::note},
+    {L"Requires a separate compatible server. Local and remote HTTP/HTTPS endpoints ending in /v1 are supported.", Kind::note},
     {L"", Kind::note},
     {L"&Transcription model", Kind::label},
     {L"", Kind::combo},

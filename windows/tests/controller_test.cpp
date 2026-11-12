@@ -205,7 +205,7 @@ void unreachable_server_reports_lemonade_unavailable() {
     h.transport.network_down = true;
     h.controller.toggle();
     pump_until(h.failed);
-    assert(h.failed && h.failure.text.find(L"Lemonade unavailable") == 0);
+    assert(h.failed && h.failure.text.find(L"Server unavailable") == 0);
 }
 
 void microphone_denial_maps_to_privacy_action() {

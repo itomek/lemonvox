@@ -17,8 +17,8 @@ reaches the core through the single serialized `UiThreadExecutor` (`common/execu
   statically, so `LemonVox.exe` has no redistributable dependency.
 - Run: Windows 11 x64 is the only tested configuration (see [Validation](#validation)).
   Windows 10 and Arm64 are untested.
-- Install and run Lemonade separately, or another OpenAI-compatible server on this PC.
-  Only loopback endpoints are supported. The server must provide audio transcription, chat
+- Install and run Lemonade separately, or another compatible server on this PC or a remote machine.
+  HTTP/HTTPS endpoints ending in /v1 (including /api/v1) are supported. The server must provide audio transcription, chat
   completions and discoverable compatible model metadata; OpenAI API compatibility alone
   does not guarantee model discovery or successful dictation. LemonVox neither installs nor
   starts the server. Lemonade is the tested baseline below; other servers need verification.
@@ -142,7 +142,7 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 | Real apps | Updated matrix checks completion-focus paste; rerun pending. See [`tests/insertion-matrix.md`](tests/insertion-matrix.md). |
 | Pipeline | Synthesized "Um, send Alex the fourteen invoices on Friday." → "Send Alex the 14 invoices on Friday." through WinHTTP, Whisper-Base and Gemma cleanup |
 | Full app | `app_e2e_test`: Alt twice → real app → Lemonade → pasted into another process's field ("Note: Send Alex the 14 invoices on Friday."), focus kept, no Enter, clipboard restored |
-| Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, non-loopback endpoint, microphone denial/no device/device loss (fake device) |
+| Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, malformed endpoint, microphone denial/no device/device loss (fake device) |
 | Microphone | Endpoint enumeration and initialization (48 kHz stereo) verified without recording; owner-run `lemonvox_mic_probe --seconds 5`: 5.000 s at 16 kHz mono, RMS -27.2 dBFS, peak -2.1 dBFS |
 | Live dictation | Owner-verified with a real microphone and Alt twice |
 | Administrator window | Owner-verified: Alt twice is not detected in an elevated terminal (UIPI), and the "Administrator window" notice appears when it becomes active; only the elevated terminal matched on the open desktop |

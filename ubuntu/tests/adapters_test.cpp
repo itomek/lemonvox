@@ -56,13 +56,21 @@ private:
 
 class LocalServer final {
 public:
-    explicit LocalServer(std::string response = "{}", bool hold_open = false)
+    explicit LocalServer(std::string response = "{}", bool hold_open = false, const char *bind_address = nullptr)
         : response_(std::move(response)), hold_open_(hold_open) {
         server_ = soup_server_new(nullptr, nullptr);
         assert(server_);
         soup_server_add_handler(server_, nullptr, &LocalServer::handle, this, nullptr);
         GError *error = nullptr;
-        assert(soup_server_listen_local(server_, 0, SOUP_SERVER_LISTEN_IPV4_ONLY, &error));
+        if (bind_address) {
+            GInetAddress *address = g_inet_address_new_from_string(bind_address);
+            GSocketAddress *socket = g_inet_socket_address_new(address, 0);
+            assert(soup_server_listen(server_, socket, static_cast<SoupServerListenOptions>(0), &error));
+            g_object_unref(socket);
+            g_object_unref(address);
+        } else {
+            assert(soup_server_listen_local(server_, 0, SOUP_SERVER_LISTEN_IPV4_ONLY, &error));
+        }
         assert(error == nullptr);
         GSList *uris = soup_server_get_uris(server_);
         assert(uris && uris->data);
@@ -98,13 +106,14 @@ private:
     bool saw_request_ = false;
 };
 
-void endpoint_facts_normalize_only_loopback() {
+void endpoint_facts_accept_local_and_remote() {
     ProtocolEndpointFacts facts;
     assert(lemonvox::ubuntu::endpoint_facts("HTTP://LOCALHOST:13305/v1///", facts));
     assert(facts.canonical_base_url == "http://localhost:13305/v1");
     assert(facts.scheme_allowed && facts.host_loopback && facts.no_userinfo && facts.no_query_fragment && facts.path_ends_v1);
     assert(lemonvox::ubuntu::endpoint_is_valid("http://127.0.0.1:13305/v1"));
-    assert(!lemonvox::ubuntu::endpoint_is_valid("https://example.com/v1"));
+    assert(lemonvox::ubuntu::endpoint_is_valid("https://example.com/v1"));
+    assert(lemonvox::ubuntu::endpoint_is_valid("http://192.168.1.231:13305/api/v1"));
     assert(!lemonvox::ubuntu::endpoint_is_valid("http://user@127.0.0.1/v1"));
     assert(!lemonvox::ubuntu::endpoint_is_valid("http://127.0.0.1/v1?token=private"));
 }
@@ -143,6 +152,25 @@ void loopback_transport_returns_owned_response() {
         assert(operation == 17);
         assert(response.error == AdapterError::none);
         assert(response.status == 200);
+        assert(response.bytes == std::vector<std::uint8_t>({'{', '}'}));
+        completed = true;
+    });
+    assert(context.until([&] { return completed; }));
+    assert(server.saw_request());
+}
+
+void transport_accepts_a_host_outside_the_old_loopback_allowlist() {
+    Context context;
+    LocalServer server("{}", false, "127.0.0.2");
+    ProtocolEndpointFacts facts;
+    assert(lemonvox::ubuntu::endpoint_facts(server.endpoint() + "v1", facts));
+    assert(!facts.host_loopback);
+    SoupByteTransport transport(context.get());
+    TransportRequest request;
+    request.url = server.endpoint() + "v1/models";
+    bool completed = false;
+    transport.send(18, std::move(request), [&](OperationId, TransportResponse response) {
+        assert(response.error == AdapterError::none && response.status == 200);
         assert(response.bytes == std::vector<std::uint8_t>({'{', '}'}));
         completed = true;
     });
@@ -316,9 +344,10 @@ void shutdown_releases_live_transport_state_without_context_drain() {
 } // namespace
 
 int main() {
-    endpoint_facts_normalize_only_loopback();
+    endpoint_facts_accept_local_and_remote();
     manual_insertion_never_claims_a_safe_target();
     loopback_transport_returns_owned_response();
+    transport_accepts_a_host_outside_the_old_loopback_allowlist();
     synthetic_capture_returns_a_bounded_wav();
     cancel_suppresses_a_queued_capture_completion();
     shutdown_releases_queued_capture_wav_without_context_drain();

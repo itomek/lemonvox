@@ -39,7 +39,7 @@ typedef struct {
     /* URLComponents supplies this canonical URL and all normalized facts. */
     LVProtocolSlice canonical_base_url;
     uint8_t scheme_allowed;
-    uint8_t host_loopback;
+    uint8_t host_loopback; /* Informational; retained for bridge compatibility. */
     uint8_t no_userinfo;
     uint8_t no_query_fragment;
     uint8_t path_ends_v1;
@@ -127,7 +127,7 @@ namespace lemonvox {
 struct ProtocolEndpointFacts {
     std::string canonical_base_url;
     bool scheme_allowed = false;
-    bool host_loopback = false;
+    bool host_loopback = false; // Informational; remote endpoints are supported.
     bool no_userinfo = false;
     bool no_query_fragment = false;
     bool path_ends_v1 = false;

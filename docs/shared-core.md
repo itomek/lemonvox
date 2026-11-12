@@ -84,7 +84,7 @@ request/result values, workflow callbacks, and content-free diagnostics.
   paste-dispatched presentation; no terminal path also emits `transport_failed`.
 
 Mac keeps URLSession as the first `ByteTransport` implementation, including its
-loopback, no-redirect, proxy, cookie and credential-storage restrictions, plus
+no-redirect, proxy, cookie and credential-storage restrictions, plus
 the current 60-second request and 120-second resource timeouts. This contract
 neither selects a shared HTTP library nor changes that policy. This slice adds
 no shared HTTP dependency. URLSession remains responsible for byte delivery,
@@ -102,7 +102,7 @@ safe error categories. It never implements HTTP or parses URLs.
 Native shells normalize an endpoint with their URL API and supply a canonical
 base URL plus `LVEndpointFacts`. The protocol verifies those facts and appends
 only its fixed paths. Mac uses `URLComponents`; another native shell must
-provide equivalent canonical URL and loopback/scheme/userinfo/query/fragment/
+provide equivalent canonical URL and scheme/userinfo/query/fragment/
 `v1` facts before it can use the core.
 
 `LVProtocolSlice` inputs are borrowed only for each synchronous C call; a null

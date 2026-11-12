@@ -6,7 +6,7 @@ A small microphone indicator shows recording activity while the target app keeps
 
 macOS comes first. Windows and Ubuntu follow, sharing the dictation pipeline and using platform-specific shortcuts and text insertion.
 
-The server must provide audio transcription, chat completion for cleanup, and compatible model-discovery metadata. Current builds accept local loopback endpoints only; an OpenAI-compatible chat API alone is insufficient. Lemonade 2026.44.1 is the tested baseline. LemonVox does not bundle an inference server or models.
+The server must provide audio transcription, chat completion for cleanup, and compatible model-discovery metadata. Local and remote HTTP/HTTPS server endpoints ending in /v1 are supported; an OpenAI-compatible chat API alone is insufficient. Lemonade 2026.44.1 is the tested baseline. LemonVox does not bundle an inference server or models.
 
 ## Start here
 

@@ -32,8 +32,8 @@ capability/download/recipe metadata understood by LemonVox. Lemonade 2026.44.1
 is the tested baseline; other servers have not been verified.
 
 Settings defaults to `http://127.0.0.1:13305/v1`; select an available transcription
-model and an independent cleanup model after Refresh models. Only loopback HTTP/HTTPS
-endpoints without credentials, queries or fragments are accepted. Settings
+model and an independent cleanup model after Refresh models. Local and remote HTTP/HTTPS
+endpoints ending in /v1, without embedded credentials, queries or fragments, are accepted. Settings
 loads asynchronously and remains usable if the server is unavailable.
 
 The Settings window provides Start, Stop, Cancel and Copy even without the

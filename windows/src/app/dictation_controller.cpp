@@ -86,7 +86,7 @@ UserMessage describe_failure(const WorkflowFailure &failure, CaptureProblem capt
     if (failure.source == WorkflowFailureSource::adapter) {
         switch (failure.adapter_error) {
         case AdapterError::network:
-            return {L"Lemonade unavailable; check that it is running at the configured endpoint",
+            return {L"Server unavailable; check that it is running at the configured endpoint",
                 FailureAction::open_settings};
         case AdapterError::insertion_unavailable:
             return {L"Paste unavailable \u00B7 try again or copy the text", FailureAction::none};
@@ -105,7 +105,7 @@ UserMessage describe_failure(const WorkflowFailure &failure, CaptureProblem capt
     }
     switch (failure.protocol_status) {
     case LV_PROTOCOL_CONFIGURATION:
-        return {L"Configure a loopback Lemonade endpoint and both models in Settings", FailureAction::open_settings};
+        return {L"Configure an HTTP/HTTPS server endpoint and both models in Settings", FailureAction::open_settings};
     case LV_PROTOCOL_MODEL_UNAVAILABLE:
         return {L"Selected models are not available for transcription and cleanup through Lemonade",
             FailureAction::open_settings};

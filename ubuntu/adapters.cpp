@@ -724,7 +724,7 @@ bool valid_header_value(const std::string &value) {
 
 bool request_url_allowed(const std::string &url) {
     ProtocolEndpointFacts facts;
-    return endpoint_facts(url, facts) && facts.scheme_allowed && facts.host_loopback && facts.no_userinfo &&
+    return endpoint_facts(url, facts) && facts.scheme_allowed && facts.no_userinfo &&
         facts.no_query_fragment;
 }
 

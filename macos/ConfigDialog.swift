@@ -36,7 +36,7 @@ enum RunningAppVersion {
 @MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     let window: NSWindow
     let appVersion = NSTextField(labelWithString: RunningAppVersion.display(info: Bundle.main.infoDictionary ?? [:]))
-    let serverRequirement = NSTextField(wrappingLabelWithString: "Requires Lemonade or another OpenAI-compatible server, running separately.\nUse a local endpoint with transcription, chat completion, and compatible model discovery.")
+    let serverRequirement = NSTextField(wrappingLabelWithString: "Requires Lemonade or another OpenAI-compatible server, running separately.\nUse a local or remote HTTP/HTTPS endpoint with transcription, chat completion, and compatible model discovery.")
     let scroll = NSScrollView()
     let categoryList = NSTableView()
     var scrolls: [NSScrollView] = []

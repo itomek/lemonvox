@@ -1,4 +1,4 @@
-﻿#include "ui/settings_layout.h"
+#include "ui/settings_layout.h"
 
 #include <windows.h>
 
@@ -144,7 +144,7 @@ static void endpoint_validation() {
     for (const wchar_t *bad : {L"127.0.0.1:13305/v1", L"ftp://127.0.0.1/v1", L"http://127.0.0.1:13305/v2",
              L"http://127.0.0.1:13305", L"http://user@127.0.0.1/v1", L"http://127.0.0.1/v1?x=1",
              L"http://127.0.0.1/v1#frag", L"http://127.0.0.1:abc/v1", L"http://127.0.0.1:99999/v1",
-             L"http://127.0.0.1:/v1", L"http://[::1/v1"}) {
+             L"http://127.0.0.1:/v1", L"http://[::1/v1", L"http:///v1", L"http://bad host/v1", L"http://[zz::2]/v1"}) {
         CHECK(validate_endpoint(bad).find(L"Enter an endpoint like") == 0);
     }
     CHECK(validate_prompt(L"  \r\n ").find(L"Enter a cleanup prompt") == 0);
@@ -171,7 +171,7 @@ static void status_text() {
     result.status = SettingsCatalogResult::Status::response;
     CHECK(catalog_status(result, endpoint).error);
     result.status = SettingsCatalogResult::Status::configuration;
-    CHECK(catalog_status(result, endpoint).text.find(L"loopback") != std::wstring::npos);
+    CHECK(catalog_status(result, endpoint).text.find(L"HTTP/HTTPS") != std::wstring::npos);
 
     result.status = SettingsCatalogResult::Status::ok;
     result.message.clear();

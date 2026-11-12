@@ -347,7 +347,7 @@ int main() {
             static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
         const auto prerequisite = text_of(item(window, SettingsControl::endpoint_hint));
         CHECK(prerequisite.find(L"Requires separate Lemonade or another OpenAI-compatible server") == 0);
-        CHECK(prerequisite.find(L"Only loopback endpoints") != std::wstring::npos);
+        CHECK(prerequisite.find(L"Local and remote HTTP/HTTPS endpoints") != std::wstring::npos);
         const auto capabilities = text_of(item(window, SettingsControl::routing_note));
         CHECK(capabilities.find(L"transcription, chat and discoverable compatible model metadata") != std::wstring::npos);
         CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from server\u2026");

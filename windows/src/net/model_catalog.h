@@ -14,7 +14,7 @@ namespace lemonvox::win {
 
 enum class CatalogStatus : std::uint8_t {
     ok,
-    configuration, // endpoint is not a loopback http(s) URL ending in /v1
+    configuration, // endpoint is not an http(s) URL ending in /v1
     network,       // server unreachable, timeout or transport failure
     http,          // non-2xx HTTP status; see http_status
     response,      // unsupported or malformed response body

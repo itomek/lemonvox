@@ -350,17 +350,19 @@ void endpoint_facts_cover_mac_rules() {
     expect_valid("http://127.0.0.1:65535/v1", "http://127.0.0.1:65535/v1");
     expect_valid("http://127.0.0.1:13305/a%20b/v1", "http://127.0.0.1:13305/a%20b/v1");
 
+    expect_valid("http://example.com/v1", "http://example.com/v1");
+    expect_valid("http://192.168.1.2:13305/v1", "http://192.168.1.2:13305/v1");
+    expect_valid("http://127.0.0.2/v1", "http://127.0.0.2/v1");
+    expect_valid("http://localhost.example.com/v1", "http://localhost.example.com/v1");
+    expect_valid("http://[::2]/v1", "http://[::2]/v1");
+    expect_valid("http://192.168.1.231:13305/api/v1", "http://192.168.1.231:13305/api/v1");
+    expect_valid("https://inference.example.com/v1", "https://inference.example.com/v1");
     struct Case {
         const char *endpoint;
         bool scheme, loopback, no_userinfo, no_query_fragment, ends_v1;
     };
     const Case parsed_but_rejected[] = {
         {"ftp://127.0.0.1/v1", false, true, true, true, true},
-        {"http://example.com/v1", true, false, true, true, true},
-        {"http://192.168.1.2:13305/v1", true, false, true, true, true},
-        {"http://127.0.0.2/v1", true, false, true, true, true},
-        {"http://localhost.example.com/v1", true, false, true, true, true},
-        {"http://[::2]/v1", true, false, true, true, true},
         {"http://user@127.0.0.1/v1", true, true, false, true, true},
         {"http://user:pass@127.0.0.1/v1", true, true, false, true, true},
         {"http://127.0.0.1/v1?x=1", true, true, true, false, true},

@@ -226,7 +226,7 @@ private:
         if (!window_) {
             window_ = std::make_unique<native::SettingsWindow>(GTK_APPLICATION(app_), settings_,
                 [this](const native::Settings &value, std::string &error) {
-                    if (!native::endpoint_is_valid(value.endpoint)) { error = "Use a loopback HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment."; return false; }
+                    if (!native::endpoint_is_valid(value.endpoint)) { error = "Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment."; return false; }
                     if (!store_.save(value, error)) return false;
                     settings_ = value; diagnostics_.set_debug(settings_.debug);
                     native::apply_appearance(settings_); native::apply_extension_shortcuts(settings_);
