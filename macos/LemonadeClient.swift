@@ -4,9 +4,9 @@ enum DictationError: Error, LocalizedError {
     case configuration, modelUnavailable, serverUnavailable, http(Int), upstream(Int, String), response, emptyTranscript, emptyCleanup, microphone, recording
     var errorDescription: String? {
         switch self {
-        case .configuration: return "Configure a loopback Lemonade endpoint and both model IDs"
+        case .configuration: return "Configure an HTTP/HTTPS server endpoint and both model IDs"
         case .modelUnavailable: return "Selected models are not available for transcription and cleanup through Lemonade"
-        case .serverUnavailable: return "Local Lemonade unavailable; check endpoint and server"
+        case .serverUnavailable: return "Server unavailable; check endpoint and server"
         case .http(let code): return "Lemonade request failed (HTTP \(code))"
         case .upstream(let code, let message): return "Lemonade HTTP \(code): \(message)"
         case .response: return "Lemonade returned an unsupported response"
@@ -45,7 +45,7 @@ enum CoreProtocolBridge {
         return try withSlice(url.absoluteString) { canonical in
             var facts = LVEndpointFacts()
             facts.canonical_base_url = canonical
-            facts.scheme_allowed = ["http", "https"].contains(components.scheme ?? "") ? 1 : 0
+            facts.scheme_allowed = ["http", "https"].contains(components.scheme ?? "") && !(components.host ?? "").isEmpty ? 1 : 0
             facts.host_loopback = ["127.0.0.1", "localhost", "::1", "[::1]"].contains(components.host ?? "") ? 1 : 0
             facts.no_userinfo = components.user == nil && components.password == nil ? 1 : 0
             facts.no_query_fragment = components.query == nil && components.fragment == nil ? 1 : 0

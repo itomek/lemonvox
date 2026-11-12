@@ -14,7 +14,7 @@
 namespace lemonvox::ubuntu {
 
 // Normalizes a user-entered Lemonade base URL without doing I/O. The result
-// follows the shared core's endpoint rules: explicit http(s), loopback only,
+// follows the shared core's endpoint rules: explicit local or remote http(s),
 // no userinfo/query/fragment, and a final /v1 segment. Invalid input resets
 // facts and returns false.
 bool endpoint_facts(const std::string &endpoint_utf8, ProtocolEndpointFacts &facts);
@@ -84,7 +84,7 @@ struct SoupTransportOptions {
 
 // ByteTransport backed by libsoup. It uses a direct proxy resolver, disables
 // redirects, never adds a cookie jar or credential storage, accepts only
-// loopback HTTP(S) request URLs, and limits each owned response body.
+// local or remote HTTP(S) request URLs, and limits each owned response body.
 class SoupByteTransport final : public ByteTransport {
 public:
     struct State;

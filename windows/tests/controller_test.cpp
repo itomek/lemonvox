@@ -26,11 +26,13 @@ struct FakeCapture final : CaptureAdapter {
     Executor &executor;
     std::vector<std::uint8_t> wav;
     AdapterError start_error = AdapterError::none;
+    int stops = 0;
     explicit FakeCapture(Executor &e) : executor(e) {}
     void start(OperationId op, VoidCompletion done) override {
         executor.post([op, done, error = start_error] { done(op, {error}); });
     }
     void stop(OperationId op, BytesCompletion done) override {
+        ++stops;
         executor.post([op, done, bytes = wav] { done(op, {AdapterError::none, bytes}); });
     }
     void cancel(OperationId) override {}
@@ -71,22 +73,24 @@ struct FakeTransport final : ByteTransport {
 struct FakeInsertion final : InsertionAdapter {
     Executor &executor;
     bool matches = true;
-    bool secure_at_start = false;
+    AdapterError insert_error = AdapterError::none;
+    int insert_calls = 0;
     std::string inserted;
     explicit FakeInsertion(Executor &e) : executor(e) {}
     void capture_original(OperationId op, TargetCompletion done) override {
         TargetResult result;
-        result.target = {{7}, true, secure_at_start, true, true};
+        result.target = {{7}, true, false, true, true};
         executor.post([op, done, result] { done(op, result); });
     }
     void inspect(OperationId op, TargetToken, TargetCompletion done) override {
         TargetResult result;
-        result.target = {{7}, true, false, matches, matches};
+        result.target = {{7}, true, false, true, matches};
         executor.post([op, done, result] { done(op, result); });
     }
     void insert(OperationId op, TargetToken, std::string text, VoidCompletion done) override {
-        inserted = text;
-        executor.post([op, done] { done(op, {}); });
+        ++insert_calls;
+        if (insert_error == AdapterError::none) inserted = text;
+        executor.post([op, done, error = insert_error] { done(op, {error}); });
     }
     void cancel(OperationId) override {}
     void shutdown() override {}
@@ -143,16 +147,30 @@ void full_dictation_inserts_once() {
     h.controller.toggle();
     h.wait_for_phase(WorkflowPhase::recording);
     h.controller.toggle();
+    // Repeated finish actions during processing must not process twice.
+    h.controller.toggle();
+    assert(!h.controller.stop());
     pump_until(h.inserted);
     assert(h.inserted && !h.failed);
     assert(h.insertion.inserted == "Hello world.");
     assert(h.phases.front() == WorkflowPhase::preparing && h.phases.back() == WorkflowPhase::idle);
     assert(!h.controller.has_pending_text());
+    assert(h.capture.stops == 1 && h.insertion.insert_calls == 1);
 }
 
-void changed_target_offers_copy() {
+void stop_button_finishes_once() {
     Harness h;
-    h.insertion.matches = false;
+    h.controller.toggle();
+    h.wait_for_phase(WorkflowPhase::recording);
+    assert(h.controller.stop());
+    assert(!h.controller.stop());
+    pump_until(h.inserted);
+    assert(h.inserted && h.capture.stops == 1 && h.insertion.insert_calls == 1);
+}
+
+void failed_dispatch_offers_copy() {
+    Harness h;
+    h.insertion.insert_error = AdapterError::insertion_unavailable;
     h.controller.toggle();
     h.wait_for_phase(WorkflowPhase::recording);
     h.controller.toggle();
@@ -164,6 +182,8 @@ void changed_target_offers_copy() {
     }
     assert(!h.fallback.empty() && h.insertion.inserted.empty());
     assert(h.controller.has_pending_text());
+    assert(h.fallback.find(L"Paste unavailable") == 0);
+    assert(h.fallback.find(L"field") == std::wstring::npos);
     std::string copied;
     assert(h.controller.copy_pending([&](const std::string &text) { copied = text; return true; }));
     assert(copied == "Hello world." && !h.controller.has_pending_text());
@@ -172,7 +192,7 @@ void changed_target_offers_copy() {
 void invalid_configuration_fails_synchronously_with_settings_action() {
     Harness h;
     WinPreferences broken = configured();
-    broken.endpoint = "http://example.com/v1";
+    broken.endpoint = "ftp://example.com/v1";
     h.preferences.replace(broken);
     h.controller.toggle();
     assert(h.failed && h.failure.action == FailureAction::open_settings);
@@ -185,7 +205,7 @@ void unreachable_server_reports_lemonade_unavailable() {
     h.transport.network_down = true;
     h.controller.toggle();
     pump_until(h.failed);
-    assert(h.failed && h.failure.text.find(L"Lemonade unavailable") == 0);
+    assert(h.failed && h.failure.text.find(L"Server unavailable") == 0);
 }
 
 void microphone_denial_maps_to_privacy_action() {
@@ -197,13 +217,15 @@ void microphone_denial_maps_to_privacy_action() {
     assert(h.failed && h.failure.action == FailureAction::open_microphone_privacy);
 }
 
-void secure_field_refuses_dictation() {
+void changed_original_does_not_block_completion_focus() {
     Harness h;
-    h.insertion.secure_at_start = true;
+    h.insertion.matches = false;
     h.controller.toggle();
-    pump_until(h.failed);
-    assert(h.failed && h.failure.text.find(L"Password field") == 0);
-    assert(h.transport.paths.empty());
+    h.wait_for_phase(WorkflowPhase::recording);
+    h.controller.toggle();
+    pump_until(h.inserted);
+    assert(h.inserted && !h.failed && h.fallback.empty());
+    assert(h.insertion.inserted == "Hello world." && h.insertion.insert_calls == 1);
 }
 
 void cancel_discards_late_results() {
@@ -247,11 +269,12 @@ void boundary_is_unique_and_prefixed() {
 
 int main() {
     full_dictation_inserts_once();
-    changed_target_offers_copy();
+    stop_button_finishes_once();
+    failed_dispatch_offers_copy();
     invalid_configuration_fails_synchronously_with_settings_action();
     unreachable_server_reports_lemonade_unavailable();
     microphone_denial_maps_to_privacy_action();
-    secure_field_refuses_dictation();
+    changed_original_does_not_block_completion_focus();
     cancel_discards_late_results();
     diagnostics_stay_content_free();
     boundary_is_unique_and_prefixed();

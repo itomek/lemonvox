@@ -10,7 +10,7 @@ Description: Local-first desktop dictation for Ubuntu GNOME Wayland
  Requires Lemonade or another OpenAI-compatible server installed
  and running separately on this computer, with audio transcription, chat
  completions and model-discovery metadata supported by LemonVox. Generic API
- compatibility alone is insufficient. Only loopback endpoints are accepted.
+ compatibility alone is insufficient. Local and remote HTTP/HTTPS endpoints are accepted.
  Lemonade 2026.44.1 is the tested baseline; other servers are unverified.
  The GNOME extension pastes completed dictation at current focus without
  sending Enter. Copy is available if paste cannot be dispatched.

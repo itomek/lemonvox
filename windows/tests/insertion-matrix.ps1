@@ -48,7 +48,7 @@ function Test-Notepad {
     $name = 'lv-matrix-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
     $file = Join-Path $work "$name.txt"
     [System.IO.File]::WriteAllText($file, '')
-    $launcher = Start-Process -FilePath notepad.exe -ArgumentList "`"$file`"" -PassThru
+    $launcher = Start-Process -WindowStyle Hidden -FilePath notepad.exe -ArgumentList "`"$file`"" -PassThru
     Start-Sleep -Seconds 3
     $ids = @(Get-Process -Name Notepad -ErrorAction SilentlyContinue | ForEach-Object Id) + $launcher.Id
     try {
@@ -79,7 +79,7 @@ function Test-VSCode {
     $profileDir = Join-Path $work 'vscode-profile'
     $arguments = @("--user-data-dir=`"$profileDir`"", "--extensions-dir=`"$profileDir\ext`"", '--disable-extensions',
         '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--new-window', "`"$file`"")
-    $process = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru
+    $process = Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $arguments -PassThru
     Start-Sleep -Seconds 10
     try {
         $ids = @(Get-ProfileProcessIds $profileDir $exe) + $process.Id
@@ -94,10 +94,6 @@ function Test-VSCode {
             if ($saved -ceq $expected) { return 'pass' }
             return 'fail (saved file differs)'
         }
-        if ($run.Output -match 'sends=0' -and $run.Output -match 'clipboard.restored=1' -and
-            $run.Output -match 'capture.error=unavailable') {
-            return 'copy fallback (editor not exposed to UI Automation)'
-        }
         'fail'
     } finally {
         Stop-Owned (@(Get-ProfileProcessIds $profileDir $exe) + $process.Id)
@@ -108,7 +104,7 @@ function Test-VSCode {
 }
 
 # -Cold: the first insertion runs before anything else queried the browser's
-# accessibility, so the adapter itself must make the field visible.
+# accessibility; paste must work without exposing the field to the adapter.
 function Test-Browser([string]$label, [string]$exe, [string[]]$extra = @(), [switch]$Cold) {
     if (-not (Test-Path $exe)) { return "skipped ($label not installed)" }
     $title = 'LVMatrix' + [guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -118,13 +114,13 @@ function Test-Browser([string]$label, [string]$exe, [string[]]$extra = @(), [swi
     # then ends in 'ready'); the probe also waits until UI Automation reports
     # the named field as focused, moving focus with UIA SetFocus, not input.
     $page = "<title>$title</title><textarea aria-label=LemonVoxMatrixField id=t rows=4 autofocus></textarea>" +
-        "<input type=password aria-label=LemonVoxMatrixSecret>" +
+        "<textarea aria-label=LemonVoxMatrixSecond></textarea><input type=password aria-label=LemonVoxMatrixSecret>" +
         "<script>let ready=false;setInterval(()=>{if(!ready&&document.activeElement!==t)t.focus();" +
         "if(document.activeElement===t)ready=true;document.title='$title '+(ready?'ready':'loading')},200)</script>"
     $url = 'data:text/html,' + [Uri]::EscapeDataString($page)
     $arguments = @("--user-data-dir=`"$profileDir`"", '--no-first-run', '--no-default-browser-check',
         '--new-window') + $extra + @($url)
-    $process = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru
+    $process = Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $arguments -PassThru
     Start-Sleep -Seconds 5
     try {
         $ids = @(Get-ProfileProcessIds $profileDir $exe) + $process.Id
@@ -132,8 +128,8 @@ function Test-Browser([string]$label, [string]$exe, [string[]]$extra = @(), [swi
         $focus = if ($Cold) { @() } else { @('--focus-name', 'LemonVoxMatrixField') }
         $insert = Invoke-Probe (@('insert') + $focus + $common)
         $changed = Invoke-Probe (@('insert', '--focus-name', 'LemonVoxMatrixField', '--change-focus',
-            'LemonVoxMatrixSecret') + $common)
-        $secure = Invoke-Probe (@('insert', '--focus-name', 'LemonVoxMatrixSecret', '--expect-secure') + $common)
+            'LemonVoxMatrixSecond') + $common)
+        $secure = Invoke-Probe (@('insert', '--focus-name', 'LemonVoxMatrixSecret', '--expect-unreadable') + $common)
         $parts = @(
             "insert=$(if ($insert.Code -eq 0) { 'pass' } else { 'fail' })",
             "changed-focus=$(if ($changed.Code -eq 0) { 'pass' } else { 'fail' })",

@@ -60,7 +60,7 @@ PackageUrl: https://github.com/itomek/lemonvox
 License: MIT
 LicenseUrl: https://github.com/itomek/lemonvox/blob/main/LICENSE
 ShortDescription: Desktop dictation requiring separate Lemonade or a compatible OpenAI server.
-Description: Requires Windows 11 x64 and separately installed Lemonade or another OpenAI-compatible server running locally. Only loopback endpoints are supported. The server must provide transcription, chat completions and discoverable compatible model metadata; generic OpenAI API compatibility alone is insufficient. Press a configurable shortcut to dictate into the focused app.
+Description: Requires Windows 11 x64 and separately installed Lemonade or another OpenAI-compatible server running locally or remotely. Local and remote HTTP/HTTPS endpoints are supported. The server must provide transcription, chat completions and discoverable compatible model metadata; generic OpenAI API compatibility alone is insufficient. Press a configurable shortcut to dictate into the focused app.
 Moniker: lemonvox
 ManifestType: defaultLocale
 ManifestVersion: 1.12.0

@@ -2,7 +2,7 @@
 
 Windows distribution is part of the Windows milestone. The supported build target is
 Windows 11 x64. Every channel requires separately installed Lemonade or another
-OpenAI-compatible server running on this PC. Only loopback endpoints are supported.
+OpenAI-compatible server running locally or remotely. Local and remote HTTP/HTTPS endpoints are supported.
 The server must expose audio transcription, chat completions and discoverable compatible
 model metadata; a generic OpenAI-compatible API alone is insufficient. Lemonade is the
 tested baseline; other servers require verification. The app runs at normal user integrity.

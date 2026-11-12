@@ -11,7 +11,7 @@ description: |
   OpenAI-compatible server on this computer. The server must provide audio
   transcription, chat completions and model-discovery metadata supported by
   LemonVox; generic OpenAI API compatibility alone is insufficient. Only
-  loopback endpoints are accepted. Lemonade 2026.44.1 is the tested baseline;
+  local and remote HTTP/HTTPS endpoints are accepted. Lemonade 2026.44.1 is the tested baseline;
   other servers are unverified. The server and models are not bundled.
   This devel snap is an integration experiment, not a release candidate, until
   host GNOME Shell extension delivery and strict-confinement behavior are proven.

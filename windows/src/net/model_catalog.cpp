@@ -11,8 +11,8 @@ namespace {
 
 constexpr lemonvox::OperationId kCatalogIdBit = 0x8000000000000000ull;
 
-const char kConfigurationMessage[] = "Configure a loopback Lemonade endpoint ending in /v1";
-const char kNetworkMessage[] = "Local Lemonade unavailable; check endpoint and server";
+const char kConfigurationMessage[] = "Configure an HTTP/HTTPS server endpoint ending in /v1";
+const char kNetworkMessage[] = "Server unavailable; check endpoint and server";
 const char kResponseMessage[] = "Lemonade returned an unsupported response";
 
 CatalogResult failure(CatalogStatus status, const char *message, int http_status = 0) {

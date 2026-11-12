@@ -3,6 +3,7 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 #include <libsoup/soup.h>
+#include <arpa/inet.h>
 
 #include <algorithm>
 #include <array>
@@ -95,6 +96,9 @@ bool parse_host(std::string_view host, std::string &canonical) {
             else if (!is_hex(value) && value != '.') return false;
         }
         if (!colon) return false;
+        in6_addr address{};
+        const std::string literal(host.substr(1, host.size() - 2));
+        if (inet_pton(AF_INET6, literal.c_str(), &address) != 1) return false;
         for (char value : host) canonical.push_back(lower(value));
         return true;
     }
@@ -724,7 +728,7 @@ bool valid_header_value(const std::string &value) {
 
 bool request_url_allowed(const std::string &url) {
     ProtocolEndpointFacts facts;
-    return endpoint_facts(url, facts) && facts.scheme_allowed && facts.host_loopback && facts.no_userinfo &&
+    return endpoint_facts(url, facts) && facts.scheme_allowed && facts.no_userinfo &&
         facts.no_query_fragment;
 }
 

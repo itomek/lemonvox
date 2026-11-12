@@ -24,9 +24,12 @@ Use
 - Press Alt twice to start recording, Alt twice again to stop. Choose another
   shortcut in Settings (tray icon > Settings).
 - The bar shows recording, transcribing and cleanup progress without taking
-  focus. Text is pasted into the original field; Enter is never pressed.
-- If the field changed, is a password field, or belongs to an app running as
-  administrator, LemonVox offers Copy instead so you can paste manually.
+  focus. Completed text is pasted once wherever keyboard focus is now; Enter
+  is never pressed. You may switch apps or fields while processing.
+- No field discovery or target setting is required. With no text field focused,
+  the ordinary paste is still attempted. Cancel/X suppresses late paste.
+- If Windows cannot dispatch paste (for example to an administrator app),
+  LemonVox offers Copy so you can paste manually.
   Do not run LemonVox as administrator to work around this.
 - In administrator windows Windows hides key presses from LemonVox, so Alt
   twice does nothing there; use the tray menu's Start dictation or a regular

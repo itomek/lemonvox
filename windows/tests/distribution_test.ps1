@@ -100,7 +100,7 @@ Assert ($installer -match 'InstallerType: portable' -and $installer -notmatch 'S
 Assert ($installer -match 'Commands:\s*\r?\n- lemonvox') 'Missing portable command alias'
 $localeText = Get-Content (Join-Path $wingetArgs.Output 'LemonVox.LemonVox.locale.en-US.yaml') -Raw
 Assert ($localeText.Contains('separately installed Lemonade or another OpenAI-compatible server')) 'Missing separate server prerequisite'
-Assert ($localeText.Contains('Only loopback endpoints are supported')) 'Missing local endpoint restriction'
+Assert ($localeText.Contains('Local and remote HTTP/HTTPS endpoints are supported')) 'Missing remote endpoint support'
 Assert ($localeText.Contains('discoverable compatible model metadata')) 'Missing model compatibility requirement'
 $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
 if ($winget) {

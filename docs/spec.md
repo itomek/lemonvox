@@ -2,7 +2,7 @@
 
 ## Purpose
 
-LemonVox turns speech into text in the desktop app being used. It provides a small recording interface and sends transcription and cleanup requests to a configured Lemonade or another compatible OpenAI API server running separately. Current implementations accept local loopback endpoints only and require transcription, chat completion, and compatible model-discovery metadata. OpenAI chat compatibility alone does not establish compatibility.
+LemonVox turns speech into text in the desktop app being used. It provides a small recording interface and sends transcription and cleanup requests to a configured Lemonade or another compatible OpenAI API server running separately. Current implementations accept local and remote HTTP/HTTPS endpoints ending in /v1 and require transcription, chat completion, and compatible model-discovery metadata. OpenAI chat compatibility alone does not establish compatibility.
 
 The first milestone is a usable macOS app. Windows and Ubuntu are planned ports; the shared pipeline should make further community ports practical.
 
@@ -43,7 +43,7 @@ The Mac prototype uses a native **Swift/AppKit shell and a small C++ core** expo
 
 The [shared-core boundary](shared-core.md) records the adapter ownership, callback, ABI and portable-build contract for the incremental extraction.
 
-Keep the shared boundary small. Windows and Ubuntu can provide native adapters around that core as their integration work begins. The current prototype accepts loopback Lemonade endpoints and already-downloaded local transcription models and local or remote-backed cleanup models exposed by Lemonade. Model loading remains with Lemonade.
+Keep the shared boundary small. Windows and Ubuntu can provide native adapters around that core as their integration work begins. The current prototype accepts local or remote HTTP/HTTPS server endpoints and already-downloaded local transcription models and local or remote-backed cleanup models exposed by Lemonade. Model loading remains with Lemonade.
 
 The documented Lemonade requests are multipart WAV audio to `POST /v1/audio/transcriptions` and transcript cleanup through `POST /v1/chat/completions`. Verify request formats, model selection, errors, and cancellation against the Lemonade version used for development. Validate each server/provider combination used for release.
 

@@ -1,4 +1,4 @@
-﻿// Opens the real Settings window, drives it with window messages and injected
+// Opens the real Settings window, drives it with window messages and injected
 // keyboard input, and inspects it through UI Automation. Labeled interactive:
 // it needs an unlocked desktop and holds the shared interactive lock.
 
@@ -246,7 +246,6 @@ std::vector<std::string> check_automation(const SettingsWindow &window) {
         {item(window, SettingsControl::prompt_edit), L"Cleanup prompt"},
         {item(window, SettingsControl::shortcut_combo), L"Shortcut"},
         {item(window, SettingsControl::recorder_edit), L"Custom shortcut"},
-        {item(window, SettingsControl::insert_combo), L"Insert into"},
         {item(window, SettingsControl::microphone_combo), L"Microphone"},
         {item(window, SettingsControl::refresh_button), L"Refresh models"},
         {item(window, SettingsControl::save_button), L"Save"},
@@ -330,7 +329,7 @@ int main() {
     check_common_controls_v6();
 
     Fake fake;
-    WinPreferences initial{"http://127.0.0.1:13305/v1", "whisper-old", "llama", "Clean up.\nKeep meaning.", false,
+    WinPreferences initial{"http://127.0.0.1:13305/v1", "whisper-old", "llama", "Clean up.\nKeep meaning.",
         default_trigger(), L""};
     {
         SettingsWindow window(GetModuleHandleW(nullptr), fake.services(), kDefaultPrompt);
@@ -348,7 +347,7 @@ int main() {
             static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
         const auto prerequisite = text_of(item(window, SettingsControl::endpoint_hint));
         CHECK(prerequisite.find(L"Requires separate Lemonade or another OpenAI-compatible server") == 0);
-        CHECK(prerequisite.find(L"Only loopback endpoints") != std::wstring::npos);
+        CHECK(prerequisite.find(L"Local and remote HTTP/HTTPS endpoints") != std::wstring::npos);
         const auto capabilities = text_of(item(window, SettingsControl::routing_note));
         CHECK(capabilities.find(L"transcription, chat and discoverable compatible model metadata") != std::wstring::npos);
         CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from server\u2026");
@@ -357,7 +356,6 @@ int main() {
         CHECK(text_of(item(window, SettingsControl::endpoint_edit)) == L"http://127.0.0.1:13305/v1");
         CHECK(text_of(item(window, SettingsControl::prompt_edit)) == L"Clean up.\r\nKeep meaning.");
         CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Alt twice");
-        CHECK(combo_selected(item(window, SettingsControl::insert_combo)) == L"Original field (recommended)");
         CHECK(combo_items(item(window, SettingsControl::microphone_combo))
             == (std::vector<std::wstring>{L"System default", L"Desk mic", L"Headset"}));
         CHECK(combo_selected(item(window, SettingsControl::microphone_combo)) == L"System default");
@@ -404,7 +402,7 @@ int main() {
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
             SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::prompt_edit,
             SettingsControl::reset_prompt_button, SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
-            SettingsControl::insert_combo, SettingsControl::microphone_combo, SettingsControl::privacy_button,
+            SettingsControl::microphone_combo, SettingsControl::privacy_button,
             SettingsControl::save_button, SettingsControl::cancel_button, SettingsControl::endpoint_edit};
         for (size_t i = 0; i + 1 < order.size(); ++i) {
             CHECK(GetNextDlgTabItem(window.hwnd(), item(window, order[i]), FALSE) == item(window, order[i + 1]));
@@ -473,7 +471,6 @@ int main() {
         CHECK(!fake.suspended);
 
         select_combo(item(window, SettingsControl::asr_combo), L"fresh-asr");
-        select_combo(item(window, SettingsControl::insert_combo), L"Field focused when processing finishes");
         select_combo(item(window, SettingsControl::microphone_combo), L"Headset");
 
         // Enter = Save. A shortcut the app cannot register aborts the save.
@@ -495,7 +492,6 @@ int main() {
         CHECK(saved.asr_model == "fresh-asr");
         CHECK(saved.cleanup_model == "llama");
         CHECK(saved.cleanup_prompt == kDefaultPrompt);
-        CHECK(saved.insert_current_target);
         CHECK(saved.trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
         CHECK(saved.capture_device_id == L"{dev2}");
         CHECK(!fake.suspended);

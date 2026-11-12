@@ -86,10 +86,10 @@ UserMessage describe_failure(const WorkflowFailure &failure, CaptureProblem capt
     if (failure.source == WorkflowFailureSource::adapter) {
         switch (failure.adapter_error) {
         case AdapterError::network:
-            return {L"Lemonade unavailable; check that it is running at the configured endpoint",
+            return {L"Server unavailable; check that it is running at the configured endpoint",
                 FailureAction::open_settings};
         case AdapterError::insertion_unavailable:
-            return {L"Password field \u00B7 dictation unavailable", FailureAction::none};
+            return {L"Paste unavailable \u00B7 try again or copy the text", FailureAction::none};
         case AdapterError::unavailable:
         case AdapterError::invalid_input:
             return capture_message(capture);
@@ -105,7 +105,7 @@ UserMessage describe_failure(const WorkflowFailure &failure, CaptureProblem capt
     }
     switch (failure.protocol_status) {
     case LV_PROTOCOL_CONFIGURATION:
-        return {L"Configure a loopback Lemonade endpoint and both models in Settings", FailureAction::open_settings};
+        return {L"Configure an HTTP/HTTPS server endpoint and both models in Settings", FailureAction::open_settings};
     case LV_PROTOCOL_MODEL_UNAVAILABLE:
         return {L"Selected models are not available for transcription and cleanup through Lemonade",
             FailureAction::open_settings};
@@ -131,20 +131,8 @@ UserMessage describe_failure(const WorkflowFailure &failure, CaptureProblem capt
     return {L"Lemonade returned an unsupported response", FailureAction::none};
 }
 
-std::wstring describe_fallback(WorkflowFallbackReason reason) {
-    switch (reason) {
-    case WorkflowFallbackReason::target_changed: return L"Target changed \u00B7 copy to paste manually";
-    case WorkflowFallbackReason::secure_field: return L"Password field \u00B7 copy to paste manually";
-    case WorkflowFallbackReason::unsupported_field: return L"No editable field \u00B7 copy to paste manually";
-    case WorkflowFallbackReason::accessibility_unavailable:
-        return L"Field can't be inspected \u00B7 copy to paste manually";
-    case WorkflowFallbackReason::paste_unavailable:
-        return L"Paste unavailable (app may run as administrator) \u00B7 copy to paste manually";
-    case WorkflowFallbackReason::target_unavailable:
-    case WorkflowFallbackReason::none:
-        break;
-    }
-    return L"No target field \u00B7 copy to paste manually";
+std::wstring describe_fallback(WorkflowFallbackReason) {
+    return L"Paste unavailable \u00B7 copy to paste manually";
 }
 
 std::string make_multipart_boundary() {

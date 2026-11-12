@@ -66,7 +66,7 @@ extern const wchar_t kRecorderPrompt[];
 
 std::wstring trim(const std::wstring &text);
 // Empty when valid; otherwise a user-facing reason. Mirrors the core rules:
-// http(s), loopback host, no credentials/query/fragment, path ending in /v1.
+// http(s), a valid host, no credentials/query/fragment, path ending in /v1.
 std::wstring validate_endpoint(const std::wstring &endpoint);
 std::wstring validate_prompt(const std::wstring &prompt);
 

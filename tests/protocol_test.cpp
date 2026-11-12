@@ -111,6 +111,18 @@ void expectCleanupPayload(const LVProtocolBytes &bytes, const std::string &model
 } // namespace
 
 int main() {
+    // Remote servers use the same API paths as localhost; the host fact must
+    // not prevent a request to an explicitly configured LAN/HTTPS endpoint.
+    for (const char *remote : {"http://192.168.1.231:13305/api/v1", "https://inference.example.com/v1"}) {
+        auto remoteConfig = validConfig();
+        remoteConfig.endpoint.canonical_base_url = slice(remote);
+        remoteConfig.endpoint.host_loopback = 0;
+        assert(lv_protocol_validate_config(&remoteConfig) == LV_PROTOCOL_OK);
+        auto remoteModels = lv_protocol_make_models_request(&remoteConfig);
+        assert(remoteModels.status == LV_PROTOCOL_OK);
+        assert(stringFrom(remoteModels.url) == std::string(remote) + "/models");
+        lv_protocol_request_free(&remoteModels);
+    }
     auto config = validConfig();
     assert(lv_protocol_validate_config(&config) == LV_PROTOCOL_OK);
 

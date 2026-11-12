@@ -350,17 +350,19 @@ void endpoint_facts_cover_mac_rules() {
     expect_valid("http://127.0.0.1:65535/v1", "http://127.0.0.1:65535/v1");
     expect_valid("http://127.0.0.1:13305/a%20b/v1", "http://127.0.0.1:13305/a%20b/v1");
 
+    expect_valid("http://example.com/v1", "http://example.com/v1");
+    expect_valid("http://192.168.1.2:13305/v1", "http://192.168.1.2:13305/v1");
+    expect_valid("http://127.0.0.2/v1", "http://127.0.0.2/v1");
+    expect_valid("http://localhost.example.com/v1", "http://localhost.example.com/v1");
+    expect_valid("http://[::2]/v1", "http://[::2]/v1");
+    expect_valid("http://192.168.1.231:13305/api/v1", "http://192.168.1.231:13305/api/v1");
+    expect_valid("https://inference.example.com/v1", "https://inference.example.com/v1");
     struct Case {
         const char *endpoint;
         bool scheme, loopback, no_userinfo, no_query_fragment, ends_v1;
     };
     const Case parsed_but_rejected[] = {
         {"ftp://127.0.0.1/v1", false, true, true, true, true},
-        {"http://example.com/v1", true, false, true, true, true},
-        {"http://192.168.1.2:13305/v1", true, false, true, true, true},
-        {"http://127.0.0.2/v1", true, false, true, true, true},
-        {"http://localhost.example.com/v1", true, false, true, true, true},
-        {"http://[::2]/v1", true, false, true, true, true},
         {"http://user@127.0.0.1/v1", true, true, false, true, true},
         {"http://user:pass@127.0.0.1/v1", true, true, false, true, true},
         {"http://127.0.0.1/v1?x=1", true, true, true, false, true},
@@ -393,6 +395,7 @@ void endpoint_facts_cover_mac_rules() {
         "http://127.0.0.1:/v1", "http://127.0.0.1:0/v1", "http://127.0.0.1:013305/v1", "http://127.0.0.1:65536/v1", "http://127.0.0.1:123456/v1",
         "http://127.0.0.1:-1/v1", "http://127.0.0.1:+80/v1", "http://127.0.0.1:80x/v1", "http://127.0.0.1:1:2/v1",
         "http://[::1/v1", "http://[]/v1", "http://[::1]x/v1", "http://[zz::1]/v1", "http://[127.0.0.1]/v1",
+        "http://[:::]/v1", "http://[1:2:3]/v1",
         "http://127..0.1/v1", "http://.localhost/v1", "http://localhost./v1", "http://local_host/v1",
         "http://127.0.0.1//v1", "http://127.0.0.1/a//v1", "http://127.0.0.1/./v1", "http://127.0.0.1/../v1",
         "http://127.0.0.1/a/../v1", "http://127.0.0.1/v1%", "http://127.0.0.1/v1%2", "http://127.0.0.1/%zz/v1",
@@ -644,7 +647,7 @@ void catalog_fetches_and_classifies(TestServer &server) {
     pump_until([&] { return results.size() == 2; });
     assert(results[1].status == CatalogStatus::ok && results[1].models.size() == 2);
 
-    catalog.refresh("http://example.com/v1", record);
+    catalog.refresh("ftp://example.com/v1", record);
     assert(results.size() == 2); // Configuration errors are asynchronous too.
     pump_until([&] { return results.size() == 3; });
     assert(results[2].status == CatalogStatus::configuration && !results[2].safe_message.empty());

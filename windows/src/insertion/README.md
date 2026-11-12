@@ -1,75 +1,51 @@
 # Windows insertion adapter
 
-`lv_insertion` implements `lemonvox::InsertionAdapter` (`core/adapters.h`) for
-Windows with Win32 and UI Automation. The shell owns one `WinInsertion` per
-`WorkflowCore` and calls `copy_text_to_clipboard` for the manual Copy action.
+`lv_insertion` implements the shared `InsertionAdapter` with native Ctrl+V at
+current keyboard focus. It never activates a window, discovers an editable
+field, queries UI Automation, or sends Enter. Changing fields/apps while
+recording or processing is supported. With no field focused, Windows receives
+the same paste attempt and the receiving app determines its outcome.
 
-## Threading
+## Operation lifetime
 
-Every native call runs on one worker thread that owns a COM MTA apartment, the
-`IUIAutomation` client (2 s connection and transaction timeouts) and a
-message-only clipboard owner window. `capture_original`, `inspect`, `insert`,
-`cancel` and `release` only queue work or update token storage, so the UI thread
-never waits for another application. Each request completes exactly once through
-`Executor::post`. `cancel` marks the operation and invalidates its tokens; work
-already queued completes with `canceled`. A newer `capture_original` makes every
-older operation stale. `shutdown` (on the executor thread) stops the worker,
-dispatches only sent messages while waiting so a UI Automation call into one of
-LemonVox's own windows can finish, and guarantees no callback afterwards.
+The shared workflow calls `capture_original`, `inspect`, then `insert`. On
+Windows these names describe a compatibility interface: capture/inspect return
+an operation token and dispatch eligibility, not facts about an OS element.
+Tokens contain no field identity and cannot direct paste back to an old field.
+Unknown tokens are rejected; cancellation, release, shutdown and newer operations
+invalidate old operations. Windows preferences always select completion focus.
 
-## Targets
+Native work is serialized on a worker with a message-only clipboard owner.
+Completions return through `Executor::post` once unless shutdown intervenes.
+`release()` frees terminal operation tokens. An atomic commit arbitrates cancel
+against dispatch without locking across `SendInput` (which may call the UI
+thread's global keyboard hook). Cancel before commitment suppresses paste;
+cancel after commitment cannot undo input already handed to Windows.
 
-A token is an index into adapter-owned storage. A target is identified by its
-foreground window, process ID and process start time, focused child window
-(`GetGUIThreadInfo`) and UI Automation runtime ID; all must match.
+## Paste transaction
 
-- Editable: UIA Edit, Document or ComboBox with a writable ValuePattern, Edit or
-  Document with a TextPattern that is not read-only, or a writable Win32 Edit or
-  RichEdit; without UI Automation, a Win32 edit class or a caret.
-- Secure: UIA `IsPassword` or `ES_PASSWORD`. Secure targets get no token.
-- `inspect` with token 0 describes the field focused now
-  (`insert_current_target`). A changed field gets its own token with
-  `matches_original=false`, so the default policy falls back to Copy.
+Wait for held modifiers, snapshot the clipboard, then publish UTF-16 text with
+history/cloud exclusion formats. Check cancellation, current foreground process
+integrity and modifier state, then send Ctrl-down, V-down, V-up, Ctrl-up as one
+`SendInput` batch. All injected keys carry `kLemonVoxInjectedTag`, so the trigger
+ignores them. Partial dispatch releases V/Ctrl without resending the paste.
+No input is sent on invalid UTF-8 or clipboard failure.
 
-Chromium apps report only a bare contents pane until their web accessibility
-is on. Edge turns it on for UI Automation clients; Chrome only for MSAA
-clients. When focus is that placeholder, the probe follows MSAA `accFocus`/
-`accRole`/`accState` from the top-level window once (which turns Chrome's tree on
-for the life of that browser process) and re-reads UI Automation for up to
-300 ms. UI Automation stays the source of editability and identity (runtime ID);
-MSAA only adds a secure signal (`STATE_SYSTEM_PROTECTED`). MSAA is used only for
-that placeholder, i.e. a process that just answered UI Automation, because
-`WM_GETOBJECT` has no timeout. If the field still cannot be read, the result is
-the Copy fallback. See `windows/tests/insertion-matrix.md`.
+After dispatch, wait 600 ms for the app to read the clipboard, then restore its
+prior contents only if its sequence still belongs to this transaction. A copy
+made by the user meanwhile is preserved. Failed/canceled pre-dispatch paths
+restore immediately under the same sequence condition. Copy fallback retains
+the completed text when clipboard/input dispatch is unavailable. Success means
+Windows accepted the gesture, not that the receiving app acknowledged insertion.
 
-## Insertion
+`target.cpp` retains legacy probe utilities and the token table; the production
+adapter does not construct or call `TargetProbe`. The matrix helper uses its own
+accessibility queries only for test setup/readback.
 
-`insert` refuses before touching the clipboard when the target runs at a higher
-integrity level than LemonVox or its token cannot be read (`insertion_unavailable`,
-reported by the core as a copy fallback). It waits up to 2 s for the person to
-release Shift, Ctrl, Alt and Windows keys (for example the Alt of the trigger),
-re-checks the target, snapshots the clipboard, writes the text, re-checks the
-target and the foreground/focus window, then sends Ctrl+V with virtual keys and
-scan codes. Enter is never sent. After 600 ms the previous clipboard is restored
-only if `GetClipboardSequenceNumber` shows nobody changed it since the write.
+## Verification
 
-Clipboard snapshots keep every format that can be re-materialized from bytes:
-text (the first of Unicode/ANSI/OEM; the system synthesizes the others), locale,
-DIB or DIBV5 (bitmap is synthesized), file drops, enhanced metafiles, SYLK, DIF,
-TIFF, RIFF, WAVE, pen data and registered formats such as HTML Format and Rich
-Text Format. Owner-display, display-only, private, GDI-object, palette,
-metafile-picture handles and OLE formats that reference live objects are
-skipped. A clipboard over 64 MB is not overwritten. Pasted text, Copy-fallback
-text and the restored clipboard carry `ExcludeClipboardContentFromMonitorProcessing`,
-`CanIncludeInClipboardHistory`=0 and `CanUploadToCloudClipboard`=0, so neither
-the dictated text nor a duplicate of the restored item enters clipboard history,
-cloud clipboard or clipboard managers.
-
-## Elevated windows
-
-User Interface Privilege Isolation drops synthesized input sent from a
-medium-integrity process to a higher-integrity window (an elevated Task Manager,
-an administrator terminal, installers). LemonVox detects this by comparing
-process token integrity levels and offers the Copy fallback instead. LemonVox
-must not be run as administrator to hide this: an elevated LemonVox could type
-into every elevated window.
+`insertion_unit_test` covers tokens, callbacks, clipboard and stale operations
+without injecting keys. `insertion_interactive_test` checks native EDIT/RichEdit,
+password controls, late field/window switches, an unknown control, no field,
+dispatch refusal and cancellation. It guards foreground ownership and restores
+the user's clipboard. See `windows/tests/insertion-matrix.md` for app checks.

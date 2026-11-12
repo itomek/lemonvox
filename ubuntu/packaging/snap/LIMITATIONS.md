@@ -4,9 +4,9 @@ This recipe is **not a release candidate**. It uses strict confinement and
 `grade: devel` deliberately.
 
 LemonVox also requires Lemonade or another OpenAI-compatible server
-installed and running separately on the same computer. Audio transcription,
+installed and running separately, locally or remotely. Audio transcription,
 chat completions and compatible model-discovery metadata are required; generic
-API compatibility alone is insufficient. Only loopback endpoints are supported.
+API compatibility alone is insufficient. Local and remote HTTP/HTTPS endpoints are supported.
 Lemonade 2026.44.1 is the tested baseline. No other server or installed-snap
 compatibility is established here.
 

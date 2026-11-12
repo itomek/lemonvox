@@ -1,4 +1,4 @@
-﻿#include "ui/settings_layout.h"
+#include "ui/settings_layout.h"
 
 #include <windows.h>
 
@@ -137,12 +137,15 @@ static void endpoint_validation() {
     CHECK(validate_endpoint(L"HTTP://LOCALHOST/v1").empty());
     CHECK(validate_endpoint(L"").find(L"Enter the server endpoint") == 0);
     CHECK(validate_endpoint(L"   ").find(L"Enter the server endpoint") == 0);
-    CHECK(validate_endpoint(L"http://example.com:13305/v1").find(L"loopback") != std::wstring::npos);
-    CHECK(validate_endpoint(L"http://10.0.0.2/v1").find(L"only connects to a server on this PC") != std::wstring::npos);
+    CHECK(validate_endpoint(L"https://inference.example.com/v1").empty());
+    CHECK(validate_endpoint(L"http://192.168.1.231:13305/api/v1").empty());
+    CHECK(validate_endpoint(L"http://10.0.0.2/v1").empty());
+    CHECK(validate_endpoint(L"http://[fd00::2]:13305/api/v1").empty());
     for (const wchar_t *bad : {L"127.0.0.1:13305/v1", L"ftp://127.0.0.1/v1", L"http://127.0.0.1:13305/v2",
              L"http://127.0.0.1:13305", L"http://user@127.0.0.1/v1", L"http://127.0.0.1/v1?x=1",
              L"http://127.0.0.1/v1#frag", L"http://127.0.0.1:abc/v1", L"http://127.0.0.1:99999/v1",
-             L"http://127.0.0.1:/v1", L"http://[::1/v1"}) {
+             L"http://127.0.0.1:/v1", L"http://[::1/v1", L"http:///v1", L"http://bad host/v1", L"http://[zz::2]/v1",
+             L"http://[:::]/v1", L"http://[1:2:3]/v1"}) {
         CHECK(validate_endpoint(bad).find(L"Enter an endpoint like") == 0);
     }
     CHECK(validate_prompt(L"  \r\n ").find(L"Enter a cleanup prompt") == 0);
@@ -169,7 +172,7 @@ static void status_text() {
     result.status = SettingsCatalogResult::Status::response;
     CHECK(catalog_status(result, endpoint).error);
     result.status = SettingsCatalogResult::Status::configuration;
-    CHECK(catalog_status(result, endpoint).text.find(L"loopback") != std::wstring::npos);
+    CHECK(catalog_status(result, endpoint).text.find(L"HTTP/HTTPS") != std::wstring::npos);
 
     result.status = SettingsCatalogResult::Status::ok;
     result.message.clear();

@@ -460,7 +460,7 @@ static_assert(std::is_trivially_copyable<LVProtocolConfig>::value, "LVProtocolCo
 
 LVProtocolStatus lv_protocol_validate_endpoint(const LVEndpointFacts *endpoint) {
     if (!endpoint || !endpoint->canonical_base_url.data || endpoint->canonical_base_url.size == 0 ||
-        hasNul(endpoint->canonical_base_url) || !endpoint->scheme_allowed || !endpoint->host_loopback ||
+        hasNul(endpoint->canonical_base_url) || !endpoint->scheme_allowed ||
         !endpoint->no_userinfo || !endpoint->no_query_fragment || !endpoint->path_ends_v1) {
         return LV_PROTOCOL_CONFIGURATION;
     }

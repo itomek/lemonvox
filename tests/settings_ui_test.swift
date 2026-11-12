@@ -29,7 +29,7 @@ import AppKit
     }
 
     pane.debugDiagnostics.state = .on
-    pane.endpoint.stringValue = "https://example.invalid/v1"
+    pane.endpoint.stringValue = "ftp://example.invalid/v1"
     pane.saveSettings()
     precondition(pane.window.isVisible && !log.debugEnabled && persisted.isEmpty)
 
@@ -229,7 +229,7 @@ import AppKit
         pane.categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
         let modelClip = pane.scrolls[1].contentView
         modelClip.scroll(to:NSPoint(x:0,y:0))
-        pane.endpoint.stringValue = "https://example.invalid/v1"
+        pane.endpoint.stringValue = "ftp://example.invalid/v1"
         pane.saveSettings()
         precondition(pane.window.isVisible && pane.categoryList.selectedRow == 1)
         precondition(pane.status.visibleRect.contains(pane.status.bounds), "Save error must be visible after scrolling")

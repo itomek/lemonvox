@@ -19,9 +19,6 @@ struct WinPreferences {
     std::string asr_model;
     std::string cleanup_model;
     std::string cleanup_prompt = kDefaultCleanupPrompt;
-    // false: original field while it stays focused (default). true: the field
-    // focused when processing finishes.
-    bool insert_current_target = false;
     TriggerBinding trigger = default_trigger();
     // WASAPI endpoint ID; empty means the system default capture device.
     std::wstring capture_device_id;

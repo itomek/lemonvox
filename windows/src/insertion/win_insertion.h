@@ -19,7 +19,6 @@
 
 namespace lemonvox::win {
 
-class TargetProbe;
 class TargetTable;
 
 struct InsertionOptions {
@@ -29,21 +28,18 @@ struct InsertionOptions {
     // How long the pasted text stays on the clipboard before the previous
     // content is restored. There is no cross-process paste acknowledgement.
     DWORD restore_delay_ms = 600;
-    // Thread-safe activity sequence from the global keyboard/mouse listener.
-    // Without it, transient retries cannot follow a focused-HWND handoff.
-    std::function<std::uint64_t()> input_generation;
     // Test hooks, invoked on the insertion worker thread.
     std::function<void(OperationId)> insert_started;
     // Called immediately before SendInput; returning false refuses the paste.
     std::function<bool()> before_send;
 };
 
-// Windows InsertionAdapter: identifies the focused field with Win32 and UI
-// Automation and inserts by pasting through a clipboard transaction.
+// Windows InsertionAdapter: dispatches Ctrl+V at current keyboard focus.
+// Operation tokens never identify an HWND or accessibility element.
 //
-// Every native call runs on one worker thread that owns a COM MTA apartment,
-// the UI Automation client and a message-only clipboard owner window. Entry
-// points only queue work, so the UI thread is never blocked by a target.
+// Native work runs on one worker thread with a COM MTA apartment and a
+// message-only clipboard owner window. Entry points only queue work, so the
+// UI thread is never blocked by clipboard access.
 // Each request completes exactly once through Executor::post unless
 // shutdown() ran first. shutdown() must be called on the executor thread; it
 // waits for the worker and guarantees that no callback runs afterwards.
@@ -71,7 +67,7 @@ public:
     std::size_t token_count() const;
 
 private:
-    using Job = std::function<void(TargetProbe &)>;
+    using Job = std::function<void()>;
 
     bool enqueue(Job job);
     void run_worker();
@@ -80,7 +76,7 @@ private:
     // cancellable and the operation is canceled.
     bool wait(DWORD milliseconds, OperationId operation, bool cancellable);
     bool modifiers_released(OperationId operation, AdapterError &error);
-    AdapterError run_insert(TargetProbe &probe, OperationId operation, TargetToken token, const std::string &text);
+    AdapterError run_insert(OperationId operation, TargetToken token, const std::string &text);
     void post(TargetCompletion completion, OperationId operation, TargetResult result);
     void post(VoidCompletion completion, OperationId operation, Completion result);
 
@@ -93,6 +89,9 @@ private:
     std::deque<Job> jobs_;
     std::set<OperationId> canceled_;
     OperationId newest_operation_ = 0;
+    // Nonzero until canceled or committed to SendInput. Never hold a mutex
+    // across SendInput: the global keyboard hook runs on the UI thread.
+    std::atomic<OperationId> pending_dispatch_{0};
     bool stopping_ = false;
     bool shut_down_ = false;
     HANDLE wake_ = nullptr;
