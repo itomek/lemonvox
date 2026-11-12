@@ -10,6 +10,22 @@ using namespace lemonvox::win;
 
 namespace {
 
+void legacy_target_setting_cannot_select_original(const PreferencesStore &store) {
+    assert(store.erase());
+    HKEY key = nullptr;
+    assert(RegCreateKeyExW(HKEY_CURRENT_USER, store.subkey().c_str(), 0, nullptr,
+        REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS);
+    const DWORD original = 0;
+    assert(RegSetValueExW(key, L"InsertCurrentTarget", 0, REG_DWORD,
+        reinterpret_cast<const BYTE *>(&original), sizeof(original)) == ERROR_SUCCESS);
+    RegCloseKey(key);
+    assert(store.load().snapshot().insert_current_target);
+    assert(store.save(store.load()));
+    assert(RegOpenKeyExW(HKEY_CURRENT_USER, store.subkey().c_str(), 0, KEY_QUERY_VALUE, &key) == ERROR_SUCCESS);
+    assert(RegQueryValueExW(key, L"InsertCurrentTarget", nullptr, nullptr, nullptr, nullptr) == ERROR_FILE_NOT_FOUND);
+    RegCloseKey(key);
+}
+
 std::wstring scratch_key() {
     return L"Software\\LemonVoxTest\\prefs-" + std::to_wstring(GetCurrentProcessId());
 }
@@ -33,7 +49,7 @@ void defaults_match_mac() {
     assert(preferences.endpoint == kDefaultEndpoint);
     assert(preferences.cleanup_prompt == kDefaultCleanupPrompt);
     assert(preferences.asr_model.empty() && preferences.cleanup_model.empty());
-    assert(!preferences.insert_current_target);
+    assert(preferences.snapshot().insert_current_target);
     assert(preferences.trigger == default_trigger());
     assert(preferences.capture_device_id.empty());
 }
@@ -42,7 +58,7 @@ void missing_key_loads_defaults(const PreferencesStore &store) {
     assert(store.erase());
     const auto loaded = store.load();
     assert(loaded.endpoint == kDefaultEndpoint && loaded.cleanup_prompt == kDefaultCleanupPrompt);
-    assert(loaded.trigger == default_trigger() && !loaded.insert_current_target);
+    assert(loaded.trigger == default_trigger() && loaded.snapshot().insert_current_target);
 }
 
 void round_trips_every_field(const PreferencesStore &store) {
@@ -51,7 +67,6 @@ void round_trips_every_field(const PreferencesStore &store) {
     preferences.asr_model = "Whisper-Base";
     preferences.cleanup_model = "Qwen3-0.6B-GGUF \xC5\xBC\xC3\xB3\xC5\x82w \xF0\x9F\x8D\x8B";
     preferences.cleanup_prompt = "Line one\nLine two \xE2\x80\x94 done";
-    preferences.insert_current_target = true;
     assert(parse_trigger("combo:ctrl+shift:0x20", preferences.trigger));
     preferences.capture_device_id = L"{0.0.1.00000000}.{abc-\u017C}";
     assert(store.save(preferences));
@@ -61,7 +76,7 @@ void round_trips_every_field(const PreferencesStore &store) {
     assert(loaded.asr_model == preferences.asr_model);
     assert(loaded.cleanup_model == preferences.cleanup_model);
     assert(loaded.cleanup_prompt == preferences.cleanup_prompt);
-    assert(loaded.insert_current_target);
+    assert(loaded.snapshot().insert_current_target);
     assert(loaded.trigger == preferences.trigger);
     assert(loaded.capture_device_id == preferences.capture_device_id);
 
@@ -74,10 +89,9 @@ void round_trips_every_field(const PreferencesStore &store) {
     WinPreferences cleared = preferences;
     cleared.asr_model.clear();
     cleared.capture_device_id.clear();
-    cleared.insert_current_target = false;
     assert(store.save(cleared));
     const auto reloaded = store.load();
-    assert(reloaded.asr_model.empty() && reloaded.capture_device_id.empty() && !reloaded.insert_current_target);
+    assert(reloaded.asr_model.empty() && reloaded.capture_device_id.empty() && reloaded.snapshot().insert_current_target);
     assert(reloaded.cleanup_model == preferences.cleanup_model);
 }
 
@@ -87,7 +101,6 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
     preferences.asr_model = "kept-asr";
     preferences.cleanup_model = "kept-cleanup";
     preferences.cleanup_prompt = "kept prompt";
-    preferences.insert_current_target = true;
     assert(parse_trigger("double:ctrl:right", preferences.trigger));
     assert(store.save(preferences));
 
@@ -118,7 +131,7 @@ void malformed_values_fall_back_individually(const PreferencesStore &store) {
 
     const auto loaded = store.load();
     assert(loaded.endpoint == kDefaultEndpoint);
-    assert(!loaded.insert_current_target);
+    assert(loaded.snapshot().insert_current_target);
     assert(loaded.trigger == default_trigger());
     assert(loaded.cleanup_prompt == kDefaultCleanupPrompt);
     assert(loaded.cleanup_model.empty());
@@ -155,6 +168,7 @@ void snapshot_preferences_replace() {
 
 int main() {
     const PreferencesStore store(scratch_key());
+    legacy_target_setting_cannot_select_original(store);
     defaults_match_mac();
     missing_key_loads_defaults(store);
     round_trips_every_field(store);

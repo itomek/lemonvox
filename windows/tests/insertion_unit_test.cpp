@@ -346,8 +346,8 @@ struct Calls {
     }
 };
 
-// Requests only read the current foreground target. No input is synthesized:
-// every insert below uses a token that cannot resolve to a target.
+// Capture/inspect only authorize operation lifetime, with no desktop queries.
+// No input is synthesized: every insert is canceled or uses an unknown token.
 void adapter_completes_exactly_once_and_invalidates() {
     UiThreadExecutor executor;
     const DWORD owner = GetCurrentThreadId();
@@ -359,12 +359,9 @@ void adapter_completes_exactly_once_and_invalidates() {
         pump_until([&] { return calls.all_done(); });
         CHECK(calls.counts[0] == 1);
         const TargetSnapshot captured = calls.targets[0];
-        if (calls.errors[0] == AdapterError::none && captured.token.value != 0) {
-            CHECK(insertion.token_count() == 1);
-            CHECK(captured.editable && !captured.secure && captured.matches_original);
-        } else {
-            CHECK(insertion.token_count() == 0);
-        }
+        CHECK(calls.errors[0] == AdapterError::none && captured.token.value != 0);
+        CHECK(insertion.token_count() == 1);
+        CHECK(captured.editable && !captured.secure && captured.matches_original);
         insertion.cancel(1);
         CHECK(insertion.token_count() == 0);
 
@@ -393,7 +390,7 @@ void adapter_completes_exactly_once_and_invalidates() {
         CHECK(calls.errors[static_cast<std::size_t>(unknown_inspect)] == AdapterError::target_changed);
         for (int index : current) {
             const auto error = calls.errors[static_cast<std::size_t>(index)];
-            CHECK(error == AdapterError::none || error == AdapterError::unavailable);
+            CHECK(error == AdapterError::none);
             CHECK(!calls.targets[static_cast<std::size_t>(index)].matches_original);
         }
         insertion.release(2);

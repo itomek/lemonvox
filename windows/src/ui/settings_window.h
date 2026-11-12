@@ -78,8 +78,6 @@ enum class SettingsControl : int {
     shortcut_combo,
     recorder_label,
     recorder_edit,
-    insert_label,
-    insert_combo,
     microphone_label,
     microphone_combo,
     privacy_button,

@@ -8,9 +8,6 @@
 #include "insertion/clipboard.h"
 #include "insertion/win_insertion.h"
 #include "support/interactive_lock.h"
-#include "support/transient_uia_provider.h"
-#include "trigger/global_trigger.h"
-
 #include <windows.h>
 #include <richedit.h>
 
@@ -37,7 +34,11 @@ std::atomic<int> g_sends{0};
 std::atomic<bool> g_foreign_foreground{false};
 HANDLE g_gate = nullptr;
 std::atomic<bool> g_gate_armed{false};
-WinInsertion *g_retry_insertion = nullptr;
+HWND g_unknown = nullptr;
+int g_plain_pastes = 0;
+int g_uia_queries = 0;
+bool g_cancel_before_send = false;
+WinInsertion *g_insertion = nullptr;
 
 void restore_saved_clipboard() {
     if (!g_saved_clipboard) return;
@@ -87,6 +88,16 @@ void pump_until(Predicate done, DWORD timeout = 15000) {
 }
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_GETOBJECT) ++g_uia_queries;
+    if (message == WM_KEYDOWN && wparam == 'V' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+        ++g_plain_pastes;
+        if (window == g_unknown) {
+            std::wstring text;
+            CHECK(read_clipboard_text(text));
+            SetWindowTextW(window, text.c_str());
+        }
+        return 0;
+    }
     return DefWindowProcW(window, message, wparam, lparam);
 }
 
@@ -256,24 +267,21 @@ void run() {
     bring_to_front(g_main);
 
     UiThreadExecutor executor;
-    GlobalTrigger input_observer(executor, [] {});
-    std::wstring trigger_error;
-    CHECK(input_observer.apply(default_trigger(), &trigger_error));
-    CHECK(input_observer.input_generation() != 0);
     InsertionOptions options;
-    options.input_generation = [&] { return input_observer.input_generation(); };
     options.insert_started = [](OperationId) {
         if (g_gate_armed.exchange(false)) WaitForSingleObject(g_gate, 10000);
     };
     options.before_send = [] {
         ++g_sends;
-        if (GetForegroundWindow() != g_main) {
+        if (GetForegroundWindow() != g_main && GetForegroundWindow() != g_other) {
             g_foreign_foreground = true;
             return false;
         }
+        if (g_cancel_before_send) g_insertion->cancel(10);
         return true;
     };
     WinInsertion insertion(executor, options);
+    g_insertion = &insertion;
     Harness harness{executor, insertion};
     const std::wstring expected = utf8_to_wide(kText);
 
@@ -297,203 +305,81 @@ void run() {
     CHECK(insertion.token_count() == 0);
     std::puts("native edit: inserted once, clipboard restored");
 
-    // Password EDIT: reported secure and never tokenized or typed into.
+    // Password controls are ordinary paste destinations, without inspection.
     focus(password);
     original = harness.capture(2);
-    CHECK(original.error == AdapterError::none);
-    CHECK(original.target.secure && original.target.token.value == 0);
-    current = harness.inspect(2, TargetToken{});
-    CHECK(current.error == AdapterError::none && current.target.secure && current.target.token.value == 0);
-    CHECK(text_of(password).empty());
-    std::puts("password edit: secure, rejected");
+    CHECK(original.error == AdapterError::none && original.target.token.value != 0);
+    CHECK(harness.insert(2, original.target.token) == AdapterError::none);
+    CHECK(text_of(password) == expected);
 
-    // Focus moved to another control between capture and inspect.
+    // Move focus after inspect: the original field must receive nothing more.
     focus(edit);
     original = harness.capture(3);
-    CHECK(original.error == AdapterError::none && original.target.token.value != 0);
-    focus(rich);
     current = harness.inspect(3, original.target.token);
-    CHECK(current.error == AdapterError::none && !current.target.matches_original);
-    CHECK(current.target.token.value != original.target.token.value);
-    CHECK(GetForegroundWindow() == g_main);
-    CHECK(harness.insert(3, original.target.token) == AdapterError::target_changed);
-    CHECK(g_sends == 1);
-    CHECK(text_of(edit) == expected && text_of(rich).empty());
-    std::puts("changed control: not matching, nothing inserted");
+    focus(rich);
+    CHECK(harness.insert(3, current.target.token) == AdapterError::none);
+    CHECK(text_of(edit) == expected && text_of(rich) == expected);
+    CHECK(GetFocus() == rich && GetForegroundWindow() == g_main);
 
-    // Focus moved to another top-level window.
-    bring_to_front(g_main);
-    focus(edit);
+    // Move to another application's window after inspect.
     original = harness.capture(4);
-    CHECK(original.error == AdapterError::none && original.target.token.value != 0);
+    current = harness.inspect(4, original.target.token);
     bring_to_front(g_other);
     SetFocus(other_edit);
-    pump_for(50);
-    current = harness.inspect(4, original.target.token);
-    CHECK(current.error == AdapterError::none && !current.target.matches_original);
-    CHECK(harness.insert(4, original.target.token) == AdapterError::target_changed);
-    CHECK(g_sends == 1);
-    CHECK(text_of(other_edit).empty() && text_of(edit) == expected);
+    CHECK(harness.insert(4, current.target.token) == AdapterError::none);
+    CHECK(text_of(other_edit) == expected);
+    CHECK(GetForegroundWindow() == g_other && GetFocus() == other_edit);
     bring_to_front(g_main);
-    std::puts("changed window: not matching, nothing inserted");
 
-    // RichEdit receives the same text without a newline.
-    focus(rich);
+    // No recognized class, caret or accessibility provider is required.
+    g_unknown = make_child(g_main, window_class.lpszClassName, 0, 5, 10);
+    focus(g_unknown);
     original = harness.capture(5);
-    CHECK(original.error == AdapterError::none && original.target.token.value != 0 && original.target.editable);
     current = harness.inspect(5, original.target.token);
-    CHECK(current.target.matches_original);
-    CHECK(GetForegroundWindow() == g_main);
+    const int queries = g_uia_queries;
     CHECK(harness.insert(5, current.target.token) == AdapterError::none);
-    CHECK(g_sends == 2 && !g_foreign_foreground);
-    pump_for(150);
-    CHECK(text_of(rich) == expected);
-    check_sentinel_clipboard(custom);
-    std::puts("rich edit: inserted once, clipboard restored");
+    CHECK(text_of(g_unknown) == expected && g_plain_pastes == 1);
+    CHECK(g_uia_queries == queries && GetFocus() == g_unknown);
 
-    // Cancellation before insert inserts nothing.
-    SetWindowTextW(edit, L"");
-    focus(edit);
+    // No text field selected: dispatch normally and accept the window's outcome.
+    SetFocus(g_main);
     original = harness.capture(6);
-    CHECK(original.error == AdapterError::none && original.target.token.value != 0);
-    CHECK(harness.insert(6, original.target.token, true) == AdapterError::canceled);
+    current = harness.inspect(6, original.target.token);
+    CHECK(harness.insert(6, current.target.token) == AdapterError::none);
+    CHECK(g_plain_pastes == 2 && GetFocus() == g_main);
+    check_sentinel_clipboard(custom);
+
+    // Queued and late cancellation must suppress dispatch.
+    focus(edit);
+    SetWindowTextW(edit, L"");
     original = harness.capture(7);
-    CHECK(original.error == AdapterError::none && original.target.token.value != 0);
-    insertion.cancel(7);
-    CHECK(harness.insert(7, original.target.token) == AdapterError::canceled);
-    pump_for(150);
-    CHECK(g_sends == 2);
+    const int sends = g_sends;
+    CHECK(harness.insert(7, original.target.token, true) == AdapterError::canceled);
+    original = harness.capture(8);
+    insertion.cancel(8);
+    CHECK(harness.insert(8, original.target.token) == AdapterError::canceled);
+    CHECK(g_sends == sends && text_of(edit).empty());
+
+    // A failed dispatch gate offers Copy rather than reporting a field failure.
+    InsertionOptions unavailable_options;
+    unavailable_options.before_send = [] { return false; };
+    WinInsertion unavailable(executor, unavailable_options);
+    Harness blocked{executor, unavailable};
+    original = blocked.capture(9);
+    CHECK(blocked.insert(9, original.target.token) == AdapterError::insertion_unavailable);
     CHECK(text_of(edit).empty());
     check_sentinel_clipboard(custom);
-    std::puts("cancel: nothing inserted, clipboard untouched");
+    unavailable.shutdown();
 
-    // Unlike a native Edit, this field has neither an Edit class nor a Win32
-    // caret. It can only be recognized through its real UIA provider.
-    WNDCLASSW transient_class{};
-    transient_class.lpfnWndProc = test::transient_uia_window_proc;
-    transient_class.hInstance = GetModuleHandleW(nullptr);
-    transient_class.lpszClassName = L"LemonVoxTransientUiaField";
-    CHECK(RegisterClassW(&transient_class));
-    HWND transient = make_child(g_main, transient_class.lpszClassName, 0, 5, 10);
-    auto *provider = new test::TransientUiaProvider(transient);
-    SetWindowLongPtrW(transient, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(provider));
-    focus(transient);
-    // Warm UIA so the failure is an element disappearing, not initial discovery.
-    original = harness.capture(8);
-    CHECK(original.error == AdapterError::none && original.target.editable);
-    provider->unavailable_reads = 0;
-    provider->unavailable_until = GetTickCount64() + 100;
-    original = harness.capture(9);
-    CHECK(provider->unavailable_reads > 0);
-    CHECK(original.error == AdapterError::none && original.target.editable && original.target.token.value != 0);
-    provider->unavailable_until = GetTickCount64() + 100;
-    current = harness.inspect(9, original.target.token);
-    CHECK(current.error == AdapterError::none && current.target.matches_original && current.target.editable);
-    std::puts("transient UIA: recovered the focused editable field");
-
-    provider->read_only = true;
-    provider->unavailable_until = GetTickCount64() + 100;
+    // Cancellation in the final pre-dispatch callback still wins.
     original = harness.capture(10);
-    CHECK(original.error == AdapterError::unavailable && original.target.token.value == 0);
-    provider->read_only = false;
-    provider->password = true;
-    provider->unavailable_until = GetTickCount64() + 100;
-    original = harness.capture(11);
-    CHECK(original.error == AdapterError::none && original.target.secure && original.target.token.value == 0);
-    provider->password = false;
-    std::puts("transient UIA: read-only and password fields remain rejected");
-
-    provider->unavailable_until = GetTickCount64() + 10000;
-    const ULONGLONG started = GetTickCount64();
-    original = harness.capture(12);
-    CHECK(original.error == AdapterError::unavailable && original.target.token.value == 0);
-    CHECK(GetTickCount64() - started < 2000);
-    std::puts("persistent stale UIA: bounded fallback");
-
-    // Changing the focused HWND while the provider is unavailable must not
-    // cause capture to adopt that newly focused editable field.
-    CHECK(SetTimer(g_main, 1, 40, [](HWND window, UINT, UINT_PTR timer, DWORD) {
-        KillTimer(window, timer);
-        CHECK(GetForegroundWindow() == g_main);
-        INPUT keys[2] = {};
-        keys[0].type = keys[1].type = INPUT_KEYBOARD;
-        keys[0].ki.wVk = keys[1].ki.wVk = VK_F24;
-        // Input timestamps are not a reliable generation: SendInput accepts
-        // old timestamps, and physical events can share a clock tick.
-        keys[0].ki.time = keys[1].ki.time = 1;
-        keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
-        CHECK(SendInput(2, keys, sizeof(INPUT)) == 2);
-        SetFocus(GetDlgItem(window, 1));
-    }));
-    original = harness.capture(13);
-    CHECK(GetFocus() == edit);
-    CHECK(original.error == AdapterError::unavailable && original.target.token.value == 0);
-    std::puts("transient UIA: changed focus is not adopted");
-
-    focus(transient);
-    g_retry_insertion = &insertion;
-    CHECK(SetTimer(g_main, 2, 40, [](HWND window, UINT, UINT_PTR timer, DWORD) {
-        KillTimer(window, timer);
-        g_retry_insertion->cancel(14);
-    }));
-    original = harness.capture(14);
-    CHECK(original.error == AdapterError::canceled && original.target.token.value == 0);
-    CHECK(g_sends == 2 && text_of(edit).empty());
+    g_cancel_before_send = true;
+    CHECK(harness.insert(10, original.target.token) == AdapterError::canceled);
+    g_cancel_before_send = false;
+    CHECK(text_of(edit).empty());
     check_sentinel_clipboard(custom);
-    std::puts("transient UIA: cancellation leaves text and clipboard untouched");
-
-    // Notepad restores native editor focus from its WinUI input host after
-    // Alt, without new user input. No original field exists until this settles.
-    provider->unavailable_until = GetTickCount64() + 10000;
-    CHECK(SetTimer(g_main, 3, 40, [](HWND window, UINT, UINT_PTR timer, DWORD) {
-        KillTimer(window, timer);
-        SetFocus(GetDlgItem(window, 1));
-    }));
-    original = harness.capture(15);
-    CHECK(GetFocus() == edit);
-    CHECK(original.error == AdapterError::none && original.target.editable && original.target.token.value != 0);
-    std::puts("transient UIA: automatic editor focus restoration is captured");
-
-    focus(transient);
-    CHECK(SetTimer(g_main, 4, 40, [](HWND window, UINT, UINT_PTR timer, DWORD) {
-        KillTimer(window, timer);
-        bring_to_front(g_other);
-        SetFocus(GetDlgItem(g_other, 4));
-    }));
-    original = harness.capture(16);
-    CHECK(GetForegroundWindow() == g_other);
-    CHECK(original.error == AdapterError::unavailable && original.target.token.value == 0);
-    bring_to_front(g_main);
-    std::puts("transient UIA: another window is never adopted");
-
-    focus(transient);
-    provider->unavailable_until = 0;
-    original = harness.capture(17);
-    CHECK(original.error == AdapterError::none && original.target.token.value != 0);
-    provider->unavailable_until = GetTickCount64() + 10000;
-    CHECK(SetTimer(g_main, 5, 40, [](HWND window, UINT, UINT_PTR timer, DWORD) {
-        KillTimer(window, timer);
-        g_retry_insertion->cancel(17);
-        bring_to_front(g_other);
-        SetFocus(GetDlgItem(g_other, 4));
-    }));
-    current = harness.inspect(17, original.target.token);
-    CHECK(current.error == AdapterError::canceled && current.target.token.value == 0);
-    bring_to_front(g_main);
-    std::puts("transient UIA: inspection cancellation wins over changed window");
-
-    input_observer.shutdown();
-    focus(transient);
-    CHECK(SetTimer(g_main, 6, 40, [](HWND window, UINT, UINT_PTR timer, DWORD) {
-        KillTimer(window, timer);
-        SetFocus(GetDlgItem(window, 1));
-    }));
-    original = harness.capture(18);
-    CHECK(original.error == AdapterError::unavailable && original.target.token.value == 0);
-    std::puts("transient UIA: without input observation, focus handoff is refused");
-
-    DestroyWindow(transient);
-    provider->Release();
+    CHECK(!g_foreign_foreground);
+    DestroyWindow(g_unknown);
 
     insertion.shutdown();
     executor.shutdown();

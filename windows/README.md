@@ -54,15 +54,11 @@ no Enter, focus unchanged and the clipboard restored. To check a real microphone
 `<output>\src\capture\lemonvox_mic_probe.exe --seconds 5` yourself; it prints only duration and
 levels.
 
-`insertion_interactive_test` also uses a real HWND-backed UI Automation provider to reproduce
-transient `UIA_E_ELEMENTNOTAVAILABLE` failures. Target acquisition retries this specific failure
-up to three times at 50 ms intervals, allowing an automatic input-host-to-editor focus handoff
-while the same window remains foreground and no new user input arrives. After acquisition,
-normal exact-field checks still apply. Regressions cover recovery during capture and inspection,
-persistent failures, changed focus/window, password and read-only fields, and cancellation.
-The listener counts keyboard and mouse events in both double-tap and regular-shortcut modes;
-event timestamps are not used to decide whether input intervened. Without complete input
-observation, a retry conservatively requires the original focused HWND.
+`insertion_interactive_test` covers native EDIT, RichEdit, password controls,
+focus changes between fields/windows after inspection, an unknown control with
+no caret or accessibility provider, and no selected text field. It checks normal
+Ctrl+V dispatch, exact text without Enter, focus preservation, clipboard restoration,
+dispatch refusal and cancellation (including immediately before dispatch).
 
 `lemonvox_ui_demo.exe` (in `<output>\src\ui`) shows the tray icon and indicator cycling through
 every state; `--smoke` runs the cycle once and verifies the indicator never became foreground,
@@ -77,12 +73,17 @@ active or focused (ctest `ui_demo_smoke`).
 - The bar shows preparing, recording (level and time), transcribing, cleaning and inserting without
   taking focus; it can be dragged and remembers its position. Stop, Cancel and Copy are also in the
   tray menu. Left-click the tray icon for Settings.
-- Text is pasted into the field that was focused when recording started, while it stays focused
-  (Settings can instead use the field focused when processing finishes). Enter is never sent.
-- If the field changed, is a password field, cannot be inspected, or belongs to a higher-integrity
-  (administrator) app, LemonVox offers **Copy** for manual paste. Do not run LemonVox as
-  administrator to work around this; Windows UIPI blocks input to elevated windows by design.
-- Recording into a password field is refused at start.
+- When transcription and cleanup finish, LemonVox pastes once wherever keyboard
+  focus is now. You can move the cursor or switch apps during recording or processing.
+  It sends ordinary Ctrl+V without Enter and never reactivates an earlier app or field.
+- There is no target-field setting. Existing saved choices are ignored. Accessibility
+  discovery is not required; when no text field is focused, the ordinary paste is
+  still dispatched and the receiving app decides what to do.
+- If Windows cannot dispatch the paste (for example into an administrator app), or
+  the clipboard is unavailable, LemonVox offers **Copy** for manual paste.
+- Stop or the repeat shortcut finishes capture once. Cancel/X discards the operation
+  and suppresses late paste; a paste already dispatched to Windows cannot be undone.
+
 - Microphone errors are specific (privacy setting off, no device, in use, disconnected), with an
   action to open `ms-settings:privacy-microphone` or Settings.
 - Debug/test launch options: `--settings` (open Settings), `--settings-key <HKCU subkey under
@@ -121,6 +122,10 @@ WinGet generator, local tests and protected draft release inputs.
 
 ## Validation
 
+The table below records the earlier Windows milestone. For issue #80, the local
+build attempt on 2026-11-11 could not start because Visual Studio Build Tools
+(vswhere/MSVC) are absent. Updated native and app-matrix checks require a new run.
+
 Machine: Windows 11 Enterprise 26H2, build 26300.9711, x64 (AMD), MSVC 14.44, SDK 10.0.26100.
 Lemonade 2026.44.1 at `http://127.0.0.1:13305/v1` with Whisper-Base (whispercpp), Gemma-4-E4B-it-GGUF
 and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
@@ -130,8 +135,8 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 | Shared core tests under MSVC | Pass (session, trigger, contracts, protocol, workflow) |
 | Global trigger | Alt twice (left or right) fires once; Alt chords, holds, repeats, AltGr, intervening keys/mouse do not; typing passes through; hotkey conflict keeps previous binding; suspended while recording a shortcut |
 | Indicator | Never foreground/active/focused across all states, clicks and drags |
-| Fixed-text insertion | Native EDIT and RichEdit once, no newline; password field rejected; changed focus detected; clipboard restored; cancel inserts nothing |
-| Real apps | See [`tests/insertion-matrix.md`](tests/insertion-matrix.md): Notepad, Edge, Chrome and VS Code (Electron) insert; changed focus and password fields in Edge/Chrome are refused; elevated windows fall back to Copy (manual check steps documented) |
+| Fixed-text insertion | Updated regressions cover current-focus paste, unknown/no field, cancellation and no Enter; current native run pending (see below) |
+| Real apps | Updated matrix checks completion-focus paste; rerun pending. See [`tests/insertion-matrix.md`](tests/insertion-matrix.md). |
 | Pipeline | Synthesized "Um, send Alex the fourteen invoices on Friday." → "Send Alex the 14 invoices on Friday." through WinHTTP, Whisper-Base and Gemma cleanup |
 | Full app | `app_e2e_test`: Alt twice → real app → Lemonade → pasted into another process's field ("Note: Send Alex the 14 invoices on Friday."), focus kept, no Enter, clipboard restored |
 | Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, non-loopback endpoint, microphone denial/no device/device loss (fake device) |
@@ -143,9 +148,6 @@ and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
 
 ## Known limitations
 
-- Google Chrome exposes page fields to UI Automation only after an MSAA client asks; LemonVox
-  makes one MSAA focus query for Chromium windows, so the first dictation into a Chrome window can
-  take up to 300 ms longer. A field Chrome still does not expose falls back to Copy.
 - Higher-integrity (administrator) windows are not supported. Windows (UIPI) does not deliver their
   keystrokes to LemonVox's keyboard hook, so a modifier double tap such as Alt twice does nothing there
   (confirmed by the owner in an elevated terminal). When such a window becomes active, the bar briefly

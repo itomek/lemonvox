@@ -182,7 +182,6 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     catalog_transport_ = std::make_unique<WinHttpTransport>(executor_);
     catalog_ = std::make_unique<ModelCatalog>(*catalog_transport_, executor_);
     InsertionOptions insertion_options;
-    insertion_options.input_generation = [this] { return trigger_ ? trigger_->input_generation() : 0; };
     insertion_ = std::make_unique<WinInsertion>(executor_, std::move(insertion_options));
 
     ui::IndicatorCallbacks indicator_callbacks;

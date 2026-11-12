@@ -113,7 +113,7 @@ std::wstring indicator_status_text(const IndicatorState &state) {
     case IndicatorMode::recording: return L"Listening  " + format_elapsed(state.elapsed);
     case IndicatorMode::transcribing: return L"Transcribing\u2026";
     case IndicatorMode::cleaning: return L"Cleaning up\u2026";
-    case IndicatorMode::inserting: return L"Inserting\u2026";
+    case IndicatorMode::inserting: return L"Pasting\u2026";
     case IndicatorMode::success: return state.message.empty() ? L"Inserted" : state.message;
     case IndicatorMode::notice: return state.message;
     case IndicatorMode::error: return state.message.empty() ? L"Dictation failed." : state.message;

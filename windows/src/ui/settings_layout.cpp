@@ -1,4 +1,4 @@
-﻿#include "ui/settings_layout.h"
+#include "ui/settings_layout.h"
 
 #include "common/utf.h"
 #include "protocol.h"
@@ -382,11 +382,6 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     y += line_height + label_gap;
     at(layout, SettingsControl::shortcut_combo, margin, y, half, row);
     at(layout, SettingsControl::recorder_edit, margin + half + column_gap, y, inner - half - column_gap, row);
-    y += row + group_gap;
-
-    at(layout, SettingsControl::insert_label, margin, y, inner, line_height);
-    y += line_height + label_gap;
-    at(layout, SettingsControl::insert_combo, margin, y, inner, row);
     y += row + group_gap;
 
     const int privacy_w = button_width(SettingsControl::privacy_button, 180);

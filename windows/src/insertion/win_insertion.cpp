@@ -3,6 +3,7 @@
 #include "common/utf.h"
 #include "insertion/integrity.h"
 #include "insertion/target.h"
+#include "trigger/key_normalizer.h"
 
 #include <objbase.h>
 
@@ -38,6 +39,7 @@ INPUT key_input(WORD key, bool up) {
     input.ki.wVk = key;
     input.ki.wScan = static_cast<WORD>(MapVirtualKeyW(key, MAPVK_VK_TO_VSC));
     input.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+    input.ki.dwExtraInfo = kLemonVoxInjectedTag;
     return input;
 }
 
@@ -97,7 +99,7 @@ void WinInsertion::run_worker() {
     RegisterClassExW(&window_class);
     clipboard_owner_ = CreateWindowExW(0, kWorkerOwnerClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, nullptr);
     {
-        TargetProbe probe(options_.input_generation);
+        // Jobs never query accessibility or retain keyboard focus.
         for (;;) {
             MsgWaitForMultipleObjectsEx(1, &wake_, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             pump_worker_messages();
@@ -109,7 +111,7 @@ void WinInsertion::run_worker() {
                     job = std::move(jobs_.front());
                     jobs_.pop_front();
                 }
-                job(probe);
+                job();
             }
             std::lock_guard<std::mutex> lock(mutex_);
             if (stopping_) break;
@@ -177,90 +179,51 @@ void WinInsertion::capture_original(OperationId operation, TargetCompletion comp
         if (shut_down_) return;
         if (operation > newest_operation_) {
             newest_operation_ = operation;
+            pending_dispatch_.store(operation);
             canceled_.erase(canceled_.begin(), canceled_.lower_bound(operation));
         }
     }
     table_->retain_only(operation);
-    enqueue([this, operation, completion = std::move(completion)](TargetProbe &probe) mutable {
+    enqueue([this, operation, completion = std::move(completion)]() mutable {
         TargetResult result;
-        ProbedTarget target;
         if (canceled(operation)) {
             result.error = AdapterError::canceled;
-        } else if (!probe.probe(target)) {
-            result.error = AdapterError::unavailable;
         } else {
-            result.target.editable = target.facts.editable;
-            result.target.secure = target.facts.secure;
-            result.target.frontmost = GetForegroundWindow() == target.identity.foreground;
-            result.target.matches_original = true;
-            if (!target.facts.secure) {
-                if (!target.facts.editable) {
-                    result.error = AdapterError::unavailable;
-                } else {
-                    result.target.token.value = table_->allocate(operation, target.identity);
-                }
-            }
+            // This token authorizes a paste operation, not a discovered field.
+            result.target = {{table_->allocate(operation, {})}, true, false, true, true};
         }
-        // Probing may wait for a transient UIA element. Cancellation wins
-        // even if that element never recovers or focus changes during the wait.
-        if (canceled(operation)) {
-            table_->invalidate(operation);
-            result = {};
-            result.error = AdapterError::canceled;
-        }
-        post(std::move(completion), operation, std::move(result));
+        post(std::move(completion), operation, result);
     });
 }
 
 void WinInsertion::inspect(OperationId operation, TargetToken original, TargetCompletion completion) {
-    enqueue([this, operation, original, completion = std::move(completion)](TargetProbe &probe) mutable {
+    enqueue([this, operation, original, completion = std::move(completion)]() mutable {
         TargetResult result;
-        TargetIdentity original_identity;
-        ProbedTarget current;
-        const bool has_original = original.value != 0;
+        TargetIdentity unused;
         if (canceled(operation)) {
             result.error = AdapterError::canceled;
-        } else if (has_original && !table_->lookup(original.value, operation, original_identity)) {
+        } else if (original.value && !table_->lookup(original.value, operation, unused)) {
             result.error = AdapterError::target_changed;
-        } else if (!probe.probe(current)) {
-            result.error = AdapterError::unavailable;
         } else {
-            // With no original token the core asks for the field focused now
-            // (insert_current_target). A changed field gets its own token so
-            // that policy can still insert there; the default policy falls
-            // back because matches_original is false.
-            const bool matches = has_original && same_target(original_identity, current.identity);
-            result.target.matches_original = matches;
-            result.target.editable = current.facts.editable;
-            result.target.secure = current.facts.secure;
-            result.target.frontmost = GetForegroundWindow() == current.identity.foreground;
-            if (matches) {
-                result.target.token = original;
-            } else if (current.facts.editable && !current.facts.secure) {
-                result.target.token.value = table_->allocate(operation, current.identity);
-            }
+            const TargetToken token = original.value ? original : TargetToken{table_->allocate(operation, {})};
+            // Shared-core dispatch eligibility, not claims about an OS field.
+            result.target = {token, true, false, true, original.value != 0};
         }
-        if (canceled(operation)) {
-            table_->invalidate(operation);
-            result = {};
-            result.error = AdapterError::canceled;
-        }
-        post(std::move(completion), operation, std::move(result));
+        post(std::move(completion), operation, result);
     });
 }
 
 void WinInsertion::insert(OperationId operation, TargetToken target, std::string text, VoidCompletion completion) {
-    enqueue([this, operation, target, text = std::move(text), completion = std::move(completion)](
-                TargetProbe &probe) mutable {
+    enqueue([this, operation, target, text = std::move(text), completion = std::move(completion)]() mutable {
         if (options_.insert_started) options_.insert_started(operation);
-        Completion result{run_insert(probe, operation, target, text)};
+        Completion result{run_insert(operation, target, text)};
         // The text was dispatched or abandoned; the operation's tokens are finished.
         table_->invalidate(operation);
         post(std::move(completion), operation, result);
     });
 }
 
-AdapterError WinInsertion::run_insert(TargetProbe &probe, OperationId operation, TargetToken token,
+AdapterError WinInsertion::run_insert(OperationId operation, TargetToken token,
     const std::string &text) {
     TargetIdentity identity;
     if (!table_->lookup(token.value, operation, identity)) {
@@ -270,19 +233,10 @@ AdapterError WinInsertion::run_insert(TargetProbe &probe, OperationId operation,
     bool valid = false;
     const std::wstring wide = utf8_to_wide(text, &valid);
     if (!valid) return AdapterError::invalid_input;
-    if (input_integrity(identity.process_id) != IntegrityDecision::allowed) {
-        return AdapterError::insertion_unavailable;
-    }
 
     AdapterError error = AdapterError::none;
     if (!modifiers_released(operation, error)) return error;
 
-    const auto still_target = [&]() {
-        ProbedTarget current;
-        return probe.probe(current) && same_target(identity, current.identity) && current.facts.editable &&
-            !current.facts.secure;
-    };
-    if (!still_target()) return AdapterError::target_changed;
     if (wide.empty()) return AdapterError::none;
 
     ClipboardSnapshot snapshot;
@@ -312,17 +266,29 @@ AdapterError WinInsertion::run_insert(TargetProbe &probe, OperationId operation,
         restore_if_ours();
         return AdapterError::canceled;
     }
-    if (!still_target()) {
-        restore_if_ours();
-        return AdapterError::target_changed;
-    }
     if (any_modifier_down() || (options_.before_send && !options_.before_send())) {
         restore_if_ours();
         return AdapterError::insertion_unavailable;
     }
-    if (!TargetProbe::foreground_focus_matches(identity)) {
+    // A callback or modifier-release wait may have canceled the operation.
+    // Check the window that will receive input now, never the capture window.
+    if (canceled(operation)) {
         restore_if_ours();
-        return AdapterError::target_changed;
+        return AdapterError::canceled;
+    }
+    DWORD process_id = 0;
+    const HWND foreground = GetForegroundWindow();
+    if (foreground) GetWindowThreadProcessId(foreground, &process_id);
+    if (foreground && input_integrity(process_id) == IntegrityDecision::target_higher) {
+        restore_if_ours();
+        return AdapterError::insertion_unavailable;
+    }
+    // Atomically commit dispatch against cancellation, without holding a lock
+    // while Windows calls the UI thread's low-level keyboard hook.
+    OperationId pending = operation;
+    if (!pending_dispatch_.compare_exchange_strong(pending, 0)) {
+        restore_if_ours();
+        return AdapterError::canceled;
     }
     if (!send_paste()) {
         restore_if_ours();
@@ -340,6 +306,8 @@ void WinInsertion::cancel(OperationId operation) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (shut_down_) return;
         canceled_.insert(operation);
+        OperationId pending = operation;
+        pending_dispatch_.compare_exchange_strong(pending, 0);
     }
     table_->invalidate(operation);
 }
@@ -359,6 +327,7 @@ void WinInsertion::shutdown() {
         if (shut_down_) return;
         shut_down_ = true;
         stopping_ = true;
+        pending_dispatch_.store(0);
         discarded.swap(jobs_);
     }
     alive_->store(false);
@@ -366,9 +335,8 @@ void WinInsertion::shutdown() {
     discarded.clear();
     if (!worker_.joinable()) return;
     SetEvent(wake_);
-    // The worker may be in a UI Automation call that targets a window owned by
-    // this thread. Dispatch only sent messages so that call can finish without
-    // running posted executor tasks.
+    // Clipboard delayed rendering or SendInput may call a window/hook on this
+    // thread. Pump sent messages without running posted executor tasks.
     HANDLE thread = worker_.native_handle();
     for (;;) {
         const DWORD wait = MsgWaitForMultipleObjectsEx(1, &thread, INFINITE, QS_SENDMESSAGE, 0);

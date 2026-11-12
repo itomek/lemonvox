@@ -54,17 +54,6 @@ std::optional<std::string> read_utf8(HKEY key, const wchar_t *name) {
     return text;
 }
 
-std::optional<bool> read_bool(HKEY key, const wchar_t *name) {
-    DWORD type = 0;
-    DWORD value = 0;
-    DWORD size = sizeof(value);
-    if (RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<BYTE *>(&value), &size) != ERROR_SUCCESS ||
-        type != REG_DWORD || size != sizeof(value) || value > 1) {
-        return std::nullopt;
-    }
-    return value == 1;
-}
-
 bool write_wide(HKEY key, const wchar_t *name, const std::wstring &value) {
     if (value.find(L'\0') != std::wstring::npos) return false;
     const DWORD size = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
@@ -78,16 +67,10 @@ bool write_utf8(HKEY key, const wchar_t *name, const std::string &value) {
     return ok && write_wide(key, name, wide);
 }
 
-bool write_bool(HKEY key, const wchar_t *name, bool value) {
-    const DWORD data = value ? 1 : 0;
-    return RegSetValueExW(key, name, 0, REG_DWORD, reinterpret_cast<const BYTE *>(&data), sizeof(data)) ==
-        ERROR_SUCCESS;
-}
-
 } // namespace
 
 PreferencesSnapshot WinPreferences::snapshot() const {
-    return {endpoint, asr_model, cleanup_model, cleanup_prompt, insert_current_target};
+    return {endpoint, asr_model, cleanup_model, cleanup_prompt, true};
 }
 
 PreferencesStore::PreferencesStore(std::wstring registry_subkey) : subkey_(std::move(registry_subkey)) {}
@@ -102,7 +85,6 @@ WinPreferences PreferencesStore::load() const {
     if (auto value = read_utf8(key, kAsrModel)) preferences.asr_model = std::move(*value);
     if (auto value = read_utf8(key, kCleanupModel)) preferences.cleanup_model = std::move(*value);
     if (auto value = read_utf8(key, kCleanupPrompt)) preferences.cleanup_prompt = std::move(*value);
-    if (auto value = read_bool(key, kInsertCurrentTarget)) preferences.insert_current_target = *value;
     if (auto value = read_utf8(key, kTrigger)) {
         TriggerBinding binding;
         if (parse_trigger(*value, binding)) preferences.trigger = binding;
@@ -123,7 +105,9 @@ bool PreferencesStore::save(const WinPreferences &preferences) const {
     ok = write_utf8(key, kAsrModel, preferences.asr_model) && ok;
     ok = write_utf8(key, kCleanupModel, preferences.cleanup_model) && ok;
     ok = write_utf8(key, kCleanupPrompt, preferences.cleanup_prompt) && ok;
-    ok = write_bool(key, kInsertCurrentTarget, preferences.insert_current_target) && ok;
+    // Old installations may have selected original-field insertion.
+    const LSTATUS removed = RegDeleteValueW(key, kInsertCurrentTarget);
+    ok = (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) && ok;
     ok = write_utf8(key, kTrigger, serialize_trigger(preferences.trigger)) && ok;
     ok = write_wide(key, kCaptureDevice, preferences.capture_device_id) && ok;
     RegCloseKey(key);

@@ -1,4 +1,4 @@
-﻿#include "ui/settings_window.h"
+#include "ui/settings_window.h"
 
 #include "common/utf.h"
 #include "ui/settings_layout.h"
@@ -63,8 +63,6 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"", Kind::combo},
     {L"&Custom shortcut", Kind::label},
     {L"", Kind::recorder},
-    {L"&Insert into", Kind::label},
-    {L"", Kind::combo},
     {L"&Microphone", Kind::label},
     {L"", Kind::combo},
     {L"Microphone pri&vacy settings\u2026", Kind::button},
@@ -272,7 +270,7 @@ private:
             SendMessageW(control(combo), CB_SETCUEBANNER, 0, reinterpret_cast<LPARAM>(L"Choose a model"));
         }
         for (const auto combo : {SettingsControl::asr_combo, SettingsControl::cleanup_combo,
-                 SettingsControl::shortcut_combo, SettingsControl::insert_combo, SettingsControl::microphone_combo}) {
+                 SettingsControl::shortcut_combo, SettingsControl::microphone_combo}) {
             SendMessageW(control(combo), CB_SETMINVISIBLE, 10, 0);
         }
         annotate_accessibility();
@@ -325,9 +323,6 @@ private:
         rebuild_models(current.asr_model, current.cleanup_model);
         SetWindowTextW(control(SettingsControl::prompt_edit),
             settings::to_edit_newlines(utf8_to_wide(current.cleanup_prompt)).c_str());
-        fill_combo(control(SettingsControl::insert_combo),
-            {L"Original field (recommended)", L"Field focused when processing finishes"},
-            current.insert_current_target ? 1 : 0);
         rebuild_trigger();
         rebuild_devices(current.capture_device_id);
         populating_ = false;
@@ -496,7 +491,6 @@ private:
         preferences.asr_model = selected_model(ModelRole::transcription);
         preferences.cleanup_model = selected_model(ModelRole::cleanup);
         preferences.cleanup_prompt = wide_to_utf8(prompt);
-        preferences.insert_current_target = combo_selection(control(SettingsControl::insert_combo)) == 1;
         preferences.trigger = trigger_;
         preferences.capture_device_id = selected_device();
 

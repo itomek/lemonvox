@@ -80,7 +80,7 @@ static void indicator_text() {
     state.mode = IndicatorMode::cleaning;
     assert(indicator_status_text(state) == L"Cleaning up\u2026");
     state.mode = IndicatorMode::inserting;
-    assert(indicator_status_text(state) == L"Inserting\u2026" && indicator_buttons(state).empty());
+    assert(indicator_status_text(state) == L"Pasting\u2026" && indicator_buttons(state).empty());
     state.mode = IndicatorMode::success;
     assert(indicator_status_text(state) == L"Inserted");
     state.mode = IndicatorMode::error;
