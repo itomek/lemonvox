@@ -3,8 +3,11 @@ import AppKit
 enum OverlayPhase { case recording, processing, message(String), permission(String) }
 
 private enum SpeechBarMetrics {
-    static let size = NSSize(width: 128, height: 44)
-    static let waveformWidth: CGFloat = 32
+    // The extra top/right space belongs to the attached cancel control, not the tile.
+    static let tileSize = NSSize(width: 120, height: 32)
+    static let size = NSSize(width: 128, height: 40)
+    static let cornerRadius: CGFloat = 10
+    static let waveformWidth: CGFloat = 26
 }
 
 final class OverlayButton: NSButton {
@@ -19,9 +22,9 @@ final class ActivityView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             NSColor.controlAccentColor.setFill()
-            for i in 0..<6 {
+            for i in 0..<5 {
                 let amplitude = sample ? abs(sin(Double(i) * 0.8 + tick)) : level * (0.45 + 0.55 * abs(sin(Double(i) * 0.8)))
-                let height = 4 + 18 * amplitude
+                let height = 3 + 11 * amplitude
                 NSBezierPath(roundedRect: NSRect(x: Double(i) * 5 + 1, y: bounds.midY - height / 2,
                     width: 3, height: height), xRadius: 1.5, yRadius: 1.5).fill()
             }
@@ -35,6 +38,8 @@ final class OverlayView: NSView {
     let statusLabel = NSTextField(labelWithString: "Listening…")
     let spinner = NSProgressIndicator()
     let activity = ActivityView()
+    let microphone = NSImageView()
+    let divider = NSBox()
     let cancelButton = OverlayButton()
     let stopButton = OverlayButton()
     let openSettingsButton = OverlayButton(title:"Open Accessibility Settings…",target:nil,action:nil)
@@ -54,7 +59,7 @@ final class OverlayView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         glass.style = .regular
-        glass.cornerRadius = 22
+        glass.cornerRadius = SpeechBarMetrics.cornerRadius
         glass.contentView = content
         addSubview(glass)
         statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
@@ -64,17 +69,28 @@ final class OverlayView: NSView {
         spinner.style = .spinning; spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
         content.addSubview(spinner); content.addSubview(activity)
+        microphone.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)
+        microphone.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        microphone.contentTintColor = .labelColor
+        microphone.setAccessibilityElement(false)
+        content.addSubview(microphone)
+        divider.boxType = .separator
+        divider.setAccessibilityElement(false)
+        content.addSubview(divider)
         cancelButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel dictation")
-        cancelButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        cancelButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .medium)
         cancelButton.bezelStyle = .circular; cancelButton.isBordered = true
         cancelButton.target = self; cancelButton.action = #selector(cancel)
         cancelButton.refusesFirstResponder = true
         cancelButton.toolTip = "Cancel dictation"; cancelButton.setAccessibilityLabel("Cancel dictation")
-        content.addSubview(cancelButton)
+        cancelButton.contentTintColor = .labelColor
+        // Keep the full attached control inside the panel so every visible pixel is clickable.
+        addSubview(cancelButton)
         stopButton.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: "Finish recording")
-        stopButton.symbolConfiguration = cancelButton.symbolConfiguration
+        stopButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
         stopButton.bezelStyle = .circular
-        stopButton.isBordered = true
+        stopButton.isBordered = false
+        stopButton.contentTintColor = .labelColor
         stopButton.refusesFirstResponder = true
         stopButton.target = self
         stopButton.action = #selector(stop)
@@ -101,13 +117,16 @@ final class OverlayView: NSView {
     }
     override func layout() {
         super.layout()
-        glass.frame = bounds
-        content.frame = bounds
-        cancelButton.frame = NSRect(x: 4, y: bounds.midY - 16, width: 32, height: 32)
-        stopButton.frame = NSRect(x: bounds.width - 36, y: bounds.midY - 16, width: 32, height: 32)
-        activity.frame = NSRect(x: 48, y: bounds.midY - 14,
-            width: SpeechBarMetrics.waveformWidth, height: 28)
-        spinner.frame = NSRect(x: 56, y: bounds.midY - 8, width: 16, height: 16)
+        let tile = NSRect(origin: .zero, size: SpeechBarMetrics.tileSize)
+        glass.frame = tile
+        content.frame = tile
+        cancelButton.frame = NSRect(x: 108, y: 20, width: 20, height: 20)
+        stopButton.frame = NSRect(x: 88, y: 2, width: 28, height: 28)
+        microphone.frame = NSRect(x: 12, y: 8, width: 14, height: 16)
+        activity.frame = NSRect(x: 36, y: 7,
+            width: SpeechBarMetrics.waveformWidth, height: 18)
+        spinner.frame = NSRect(x: 42, y: 8, width: 16, height: 16)
+        divider.frame = NSRect(x: 81, y: 8, width: 1, height: 16)
     }
     func updateAccessibilityAppearance() {
         applyTransparencyPreference(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
@@ -118,9 +137,17 @@ final class OverlayView: NSView {
         if solid {
             if content.superview !== self { glass.contentView = nil; addSubview(content) }
         } else if glass.contentView !== content { glass.contentView = content }
-        wantsLayer = true
-        layer?.cornerRadius = 22
-        layer?.backgroundColor = solid ? NSColor.windowBackgroundColor.cgColor : NSColor.clear.cgColor
+        content.wantsLayer = true
+        content.layer?.cornerRadius = SpeechBarMetrics.cornerRadius
+        // Resolve semantic colors in this view's appearance, including explicit preview appearances.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            content.layer?.backgroundColor = solid ? NSColor.windowBackgroundColor.cgColor : NSColor.clear.cgColor
+        }
+        microphone.contentTintColor = .labelColor
+        cancelButton.contentTintColor = .labelColor
+        stopButton.contentTintColor = .labelColor
+        activity.needsDisplay = true
+        addSubview(cancelButton, positioned: .above, relativeTo: nil)
         needsLayout = true
     }
     override func viewDidChangeEffectiveAppearance() {
@@ -145,8 +172,10 @@ final class OverlayView: NSView {
         openSettingsButton.isHidden = !permission; retryPermissionButton.isHidden = !permission
         stopButton.isHidden = true
         stopButton.isEnabled = false
+        divider.isHidden = true
         switch phase {
         case .recording:
+            divider.isHidden = false
             stopButton.isHidden = false
             stopButton.isEnabled = true
             statusLabel.stringValue = isSample ? "Sample recording" : "Listening…"
@@ -193,7 +222,7 @@ final class IndicatorPanel: NSPanel {
     let messageLabel = NSTextField(wrappingLabelWithString: "")
     private let messageGlass = NSGlassEffectView()
     private let messageContent = NSView()
-    private var positioned = false
+    private var followsScreenAnchor = true
     private var clamping = false
     private var noticeVisible = false
     private var observers: [NSObjectProtocol] = []
@@ -225,10 +254,16 @@ final class IndicatorPanel: NSPanel {
         messageContent.addSubview(overlay.retryPermissionButton)
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: NSWindow.didMoveNotification, object: self, queue: .main) { [weak self] _ in
-            self?.clampToScreen(); self?.positionMessage()
+            guard let self, !self.clamping else { return }
+            self.followsScreenAnchor = false
+            self.clampToScreen(); self.positionMessage()
         })
         observers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.clampToScreen(); self?.positionMessage()
+            guard let self else { return }
+            if self.followsScreenAnchor, let screen = self.screenForFrame() {
+                self.anchor(to: screen)
+            } else { self.clampToScreen() }
+            self.positionMessage()
         })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.updateMessageAppearance()
@@ -314,16 +349,30 @@ final class IndicatorPanel: NSPanel {
             if !noticeVisible { messagePanel.orderOut(nil) }
         }
     }
+    static func anchoredOrigin(screenFrame: NSRect, visibleFrame: NSRect,
+                               dockIsHidden: Bool, dockOrientation: String) -> NSPoint {
+        // A side Dock must not shift the tile away from the display's center.
+        let bottom = dockIsHidden || dockOrientation != "bottom" ? screenFrame.minY : visibleFrame.minY
+        return NSPoint(x: screenFrame.midX - SpeechBarMetrics.tileSize.width / 2, y: bottom + 8)
+    }
+    private func anchor(to screen: NSScreen) {
+        let dock = UserDefaults(suiteName: "com.apple.dock")
+        let origin = Self.anchoredOrigin(screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
+            dockIsHidden: dock?.bool(forKey: "autohide") ?? false,
+            dockOrientation: dock?.string(forKey: "orientation") ?? "bottom")
+        clamping = true
+        setFrameOrigin(origin)
+        clamping = false
+        followsScreenAnchor = true
+    }
     func present(_ phase: OverlayPhase) {
+        let startsPresentation = !isVisible
         setPhase(phase)
-        if !positioned {
-            let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-            if let visible = screen?.visibleFrame {
-                setFrameOrigin(NSPoint(x: visible.midX - frame.width / 2, y: visible.minY + 65))
-                positioned = true
-            }
-        }
-        clampToScreen(); positionMessage()
+        if startsPresentation,
+           let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+            anchor(to: screen)
+        } else if !followsScreenAnchor { clampToScreen() }
+        positionMessage()
         orderFrontRegardless(); overlay.startAnimation()
         switch phase { case .message, .permission: messagePanel.orderFrontRegardless(); default: break }
     }

@@ -23,6 +23,8 @@ Cancel stops capture or processing and discards late results. Denied microphone 
 
 ## Appearance and data
 
+The speech overlay is a slim 120 × 32 pt Liquid Glass tile with a microphone, audio meter, Stop control and attached X. Each new presentation centers the tile on the display containing the pointer, 8 pt above a visible bottom Dock, or 8 pt above the screen bottom when the Dock is autohidden or on either side. Dragging repositions it for the current presentation.
+
 The nonactivating Liquid Glass overlay and Settings follow the selected app appearance: **Auto** follows macOS, while **Light** and **Dark** apply the corresponding native AppKit appearance. The waveform, text and controls use semantic system colors; no custom state coloring is added. Reduce Transparency and Reduce Motion are respected. Stop is available while recording. X cancels an active session or dismisses a message. Overlay controls refuse keyboard focus; Settings intentionally activates its own window.
 
 Audio uses a private temporary WAV file removed after completion, failure or cancellation. Transcripts and request data remain in memory during processing. An abnormal process termination can leave temporary audio behind. Settings persist locally; diagnostics contain fixed event names/categories and HTTP codes, without audio, transcripts or credentials. **Open Log** in Settings opens the conventional per-user log at `~/Library/Logs/LemonVox/lemonvox.log`; rotation retains one backup. Server/provider retention depends on Lemonade configuration.
