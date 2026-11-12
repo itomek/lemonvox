@@ -20,6 +20,15 @@ print_diagnostics() {
     tail -100 "$shell_log" >&2 || true
     printf '\n--- Shell D-Bus probe ---\n' >&2
     cat "$introspection_log" >&2 || true
+    printf '\n--- Disposable fixture log ---\n' >&2
+    tail -40 "$test_root/fixture.log" >&2 2>/dev/null || true
+    printf '\n--- Disposable fixture readiness ---\n' >&2
+    for diagnostic_file in fixture-events.txt fixture-focus.txt; do
+        printf '%s: ' "$diagnostic_file" >&2
+        cat "$test_root/$diagnostic_file" >&2 2>/dev/null || true
+    done
+    printf '\n--- Private Shell focus state ---\n' >&2
+    shell_eval "import('resource:///org/gnome/shell/ui/main.js').then(Main => JSON.stringify({focus: global.display.focus_window?.get_title(), overview: Main.overview.visible, startingUp: Main.layoutManager._startingUp, windows: global.get_window_actors().map(actor => ({title: actor.meta_window?.get_title(), visible: actor.visible, mapped: actor.mapped, minimized: actor.meta_window?.minimized}))}))" >&2 2>/dev/null || true
 }
 
 cleanup() {
