@@ -11,7 +11,7 @@ namespace lemonvox::win::settings {
 namespace {
 
 constexpr wchar_t kUnavailablePrefix[] = L"(unavailable) ";
-constexpr wchar_t kRemoteSuffix[] = L" (remote via Lemonade)";
+constexpr wchar_t kRemoteSuffix[] = L" (remote via server)";
 constexpr wchar_t kExampleEndpoint[] = L"http://127.0.0.1:13305/v1";
 
 bool eligible(const SettingsModelOption &option, ModelRole role) {
@@ -176,7 +176,7 @@ std::wstring trim(const std::wstring &text) {
 
 std::wstring validate_endpoint(const std::wstring &endpoint) {
     const std::wstring text = trim(endpoint);
-    if (text.empty()) return std::wstring(L"Enter the Lemonade endpoint, for example ") + kExampleEndpoint + L".";
+    if (text.empty()) return std::wstring(L"Enter the server endpoint, for example ") + kExampleEndpoint + L".";
     const std::wstring malformed = std::wstring(L"Enter an endpoint like ") + kExampleEndpoint
         + L" (http or https, ending in /v1, without credentials or query).";
     const size_t scheme_end = text.find(L"://");
@@ -236,7 +236,7 @@ std::wstring validate_endpoint(const std::wstring &endpoint) {
     facts.no_query_fragment = rest.find_first_of(L"?#") == std::wstring::npos;
     facts.path_ends_v1 = last_segment == L"v1";
     if (facts.no_userinfo && host_ok && port_ok && !host.empty() && !loopback) {
-        return std::wstring(L"LemonVox only connects to Lemonade on this PC. Use a loopback endpoint such as ")
+        return std::wstring(L"LemonVox only connects to a server on this PC. Use a loopback endpoint such as ")
             + kExampleEndpoint + L".";
     }
     if (!host_ok || !port_ok || canonical.empty() || lv_protocol_validate_endpoint(&facts) != LV_PROTOCOL_OK) {
@@ -281,7 +281,7 @@ std::wstring from_edit_newlines(const std::wstring &text) {
 }
 
 StatusText loading_status() {
-    return {L"Loading models from Lemonade\u2026", false};
+    return {L"Loading models from server\u2026", false};
 }
 
 StatusText endpoint_changed_status() {
@@ -300,25 +300,25 @@ StatusText catalog_status(const SettingsCatalogResult &result, const std::wstrin
         }
         const std::wstring detail = result.message.empty() ? L"" : L" " + result.message;
         if (asr == 0 && cleanup == 0) {
-            return {L"Lemonade offered no compatible models. Add models in Lemonade, then press Refresh models."
+            return {L"The server offered no compatible models. Configure compatible model metadata, then press Refresh models."
                 + detail, true};
         }
-        if (asr == 0) return {L"Lemonade offered no transcription models." + detail, true};
-        if (cleanup == 0) return {L"Lemonade offered no cleanup models." + detail, true};
+        if (asr == 0) return {L"The server offered no transcription models." + detail, true};
+        if (cleanup == 0) return {L"The server offered no cleanup models." + detail, true};
         return {std::to_wstring(asr) + (asr == 1 ? L" transcription model and " : L" transcription models and ")
             + std::to_wstring(cleanup) + (cleanup == 1 ? L" cleanup model available." : L" cleanup models available."),
             false};
     }
     case Status::configuration:
-        return {std::wstring(L"Enter a loopback Lemonade endpoint such as ") + kExampleEndpoint + L".", true};
+        return {std::wstring(L"Enter a loopback server endpoint such as ") + kExampleEndpoint + L".", true};
     case Status::network:
-        return {L"Lemonade unavailable at " + endpoint + L" \u2014 start Lemonade and press Refresh models.", true};
+        return {L"Server unavailable at " + endpoint + L" \u2014 start your server and press Refresh models.", true};
     case Status::http:
-        return {L"Lemonade at " + endpoint + L" returned an error"
+        return {L"Server at " + endpoint + L" returned an error"
             + (result.message.empty() ? L"" : L" (" + result.message + L")") + L". Press Refresh models to try again.",
             true};
     case Status::response:
-        return {L"Lemonade sent an unexpected model list. Update Lemonade or press Refresh models to try again.", true};
+        return {L"The server sent an incompatible model list. Check its model metadata or press Refresh models to try again.", true};
     }
     return {L"", false};
 }

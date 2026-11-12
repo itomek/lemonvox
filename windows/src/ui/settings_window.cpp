@@ -45,17 +45,17 @@ struct Spec {
 // Each label precedes its control so MSAA/UIA name the control after it and
 // mnemonics (&) move focus to it.
 constexpr Spec kSpecs[kControlCount] = {
-    {L"Lemonade &endpoint", Kind::label},
+    {L"Server &endpoint", Kind::label},
     {L"", Kind::edit},
     {L"&Refresh models", Kind::button},
-    {L"Lemonade runs on this PC, so only loopback addresses such as 127.0.0.1 are accepted.", Kind::note},
+    {L"Requires separate Lemonade or another OpenAI-compatible server on this PC. Only loopback endpoints are supported.", Kind::note},
     {L"", Kind::note},
     {L"&Transcription model", Kind::label},
     {L"", Kind::combo},
     {L"C&leanup model", Kind::label},
     {L"", Kind::combo},
-    {L"Lemonade manages models, providers and API keys. A remote cleanup model sends the transcribed text "
-     L"through Lemonade to that provider.", Kind::note},
+    {L"The server must provide transcription, chat and discoverable compatible model metadata. It manages models, providers "
+     L"and API keys; remote cleanup sends transcribed text through it to that provider.", Kind::note},
     {L"Cleanup &prompt", Kind::label},
     {L"", Kind::multiline},
     {L"Reset to &default", Kind::button},
