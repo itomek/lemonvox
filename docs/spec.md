@@ -2,7 +2,7 @@
 
 ## Purpose
 
-LemonVox turns speech into text in the desktop app being used. It provides a small recording interface and sends transcription and cleanup requests to a configured Lemonade server.
+LemonVox turns speech into text in the desktop app being used. It provides a small recording interface and sends transcription and cleanup requests to a configured Lemonade or another compatible OpenAI API server running separately. Current implementations accept local loopback endpoints only and require transcription, chat completion, and compatible model-discovery metadata. OpenAI chat compatibility alone does not establish compatibility.
 
 The first milestone is a usable macOS app. Windows and Ubuntu are planned ports; the shared pipeline should make further community ports practical.
 

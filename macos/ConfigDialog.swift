@@ -36,6 +36,7 @@ enum RunningAppVersion {
 @MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     let window: NSWindow
     let appVersion = NSTextField(labelWithString: RunningAppVersion.display(info: Bundle.main.infoDictionary ?? [:]))
+    let serverRequirement = NSTextField(wrappingLabelWithString: "Requires Lemonade or another OpenAI-compatible server, running separately.\nUse a local endpoint with transcription, chat completion, and compatible model discovery.")
     let scroll = NSScrollView()
     let categoryList = NSTableView()
     var scrolls: [NSScrollView] = []
@@ -107,7 +108,7 @@ enum RunningAppVersion {
         transcription.setAccessibilityLabel("Transcription model"); cleanup.setAccessibilityLabel("Cleanup model")
         label("Transcription model", 502); transcription.frame = NSRect(x:24,y:472,width:592,height:28); view.addSubview(transcription)
         label("Cleanup model", 438); cleanup.frame = NSRect(x:24,y:408,width:592,height:28); view.addSubview(cleanup)
-        let routing = NSTextField(wrappingLabelWithString:"Models and provider credentials are managed in Lemonade. Remote cleanup choices send dictated text through Lemonade to that provider.")
+        let routing = NSTextField(wrappingLabelWithString:"Models and provider credentials are managed in your server. Remote cleanup choices send dictated text through that server to its provider.")
         routing.frame = NSRect(x:24,y:362,width:592,height:38); routing.font = .systemFont(ofSize:11); routing.textColor = .secondaryLabelColor; view.addSubview(routing)
         label("Cleanup prompt", 334)
         let promptScroll = NSScrollView(frame:NSRect(x:24,y:228,width:592,height:100)); promptScroll.hasVerticalScroller=true; promptScroll.borderType = .bezelBorder
@@ -193,6 +194,11 @@ enum RunningAppVersion {
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
         appVersion.setAccessibilityLabel("Running \(AppIdentity.running.name) version and build")
         generalView.addSubview(appVersion)
+        serverRequirement.frame=NSRect(x:24,y:8,width:660,height:38)
+        serverRequirement.font = .systemFont(ofSize:11); serverRequirement.textColor = .secondaryLabelColor
+        serverRequirement.autoresizingMask = [.width]; serverRequirement.isSelectable = true
+        serverRequirement.setAccessibilityLabel("Inference server requirement")
+        root.addSubview(serverRequirement)
         save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:706,y:16,width:90,height:30); save.autoresizingMask = [.minXMargin]; root.addSubview(save)
     }
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
@@ -259,7 +265,7 @@ enum RunningAppVersion {
     @objc func refresh() {
         refreshTask?.cancel(); versionTask?.cancel(); generation += 1
         let current=generation; let base=endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines)
-        loading=true; status.stringValue="Loading models from Lemonade…"; retry.title="Refresh"
+        loading=true; status.stringValue="Loading models from server…"; retry.title="Refresh"
         version.stringValue="Tested with Lemonade 2026.44.1 · checking connected version…"
         log.record(.discoveryStarted)
         refreshTask=Task { [weak self] in
@@ -272,7 +278,7 @@ enum RunningAppVersion {
                 self.populate(self.transcription,models:models.transcription,selected:asr)
                 self.populate(self.cleanup,models:models.cleanup,selected:chat)
                 self.status.stringValue=models.transcription.isEmpty || models.cleanup.isEmpty
-                    ? (models.reason ?? "No compatible models for one or both tasks. Lemonade supplied no reason; existing choices are preserved.")
+                    ? (models.reason ?? "No compatible models for one or both tasks. The server supplied no reason; existing choices are preserved.")
                     : "Models available. Choose transcription and cleanup independently."
                 self.status.toolTip=self.status.stringValue
                 self.log.record(.discoverySucceeded); self.refreshLogs()

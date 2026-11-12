@@ -219,6 +219,12 @@ import AppKit
         precondition(pane.appearance.indexOfSelectedItem == 2 && pane.prompt.string == "Unsaved synthetic draft")
         precondition(pane.debugDiagnostics.state == .on && pane.loading)
         precondition(discoveries <= 1, "Switching categories must not restart discovery")
+        for row in 0..<3 {
+            pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
+            precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
+            precondition(pane.serverRequirement.stringValue.contains("Lemonade or another OpenAI-compatible server"))
+            precondition(pane.serverRequirement.visibleRect.contains(pane.serverRequirement.bounds))
+        }
         pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
         pane.categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
         let modelClip = pane.scrolls[1].contentView
