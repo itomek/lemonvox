@@ -21,9 +21,9 @@ src/ui/settings_layout.cpp}, macos/LemonadeClient.swift, ubuntu/adapters.cpp,
 tests/{protocol_test.cpp,pipeline_test.swift}, windows/tests/{net_test.cpp,
 settings_unit_test.cpp}, ubuntu/tests/adapters_test.cpp.
 - [x] Add remote acceptance regressions and run CI against old policy.
-- [ ] Confirm failures are the remote acceptance assertions.
-- [ ] Ignore host_loopback for shared eligibility, reuse Windows parser, remove Ubuntu transport host gate, validate Mac host presence.
-- [ ] Update existing tests and current wording/documentation for remote URLs.
+- [x] Confirm failures are the remote acceptance assertions (Windows run 43130154931).
+- [x] Ignore host_loopback for shared eligibility, reuse Windows parser, remove Ubuntu transport host gate, validate Mac host presence.
+- [x] Update existing tests and current wording/documentation for remote URLs.
 - [ ] Run complete platform CI suites and inspect failures.
 
 ## Task 2: Direct Windows trial
