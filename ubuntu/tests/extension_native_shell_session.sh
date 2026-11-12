@@ -350,10 +350,10 @@ fixture_pid="$!"
 wait_for_eval \
     "JSON.stringify(global.get_window_actors().map(actor => actor.meta_window?.get_title()))" \
     'LemonVox Native Fixture'
-fixture_activation="$(shell_eval \
+fixture_activation_result="$(shell_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const window = global.get_window_actors().map(actor => actor.meta_window).find(candidate => candidate?.get_title() === 'LemonVox Native Fixture'); if (!window) return 'fixture-missing'; Main.activateWindow(window, global.get_current_time()); return 'fixture-activation-requested'; })")" || fail 'could not request focus for disposable GTK fixture'
-[[ "$fixture_activation" == *fixture-activation-requested* ]] || {
-    printf '%s\n' "$fixture_activation" >"$introspection_log"
+[[ "$fixture_activation_result" == *fixture-activation-requested* ]] || {
+    printf '%s\n' "$fixture_activation_result" >"$introspection_log"
     fail 'Shell did not find the disposable GTK fixture window'
 }
 wait_for_eval \
