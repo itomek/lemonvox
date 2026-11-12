@@ -538,7 +538,13 @@ void transport_maps_timeouts_and_refusal_to_network(TestServer &server) {
     capped.send(1, get(server.url("/slow")), resource.completion());
     pump_until([&] { return resource.calls != 0; });
     assert(resource.calls == 1 && resource.response.error == AdapterError::network);
+    assert(capped.last_request_timed_out());
     assert(GetTickCount64() - capped_start < 5000);
+    Recorder recovered;
+    capped.send(2, get(server.url("/ok")), recovered.completion());
+    pump_until([&] { return recovered.calls != 0; });
+    assert(recovered.response.error == AdapterError::none);
+    assert(!capped.last_request_timed_out());
     capped.shutdown();
 }
 
