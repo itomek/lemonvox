@@ -137,8 +137,10 @@ static void endpoint_validation() {
     CHECK(validate_endpoint(L"HTTP://LOCALHOST/v1").empty());
     CHECK(validate_endpoint(L"").find(L"Enter the server endpoint") == 0);
     CHECK(validate_endpoint(L"   ").find(L"Enter the server endpoint") == 0);
-    CHECK(validate_endpoint(L"http://example.com:13305/v1").find(L"loopback") != std::wstring::npos);
-    CHECK(validate_endpoint(L"http://10.0.0.2/v1").find(L"only connects to a server on this PC") != std::wstring::npos);
+    CHECK(validate_endpoint(L"https://inference.example.com/v1").empty());
+    CHECK(validate_endpoint(L"http://192.168.1.231:13305/api/v1").empty());
+    CHECK(validate_endpoint(L"http://10.0.0.2/v1").empty());
+    CHECK(validate_endpoint(L"http://[fd00::2]:13305/api/v1").empty());
     for (const wchar_t *bad : {L"127.0.0.1:13305/v1", L"ftp://127.0.0.1/v1", L"http://127.0.0.1:13305/v2",
              L"http://127.0.0.1:13305", L"http://user@127.0.0.1/v1", L"http://127.0.0.1/v1?x=1",
              L"http://127.0.0.1/v1#frag", L"http://127.0.0.1:abc/v1", L"http://127.0.0.1:99999/v1",
