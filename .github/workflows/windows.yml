@@ -35,3 +35,15 @@ jobs:
         run: |
           windows\scripts\package.ps1 -Output "$env:RUNNER_TEMP\lemonvox-windows" -Version 0.0.0
           windows\tests\distribution_test.ps1 -PackageDirectory "$env:RUNNER_TEMP\lemonvox-windows\LemonVox" -IconPath "$env:RUNNER_TEMP\lemonvox-windows\LemonVox\lemonvox.ico" -Output "$env:RUNNER_TEMP\distribution-tests" -SchemaPython python
+      - name: Retain Windows build for manual testing
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-test-build
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/lemonvox-windows/LemonVox/
+            ${{ runner.temp }}/lemonvox-windows/build/src/insertion/*test.exe
+            ${{ runner.temp }}/lemonvox-windows/build/src/insertion/insertion_matrix_probe.exe
+            ${{ runner.temp }}/lemonvox-windows/build/src/ui/settings_interactive_test.exe
+            ${{ runner.temp }}/lemonvox-windows/build/src/trigger/trigger_interactive_test.exe
