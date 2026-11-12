@@ -1,5 +1,7 @@
 #include "net/endpoint_facts.h"
 
+#include <ws2tcpip.h>
+
 #include <cstddef>
 #include <string_view>
 
@@ -50,6 +52,9 @@ bool parse_host(std::string_view host, std::string &canonical) {
             else if (!is_hex(c) && c != '.') return false;
         }
         if (!colon) return false;
+        IN6_ADDR address{};
+        const std::string literal(host.substr(1, host.size() - 2));
+        if (InetPtonA(AF_INET6, literal.c_str(), &address) != 1) return false;
         for (char c : host) canonical.push_back(lower(c));
         return true;
     }

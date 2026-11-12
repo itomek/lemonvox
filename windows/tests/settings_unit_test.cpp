@@ -144,7 +144,8 @@ static void endpoint_validation() {
     for (const wchar_t *bad : {L"127.0.0.1:13305/v1", L"ftp://127.0.0.1/v1", L"http://127.0.0.1:13305/v2",
              L"http://127.0.0.1:13305", L"http://user@127.0.0.1/v1", L"http://127.0.0.1/v1?x=1",
              L"http://127.0.0.1/v1#frag", L"http://127.0.0.1:abc/v1", L"http://127.0.0.1:99999/v1",
-             L"http://127.0.0.1:/v1", L"http://[::1/v1", L"http:///v1", L"http://bad host/v1", L"http://[zz::2]/v1"}) {
+             L"http://127.0.0.1:/v1", L"http://[::1/v1", L"http:///v1", L"http://bad host/v1", L"http://[zz::2]/v1",
+             L"http://[:::]/v1", L"http://[1:2:3]/v1"}) {
         CHECK(validate_endpoint(bad).find(L"Enter an endpoint like") == 0);
     }
     CHECK(validate_prompt(L"  \r\n ").find(L"Enter a cleanup prompt") == 0);

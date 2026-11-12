@@ -63,7 +63,7 @@ endfunction()
 
 add_library(lv_common STATIC src/common/executor.cpp src/common/utf.cpp src/common/trigger_binding.cpp src/net/endpoint_facts.cpp)
 target_include_directories(lv_common PUBLIC src)
-target_link_libraries(lv_common PUBLIC lemonvox_core)
+target_link_libraries(lv_common PUBLIC lemonvox_core PRIVATE ws2_32)
 lemonvox_win_target(lv_common)
 
 add_executable(common_test tests/common_test.cpp)

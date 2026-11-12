@@ -114,6 +114,8 @@ void endpoint_facts_accept_local_and_remote() {
     assert(lemonvox::ubuntu::endpoint_is_valid("http://127.0.0.1:13305/v1"));
     assert(lemonvox::ubuntu::endpoint_is_valid("https://example.com/v1"));
     assert(lemonvox::ubuntu::endpoint_is_valid("http://192.168.1.231:13305/api/v1"));
+    assert(!lemonvox::ubuntu::endpoint_is_valid("http://[:::]/v1"));
+    assert(!lemonvox::ubuntu::endpoint_is_valid("http://[1:2:3]/v1"));
     assert(!lemonvox::ubuntu::endpoint_is_valid("http://user@127.0.0.1/v1"));
     assert(!lemonvox::ubuntu::endpoint_is_valid("http://127.0.0.1/v1?token=private"));
 }
