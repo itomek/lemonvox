@@ -94,15 +94,17 @@ private:
             result_.clear(); error_ = true;
             if (failure.source == lv::WorkflowFailureSource::protocol) {
                 switch (failure.protocol_status) {
-                    case LV_PROTOCOL_CONFIGURATION: message_ = "Set a local Lemonade endpoint and both models in Settings."; break;
+                    case LV_PROTOCOL_CONFIGURATION: message_ = "Set a server endpoint and both models in Settings."; break;
                     case LV_PROTOCOL_MODEL_UNAVAILABLE: message_ = "Selected models are unavailable. Refresh models in Settings."; break;
                     case LV_PROTOCOL_EMPTY_TRANSCRIPT: message_ = "No speech was recognized. Try another recording."; break;
                     case LV_PROTOCOL_EMPTY_CLEANUP: message_ = "Cleanup returned no text. Check the cleanup model and try again."; break;
                     default: message_ = "Lemonade could not process this recording. Check the server and models, then try again."; break;
                 }
+            } else if (failure.adapter_error == lv::AdapterError::timeout) {
+                message_ = "Server request timed out; try again or choose a faster model.";
             } else if (failure.adapter_error == lv::AdapterError::unavailable || failure.adapter_error == lv::AdapterError::invalid_input) {
                 message_ = "Audio capture is unavailable or empty. Check the input device and microphone access.";
-            } else message_ = "Could not reach Lemonade. Check the local server and endpoint, then try again.";
+            } else message_ = "Could not reach Lemonade. Check the server and endpoint, then try again.";
             changed();
         };
         core_ = std::make_unique<lv::WorkflowCore>(capture_, transport_, insertion_, diagnostics_, std::move(callbacks));

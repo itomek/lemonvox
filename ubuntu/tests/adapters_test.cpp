@@ -295,6 +295,23 @@ void transport_rejects_a_response_above_its_bound() {
     assert(context.until([&] { return completed; }));
 }
 
+void transport_deadline_is_a_timeout_not_user_cancellation() {
+    Context context;
+    LocalServer server("{}", true);
+    SoupByteTransport transport(context.get());
+    TransportRequest request;
+    request.url = server.endpoint() + "v1/models";
+    request.timeout_ms = 25;
+    bool completed = false;
+    transport.send(38, std::move(request), [&](OperationId, TransportResponse response) {
+        assert(response.error == AdapterError::timeout);
+        assert(response.status == 0 && response.bytes.empty());
+        completed = true;
+    });
+    assert(context.until([&] { return completed; }));
+    transport.shutdown();
+}
+
 void canceled_or_shutdown_transport_never_calls_back() {
     Context context;
     SoupByteTransport transport(context.get());
@@ -355,6 +372,7 @@ int main() {
     shutdown_releases_queued_capture_wav_without_context_drain();
     cancel_releases_queued_capture_completion_without_dispatch();
     transport_rejects_a_response_above_its_bound();
+    transport_deadline_is_a_timeout_not_user_cancellation();
     canceled_or_shutdown_transport_never_calls_back();
     shutdown_releases_live_transport_state_without_context_drain();
     g_print("PASS: Ubuntu adapter endpoint, conservative insertion, loopback transport and teardown contracts\n");

@@ -20,6 +20,15 @@ print_diagnostics() {
     tail -100 "$shell_log" >&2 || true
     printf '\n--- Shell D-Bus probe ---\n' >&2
     cat "$introspection_log" >&2 || true
+    printf '\n--- Disposable fixture log ---\n' >&2
+    tail -40 "$test_root/fixture.log" >&2 2>/dev/null || true
+    printf '\n--- Disposable fixture readiness ---\n' >&2
+    for diagnostic_file in fixture-events.txt fixture-focus.txt; do
+        printf '%s: ' "$diagnostic_file" >&2
+        cat "$test_root/$diagnostic_file" >&2 2>/dev/null || true
+    done
+    printf '\n--- Private Shell focus state ---\n' >&2
+    shell_eval "import('resource:///org/gnome/shell/ui/main.js').then(Main => JSON.stringify({focus: global.display.focus_window?.get_title(), overview: Main.overview.visible, startingUp: Main.layoutManager._startingUp, windows: global.get_window_actors().map(actor => ({title: actor.meta_window?.get_title(), visible: actor.visible, mapped: actor.mapped, minimized: actor.meta_window?.minimized}))}))" >&2 2>/dev/null || true
 }
 
 cleanup() {
@@ -341,10 +350,10 @@ fixture_pid="$!"
 wait_for_eval \
     "JSON.stringify(global.get_window_actors().map(actor => actor.meta_window?.get_title()))" \
     'LemonVox Native Fixture'
-fixture_activation="$(shell_eval \
+fixture_activation_result="$(shell_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const window = global.get_window_actors().map(actor => actor.meta_window).find(candidate => candidate?.get_title() === 'LemonVox Native Fixture'); if (!window) return 'fixture-missing'; Main.activateWindow(window, global.get_current_time()); return 'fixture-activation-requested'; })")" || fail 'could not request focus for disposable GTK fixture'
-[[ "$fixture_activation" == *fixture-activation-requested* ]] || {
-    printf '%s\n' "$fixture_activation" >"$introspection_log"
+[[ "$fixture_activation_result" == *fixture-activation-requested* ]] || {
+    printf '%s\n' "$fixture_activation_result" >"$introspection_log"
     fail 'Shell did not find the disposable GTK fixture window'
 }
 wait_for_eval \

@@ -33,6 +33,7 @@ const wchar_t *error_name(AdapterError error) {
     case AdapterError::unavailable: return L"unavailable";
     case AdapterError::invalid_input: return L"invalid_input";
     case AdapterError::network: return L"network";
+    case AdapterError::timeout: return L"timeout";
     case AdapterError::response: return L"response";
     case AdapterError::target_changed: return L"target_changed";
     case AdapterError::insertion_unavailable: return L"insertion_unavailable";
@@ -85,6 +86,8 @@ std::wstring DiagnosticsRing::format() const {
 UserMessage describe_failure(const WorkflowFailure &failure, CaptureProblem capture) {
     if (failure.source == WorkflowFailureSource::adapter) {
         switch (failure.adapter_error) {
+        case AdapterError::timeout:
+            return {L"Server request timed out; try again or choose a faster model", FailureAction::open_settings};
         case AdapterError::network:
             return {L"Server unavailable; check that it is running at the configured endpoint",
                 FailureAction::open_settings};

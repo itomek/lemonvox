@@ -208,6 +208,16 @@ void unreachable_server_reports_lemonade_unavailable() {
     assert(h.failed && h.failure.text.find(L"Server unavailable") == 0);
 }
 
+void request_timeout_does_not_claim_server_is_unavailable() {
+    WorkflowFailure failure;
+    failure.source = WorkflowFailureSource::adapter;
+    failure.adapter_error = AdapterError::timeout;
+    const auto message = describe_failure(failure, CaptureProblem::none);
+    assert(message.text.find(L"Server request timed out") == 0);
+    assert(message.text.find(L"unavailable") == std::wstring::npos);
+    assert(message.action == FailureAction::open_settings);
+}
+
 void microphone_denial_maps_to_privacy_action() {
     Harness h;
     h.capture.start_error = AdapterError::unavailable;
@@ -273,6 +283,7 @@ int main() {
     failed_dispatch_offers_copy();
     invalid_configuration_fails_synchronously_with_settings_action();
     unreachable_server_reports_lemonade_unavailable();
+    request_timeout_does_not_claim_server_is_unavailable();
     microphone_denial_maps_to_privacy_action();
     changed_original_does_not_block_completion_focus();
     cancel_discards_late_results();

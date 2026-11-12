@@ -24,6 +24,7 @@ enum class AdapterError : std::uint8_t {
     response,
     target_changed,
     insertion_unavailable,
+    timeout, // A request deadline elapsed; distinct from an unreachable server.
 };
 
 struct Completion {

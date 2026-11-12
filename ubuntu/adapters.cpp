@@ -703,6 +703,7 @@ struct SoupByteTransport::State::Request {
     TransportResponse response;
     bool canceled = false;
     bool finished = false;
+    std::atomic<bool> timed_out{false};
 };
 
 namespace {
@@ -894,6 +895,7 @@ gboolean transport_timeout(gpointer data) {
         if (!request_is_current_locked(*state, request) || !request->cancellable) return G_SOURCE_REMOVE;
         cancellable = G_CANCELLABLE(g_object_ref(request->cancellable));
     }
+    request->timed_out.store(true);
     g_cancellable_cancel(cancellable);
     g_object_unref(cancellable);
     return G_SOURCE_REMOVE;
@@ -912,8 +914,9 @@ void transport_read_ready(GObject *source, GAsyncResult *result, gpointer data) 
     }
     TransportResponse response;
     if (error) {
-        response.error = g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)
-            ? AdapterError::canceled : AdapterError::network;
+        response.error = request->timed_out.load() || g_error_matches(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT)
+            ? AdapterError::timeout : g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)
+                ? AdapterError::canceled : AdapterError::network;
         g_error_free(error);
         release_native_request(*request);
         finish_transport(request, std::move(response));
@@ -984,8 +987,9 @@ void transport_send_ready(GObject *source, GAsyncResult *result, gpointer data) 
     }
     TransportResponse response;
     if (error || !stream) {
-        response.error = error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)
-            ? AdapterError::canceled : AdapterError::network;
+        response.error = request->timed_out.load() || (error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT))
+            ? AdapterError::timeout : error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)
+                ? AdapterError::canceled : AdapterError::network;
         if (error) g_error_free(error);
         if (stream) g_object_unref(stream);
         release_native_request(*request);

@@ -67,6 +67,8 @@ final class DiagnosticLog {
             switch error {
             case DictationError.http(let code): category = " http=\(code)"
             case DictationError.upstream(let code, _): category = " http=\(code)"
+            case DictationError.serverTimeout: category = " category=timeout"
+            case let error as URLError where error.code == .timedOut: category = " category=timeout"
             case is CancellationError: category = " category=canceled"
             case is DictationError: category = " category=dictation"
             case is URLError: category = " category=network"

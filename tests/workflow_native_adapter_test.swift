@@ -18,6 +18,7 @@ import Foundation
 @MainActor private final class TransportFake: WorkflowNativeTransport {
     var requests: [URLRequest] = []
     var closes = 0
+    var cleanupError: Error?
     func send(_ request: URLRequest) async throws -> (Data, Int) {
         requests.append(request)
         let body: String
@@ -28,6 +29,7 @@ import Foundation
         } else if request.url!.path.hasSuffix("/transcriptions") {
             body = #"{"text":"synthetic transcript"}"#
         } else {
+            if let cleanupError { throw cleanupError }
             body = #"{"choices":[{"message":{"content":"Synthetic transcript."},"finish_reason":"stop"}]}"#
         }
         return (Data(body.utf8), 200)
@@ -147,6 +149,23 @@ import Foundation
             "Emergency teardown must retain native state until idempotent cleanup completes")
     }
     static func main() async {
+        let capture = CaptureFake()
+        let transport = TransportFake()
+        transport.cleanupError = DictationError.serverTimeout
+        let adapter = WorkflowNativeAdapter(capture: capture, transport: transport,
+            paste: PasteTransaction(clipboard: ClipboardFake()), posting: PostingFake())
+        var timeoutFailures: [WorkflowBridgeFailure] = []
+        var timeoutCallbacks = WorkflowBridgeCallbacks()
+        timeoutCallbacks.failed = { _, failure in timeoutFailures.append(failure) }
+        let bridge = WorkflowBridge(native: adapter, callbacks: timeoutCallbacks)
+        adapter.attach(bridge)
+        precondition(bridge.start(validConfig()) != 0)
+        await waitUntil { capture.isRecording }
+        precondition(bridge.stop(boundary: "LemonVox-timeout"))
+        await waitUntil { !timeoutFailures.isEmpty }
+        precondition(timeoutFailures[0].adapterError == LV_WORKFLOW_ADAPTER_TIMEOUT)
+        precondition(DictationError.serverTimeout.errorDescription!.contains("timed out"))
+        bridge.close()
         await captureFailuresAndEmergencyCleanup()
         for destination in ["another native field", "different browser app", "Electron without AX field", "no selected field"] {
             await exercise(destination: destination)

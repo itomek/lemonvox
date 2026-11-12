@@ -514,7 +514,7 @@ void transport_caps_response_size(TestServer &server) {
     transport.shutdown();
 }
 
-void transport_maps_timeouts_and_refusal_to_network(TestServer &server) {
+void transport_distinguishes_timeouts_from_refusal(TestServer &server) {
     UiThreadExecutor executor;
     WinHttpTransport transport(executor);
     Recorder slow, refused;
@@ -523,7 +523,7 @@ void transport_maps_timeouts_and_refusal_to_network(TestServer &server) {
     transport.send(2, get("http://127.0.0.1:" + std::to_string(closed_port()) + "/v1/models", 5000),
         refused.completion());
     pump_until([&] { return slow.calls && refused.calls; });
-    assert(slow.calls == 1 && slow.response.error == AdapterError::network && slow.response.status == 0);
+    assert(slow.calls == 1 && slow.response.error == AdapterError::timeout && slow.response.status == 0);
     assert(refused.calls == 1 && refused.response.error == AdapterError::network);
     assert(GetTickCount64() - start < 10000);
     transport.shutdown();
@@ -537,8 +537,12 @@ void transport_maps_timeouts_and_refusal_to_network(TestServer &server) {
     const ULONGLONG capped_start = GetTickCount64();
     capped.send(1, get(server.url("/slow")), resource.completion());
     pump_until([&] { return resource.calls != 0; });
-    assert(resource.calls == 1 && resource.response.error == AdapterError::network);
+    assert(resource.calls == 1 && resource.response.error == AdapterError::timeout);
     assert(GetTickCount64() - capped_start < 5000);
+    Recorder recovered;
+    capped.send(2, get(server.url("/ok")), recovered.completion());
+    pump_until([&] { return recovered.calls != 0; });
+    assert(recovered.response.error == AdapterError::none);
     capped.shutdown();
 }
 
@@ -713,7 +717,7 @@ int main() {
         transport_sends_headers_body_and_no_cookies(server);
         transport_rejects_invalid_requests(server);
         transport_caps_response_size(server);
-        transport_maps_timeouts_and_refusal_to_network(server);
+        transport_distinguishes_timeouts_from_refusal(server);
         transport_cancel_suppresses_completion(server);
         transport_cancel_suppresses_already_posted_completion(server);
         transport_shutdown_is_a_barrier(server);

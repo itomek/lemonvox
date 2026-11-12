@@ -22,7 +22,7 @@ namespace lemonvox::win {
 //
 // Results: any HTTP response yields error=none plus status and body (the core
 // classifies status). Connection refused, unreachable, DNS, TLS and timeout
-// failures yield AdapterError::network. A malformed URL or unsupported scheme
+// failures yield AdapterError::network; deadlines yield AdapterError::timeout. A malformed URL or unsupported scheme
 // yields AdapterError::response (Mac parity); headers containing CR/LF/NUL or
 // a non-token name yield AdapterError::invalid_input. A body larger than
 // Options::max_response_bytes or a malformed HTTP response yields

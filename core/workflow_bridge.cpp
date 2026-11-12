@@ -42,6 +42,7 @@ lemonvox::AdapterError adapter_error(LVWorkflowAdapterError error) {
         case LV_WORKFLOW_ADAPTER_UNAVAILABLE: return lemonvox::AdapterError::unavailable;
         case LV_WORKFLOW_ADAPTER_INVALID_INPUT: return lemonvox::AdapterError::invalid_input;
         case LV_WORKFLOW_ADAPTER_NETWORK: return lemonvox::AdapterError::network;
+        case LV_WORKFLOW_ADAPTER_TIMEOUT: return lemonvox::AdapterError::timeout;
         case LV_WORKFLOW_ADAPTER_RESPONSE: return lemonvox::AdapterError::response;
         case LV_WORKFLOW_ADAPTER_TARGET_CHANGED: return lemonvox::AdapterError::target_changed;
         case LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE: return lemonvox::AdapterError::insertion_unavailable;
@@ -56,6 +57,7 @@ LVWorkflowAdapterError bridge_error(lemonvox::AdapterError error) {
         case lemonvox::AdapterError::unavailable: return LV_WORKFLOW_ADAPTER_UNAVAILABLE;
         case lemonvox::AdapterError::invalid_input: return LV_WORKFLOW_ADAPTER_INVALID_INPUT;
         case lemonvox::AdapterError::network: return LV_WORKFLOW_ADAPTER_NETWORK;
+        case lemonvox::AdapterError::timeout: return LV_WORKFLOW_ADAPTER_TIMEOUT;
         case lemonvox::AdapterError::response: return LV_WORKFLOW_ADAPTER_RESPONSE;
         case lemonvox::AdapterError::target_changed: return LV_WORKFLOW_ADAPTER_TARGET_CHANGED;
         case lemonvox::AdapterError::insertion_unavailable: return LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE;
