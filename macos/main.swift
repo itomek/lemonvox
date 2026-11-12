@@ -857,6 +857,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         case LV_WORKFLOW_ADAPTER_UNAVAILABLE: return .microphone
         case LV_WORKFLOW_ADAPTER_INVALID_INPUT: return .recording
         case LV_WORKFLOW_ADAPTER_NETWORK: return .serverUnavailable
+        case LV_WORKFLOW_ADAPTER_TIMEOUT: return .serverTimeout
         case LV_WORKFLOW_ADAPTER_RESPONSE: return .response
         case LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE: return .response
         default: return .response
@@ -894,6 +895,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if status != 0 { return DictationError.http(status) }
         switch adapterError {
         case LV_WORKFLOW_ADAPTER_NETWORK: return URLError(.cannotConnectToHost)
+        case LV_WORKFLOW_ADAPTER_TIMEOUT: return URLError(.timedOut)
         case LV_WORKFLOW_ADAPTER_UNAVAILABLE: return DictationError.microphone
         case LV_WORKFLOW_ADAPTER_INVALID_INPUT: return DictationError.recording
         case LV_WORKFLOW_ADAPTER_RESPONSE, LV_WORKFLOW_ADAPTER_INSERTION_UNAVAILABLE: return DictationError.response

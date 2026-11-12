@@ -70,6 +70,7 @@ using Request = WinHttpTransport::Request;
 
 AdapterError map_winhttp_error(DWORD error) {
     switch (error) {
+    case ERROR_WINHTTP_TIMEOUT: return AdapterError::timeout;
     case ERROR_WINHTTP_INVALID_SERVER_RESPONSE:
     case ERROR_WINHTTP_HEADER_NOT_FOUND:
     case ERROR_WINHTTP_INVALID_HEADER:
@@ -228,7 +229,7 @@ void watchdog_loop(std::shared_ptr<Shared> shared) {
             if (request->deadline <= now) expired.push_back(request);
             else if (next == 0 || request->deadline < next) next = request->deadline;
         }
-        for (auto &request : expired) abort_request(*request, AdapterError::network);
+        for (auto &request : expired) abort_request(*request, AdapterError::timeout);
         if (!expired.empty()) continue;
         if (next == 0) shared->changed.wait(lock);
         else shared->changed.wait_for(lock, std::chrono::milliseconds(next - now));

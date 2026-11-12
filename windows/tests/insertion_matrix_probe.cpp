@@ -123,6 +123,7 @@ const char *error_name(AdapterError error) {
     case AdapterError::unavailable: return "unavailable";
     case AdapterError::invalid_input: return "invalid_input";
     case AdapterError::network: return "network";
+    case AdapterError::timeout: return "timeout";
     case AdapterError::response: return "response";
     case AdapterError::target_changed: return "target_changed";
     case AdapterError::insertion_unavailable: return "insertion_unavailable";

@@ -163,6 +163,10 @@ extension PasteTransaction: WorkflowNativePaste {}
                 body = Data()
                 status = 0
                 adapterError = LV_WORKFLOW_ADAPTER_CANCELED
+            } catch DictationError.serverTimeout {
+                body = Data()
+                status = 0
+                adapterError = LV_WORKFLOW_ADAPTER_TIMEOUT
             } catch DictationError.serverUnavailable {
                 body = Data()
                 status = 0

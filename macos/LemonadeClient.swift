@@ -1,11 +1,12 @@
 import Foundation
 
 enum DictationError: Error, LocalizedError {
-    case configuration, modelUnavailable, serverUnavailable, http(Int), upstream(Int, String), response, emptyTranscript, emptyCleanup, microphone, recording
+    case configuration, modelUnavailable, serverUnavailable, serverTimeout, http(Int), upstream(Int, String), response, emptyTranscript, emptyCleanup, microphone, recording
     var errorDescription: String? {
         switch self {
         case .configuration: return "Configure an HTTP/HTTPS server endpoint and both model IDs"
         case .modelUnavailable: return "Selected models are not available for transcription and cleanup through Lemonade"
+        case .serverTimeout: return "Server request timed out; try again or choose a faster model"
         case .serverUnavailable: return "Server unavailable; check endpoint and server"
         case .http(let code): return "Lemonade request failed (HTTP \(code))"
         case .upstream(let code, let message): return "Lemonade HTTP \(code): \(message)"
@@ -164,6 +165,7 @@ final class LocalHTTP: HTTPTransport {
             return (data, response.statusCode)
         } catch is CancellationError { throw CancellationError() }
         catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+        catch let error as URLError where error.code == .timedOut { throw DictationError.serverTimeout }
         catch let error as DictationError { throw error }
         catch { throw DictationError.serverUnavailable }
     }

@@ -211,8 +211,8 @@ void unreachable_server_reports_lemonade_unavailable() {
 void request_timeout_does_not_claim_server_is_unavailable() {
     WorkflowFailure failure;
     failure.source = WorkflowFailureSource::adapter;
-    failure.adapter_error = AdapterError::network;
-    const auto message = describe_failure(failure, CaptureProblem::none, true);
+    failure.adapter_error = AdapterError::timeout;
+    const auto message = describe_failure(failure, CaptureProblem::none);
     assert(message.text.find(L"Server request timed out") == 0);
     assert(message.text.find(L"unavailable") == std::wstring::npos);
     assert(message.action == FailureAction::open_settings);
