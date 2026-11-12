@@ -106,6 +106,12 @@ AdwEntryRow *entry(AdwPreferencesGroup *parent, const char *title, const std::st
 AdwPreferencesPage *page(AdwPreferencesWindow *window, const char *title, const char *icon) {
     auto *p = ADW_PREFERENCES_PAGE(adw_preferences_page_new());
     adw_preferences_page_set_title(p, title); adw_preferences_page_set_name(p, title); adw_preferences_page_set_icon_name(p, icon);
+    // Keep the separate server prerequisite visible on every Settings page.
+    group(p, "Server required",
+        "Install and run Lemonade or another OpenAI-compatible server separately on this computer. "
+        "It must provide audio transcription, chat completions and model-discovery metadata supported by LemonVox. "
+        "Only loopback HTTP/HTTPS endpoints are supported. Generic OpenAI API compatibility alone is insufficient. "
+        "Lemonade 2026.44.1 is the tested baseline; other servers are unverified.");
     adw_preferences_window_add(window, p); return p;
 }
 AdwComboRow *combo(AdwPreferencesGroup *parent, const char *title) {
@@ -153,7 +159,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     cancel_ = entry(interaction, "Cancellation shortcut", settings_.cancel_shortcut);
     auto *target = ADW_ACTION_ROW(adw_action_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(target), "Text destination");
-    adw_action_row_set_subtitle(target, "Copy result, then paste into the field you choose. Automatic insertion is unavailable on this desktop.");
+    adw_action_row_set_subtitle(target, "The GNOME extension pastes once at current keyboard focus when processing finishes. Copy is available if paste cannot be dispatched.");
     adw_preferences_group_add(interaction, GTK_WIDGET(target));
     auto *appearance = group(general, "Appearance");
     appearance_ = combo(appearance, "Theme");
@@ -170,7 +176,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
 #endif
     adw_preferences_group_add(appearance, GTK_WIDGET(version));
     auto *models_page = page(preferences, "Models", "audio-input-microphone-symbolic");
-    auto *connection = group(models_page, "Lemonade", "Install and run Lemonade separately. Only a loopback HTTP/HTTPS endpoint is supported; Lemonade manages providers and credentials; models marked remote provider send text through that configured provider.");
+    auto *connection = group(models_page, "Server connection", "Only a loopback HTTP/HTTPS endpoint is supported. The separate server manages models, providers and credentials; models marked remote provider send text through that configured provider.");
     endpoint_ = entry(connection, "API endpoint", settings_.endpoint);
     auto *refresh_button = gtk_button_new_with_label("Refresh models");
     g_signal_connect(refresh_button, "clicked", G_CALLBACK(refresh_clicked), this);

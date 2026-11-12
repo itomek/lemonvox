@@ -8,7 +8,11 @@ Install a reviewed local artifact on the tested Ubuntu 24.04+ GNOME Wayland targ
 sudo apt install ./lemonvox_X.Y.Z_amd64.deb
 ```
 
-The package installs the GTK application, desktop entry, user D-Bus activation file, and `lemonvox@itomek.com` GNOME Shell extension. Enable the extension in GNOME Extensions before relying on global shortcut delivery. Lemonade remains a separate installed and running prerequisite.
+The package installs the GTK application, desktop entry, user D-Bus activation file, and `lemonvox@itomek.com` GNOME Shell extension. Enable the extension in GNOME Extensions before relying on global shortcut delivery. Install and run Lemonade or another OpenAI-compatible server separately on the same computer. It must provide audio transcription, chat completions and model-discovery metadata supported by LemonVox. Only loopback HTTP/HTTPS endpoints are accepted; a generic OpenAI-compatible API alone is insufficient. Lemonade 2026.44.1 is the tested baseline; other servers are unverified. The package does not bundle a server or models.
+
+When processing finishes, the GNOME extension pastes once at current focus with Ctrl+V and never sends Enter. Copy remains available if paste cannot be dispatched.
+
+These package-source descriptions apply to the next build. Published GitHub `.deb` assets and APT package versions, including 0.2.1, are immutable and are not rewritten by a documentation change.
 
 The package does not support X11, Ubuntu versions before 24.04, or other Linux distributions. `sudo apt remove lemonvox` removes packaged files; user settings in the XDG configuration directory are intentionally preserved so an upgrade retains them.
 

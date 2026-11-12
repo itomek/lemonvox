@@ -92,7 +92,7 @@ $manifest = @"
  <Resources><Resource Language="en-US" /></Resources>
  <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
  <Applications><Application Id="LemonVox" Executable="LemonVox.exe" EntryPoint="Windows.FullTrustApplication">
-  <uap:VisualElements DisplayName="LemonVox" Description="Desktop dictation with your local Lemonade server"
+  <uap:VisualElements DisplayName="LemonVox" Description="Requires separate local Lemonade or a compatible OpenAI server"
    BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
  </Application></Applications>
  <Capabilities><Capability Name="internetClient" /><rescap:Capability Name="runFullTrust" /><DeviceCapability Name="microphone" /></Capabilities>

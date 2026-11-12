@@ -4,12 +4,17 @@
 name: lemonvox
 base: core24
 version: git
-summary: Local-first Lemonade dictation client for Ubuntu GNOME Wayland
+summary: Dictation client requiring a separately running compatible server
 description: |
   LemonVox captures audio only after an explicit user action and sends it to a
-  separately configured Lemonade endpoint. This devel snap is an integration
-  experiment, not a release candidate, until host GNOME Shell extension
-  delivery and strict-confinement behavior are proven.
+  separately installed and running Lemonade or another
+  OpenAI-compatible server on this computer. The server must provide audio
+  transcription, chat completions and model-discovery metadata supported by
+  LemonVox; generic OpenAI API compatibility alone is insufficient. Only
+  loopback endpoints are accepted. Lemonade 2026.44.1 is the tested baseline;
+  other servers are unverified. The server and models are not bundled.
+  This devel snap is an integration experiment, not a release candidate, until
+  host GNOME Shell extension delivery and strict-confinement behavior are proven.
 grade: devel
 confinement: strict
 

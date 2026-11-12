@@ -497,6 +497,7 @@ bool copy_config(const LVWorkflowConfig &source, lemonvox::WorkflowConfig &desti
         return false;
     }
     destination.preferences.insert_current_target = source.insert_current_target != 0;
+    destination.preferences.paste_at_current_focus = source.paste_at_current_focus != 0;
     if (!copy_slice(source.endpoint.canonical_base_url, destination.endpoint.canonical_base_url)) return false;
     destination.endpoint.scheme_allowed = source.endpoint.scheme_allowed != 0;
     destination.endpoint.host_loopback = source.endpoint.host_loopback != 0;

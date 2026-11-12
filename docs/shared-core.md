@@ -10,7 +10,7 @@ toolkit or an authorization to change Mac behavior.
 | Workflow | Operation generations, start/stop sequencing, phase and error policy, stale-result rejection | UI dispatch and presentation |
 | Configuration and protocol | Immutable operation snapshot, endpoint/model policy, request/response mapping | Preference storage, URLSession byte delivery on Mac |
 | Capture | Requests start/stop/cancel and consumes owned WAV bytes | Permissions, AVFoundation/device selection, temporary storage and cleanup |
-| Target and insertion | Safe-insertion decision from supplied facts | Focus/secure-field inspection, clipboard, paste and copy fallback |
+| Target and insertion | Target policy or explicit current-focus paste mode | Optional focus/secure-field inspection, clipboard, paste and copy fallback |
 | Diagnostics | Fixed events, error categories and status codes | Log storage and user-visible error text |
 
 The current Mac shell remains Swift/AppKit. Windows is proposed to use C++/WinRT
@@ -18,9 +18,9 @@ with WinUI 3 and Win32 adapters; Ubuntu is proposed to use C++ with GTK4,
 libadwaita and GLib/GIO adapters. The Ubuntu implementation now lives in
 [`ubuntu/`](../ubuntu/README.md), with libsoup3 transport, GStreamer capture and
 a GNOME Shell integration for the tested Ubuntu 24.04 GNOME 46 Wayland
-session. It uses explicit Copy because secure cross-app target inspection is
-unproven. See the platform validation evidence before claiming later desktop
-support.
+session. Its GNOME extension delivers a normal Ctrl+V at current focus without
+field discovery (issues #77/#78). See the platform validation evidence before
+claiming later desktop support.
 
 ## Adapter contract
 
@@ -43,12 +43,22 @@ request/result values, workflow callbacks, and content-free diagnostics.
   receives a moved `TransportRequest`; capture and transport results move owned
   bytes into their completion. The capture adapter owns and removes any native
   temporary-audio storage on success, failure, cancellation, and shutdown.
-- At operation start, the core asks `InsertionAdapter` to `capture_original`.
+- In the default target-inspection mode, the core asks `InsertionAdapter` to `capture_original` at operation start.
   The adapter owns that opaque `TargetToken`; at completion it inspects the
   current target against the supplied original token and returns only safe
   facts. The core cannot dereference tokens. `cancel()` and `shutdown()`
   invalidate adapter token storage, so a late completion cannot revive a
   previous target.
+- `PreferencesSnapshot.paste_at_current_focus` (C bridge
+  `LVWorkflowConfig.paste_at_current_focus`) opts into ordinary paste without
+  capturing or inspecting a field. It defaults to false, preserving existing
+  Windows and Ubuntu core behavior. macOS always enables it and ignores the
+  retired `currentField` preference. The core skips `capture_original` and
+  `inspect`, then calls `insert` once with token zero; zero explicitly means
+  current keyboard focus for this mode, never an Accessibility target. The
+  native adapter must resolve focus at dispatch, preserve focus, send no Enter,
+  and check cancellation while waiting for modifiers. Normal operation IDs,
+  stale-result rejection, and dispatch-failure Copy fallback still apply.
 - The native shell captures one `PreferencesSnapshot` at operation start.
   Settings edits apply to a later operation, which preserves the existing
   Settings-during-recording behavior until issue #6 changes it explicitly.
@@ -63,7 +73,7 @@ request/result values, workflow callbacks, and content-free diagnostics.
 - `WorkflowOutcome` distinguishes an inserted result from copy fallback without
   carrying text. `accessibility_unavailable` means target capture or inspection
   could not run; `paste_unavailable` is reserved for a failed native paste
-  dispatch after a target was available. The native shell owns the resulting
+  dispatch (including current-focus mode without a target). The native shell owns the resulting
   message and pending-text lifecycle.
 - `DiagnosticEntry` carries only a fixed event, error category, and HTTP status.
   Audio, transcripts, prompts, URLs, credentials, and provider responses remain

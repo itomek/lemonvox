@@ -84,6 +84,20 @@ import AppKit
     print("PASS: General preference migration and cancellation shortcut recording")
 }
 
+// Discovery completes asynchronously and can be delayed by a loaded CI runner.
+// Wait for the observable state with a bound, rather than treating a sleep as proof.
+@MainActor private func afterDiscovery(_ pane: SettingsController, perform: @escaping @MainActor () -> Void) {
+    let deadline = Date().addingTimeInterval(10)
+    Timer.scheduledTimer(withTimeInterval:0.01,repeats:true) { timer in
+        MainActor.assumeIsolated {
+            precondition(Date() < deadline, "Timed out waiting for Settings model discovery")
+            guard !pane.loading else { return }
+            timer.invalidate()
+            perform()
+        }
+    }
+}
+
 @main struct SettingsUITests {
     @MainActor static func main() {
         setbuf(stdout,nil)
@@ -113,7 +127,8 @@ import AppKit
         var discoveries = 0
         let pane=SettingsController(log:log,discover:{ endpoint in
             discoveries += 1
-            try await Task.sleep(nanoseconds:300_000_000)
+            let delay = UInt64(ProcessInfo.processInfo.environment["LEMONVOX_TEST_DISCOVERY_DELAY_MS"] ?? "300") ?? 300
+            try await Task.sleep(nanoseconds:delay * 1_000_000)
             if endpoint.contains("13307") { throw DictationError.serverUnavailable }
             if endpoint.contains("13306") { throw DictationError.upstream(401,"api_key=private-secret denied") }
             return DiscoveredModels(transcription:[asr],cleanup:[gemma,remote],reason:nil,version:nil)
@@ -124,8 +139,7 @@ import AppKit
         precondition(pane.appVersion.accessibilityLabel() == "Running \(AppIdentity.running.name) version and build")
         precondition(!pane.appVersion.frame.intersects(pane.shortcutStatus.frame))
         precondition(pane.appearance.frame.maxY < pane.cancellationTrigger.frame.minY)
-        precondition(pane.currentField.frame.maxY < pane.appearance.frame.minY)
-        precondition(pane.shortcutStatus.frame.maxY < pane.currentField.frame.minY)
+        precondition(pane.shortcutStatus.frame.maxY < pane.appearance.frame.minY)
         precondition(pane.categoryList.enclosingScrollView?.contentInsets.top == 8,
                      "The Settings category list needs a native top inset")
         let categoryCell = pane.tableView(pane.categoryList, viewFor: nil, row: 0) as? NSTableCellView
@@ -155,12 +169,12 @@ import AppKit
         precondition(pane.accessibilityStatus.visibleRect.contains(pane.accessibilityStatus.bounds), "Accessibility guidance must be visible at minimum height")
         pane.categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
         let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:asr.id,cleanupModel:gemma.id,cleanupPrompt:"Preserved prompt")
-        var savedPreferences: (TriggerChoice,TriggerChoice,AppearanceChoice,Bool)?
-        pane.showPreferences(trigger:.defaultMac,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
-            savedPreferences=(trigger,cancellation,appearance,current)
+        var savedPreferences: (TriggerChoice,TriggerChoice,AppearanceChoice)?
+        pane.showPreferences(trigger:.defaultMac,cancellation:.defaultMacCancellation,appearance:.dark) { trigger,cancellation,appearance in
+            savedPreferences=(trigger,cancellation,appearance)
         }
         precondition(pane.trigger.choice == .defaultMac && pane.cancellationTrigger.choice == .defaultMacCancellation)
-        precondition(pane.appearance.indexOfSelectedItem == 2 && pane.currentField.state == .off)
+        precondition(pane.appearance.indexOfSelectedItem == 2)
         pane.trigger.mode.selectItem(at:1); pane.trigger.modeChanged(); pane.trigger.beginRecording()
         precondition(pane.trigger.capture(key:9,flags:[.command,.option],repeating:false))
         precondition(pane.trigger.choice == .combo(key:9,modifiers:2304) && !pane.trigger.recording)
@@ -182,14 +196,14 @@ import AppKit
         precondition(pane.shortcutStatus.stringValue.contains("must be different"))
         pane.cancellationTrigger.update(.defaultMacCancellation)
         precondition(pane.shortcutStatus.stringValue.isEmpty)
-        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { _,_,_,_ in
+        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark) { _,_,_ in
             throw TriggerError.unavailable
         }
         pane.saveSettings()
         precondition(pane.window.isVisible && pane.categoryList.selectedRow == 0)
         precondition(pane.shortcutStatus.stringValue.contains("Shortcut unavailable"))
-        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
-            savedPreferences=(trigger,cancellation,appearance,current)
+        pane.showPreferences(trigger:pane.trigger.choice,cancellation:.defaultMacCancellation,appearance:.dark) { trigger,cancellation,appearance in
+            savedPreferences=(trigger,cancellation,appearance)
         }
         pane.prompt.string = "Unsaved synthetic draft"
         pane.appearance.selectItem(at:2)
@@ -205,6 +219,12 @@ import AppKit
         precondition(pane.appearance.indexOfSelectedItem == 2 && pane.prompt.string == "Unsaved synthetic draft")
         precondition(pane.debugDiagnostics.state == .on && pane.loading)
         precondition(discoveries <= 1, "Switching categories must not restart discovery")
+        for row in 0..<3 {
+            pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
+            precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
+            precondition(pane.serverRequirement.stringValue.contains("Lemonade or another OpenAI-compatible server"))
+            precondition(pane.serverRequirement.visibleRect.contains(pane.serverRequirement.bounds))
+        }
         pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
         pane.categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
         let modelClip = pane.scrolls[1].contentView
@@ -221,7 +241,7 @@ import AppKit
         pane.prompt.string = config.cleanupPrompt
         pane.debugDiagnostics.state = .off
         precondition(pane.prompt.string == config.cleanupPrompt)
-        Timer.scheduledTimer(withTimeInterval:0.7,repeats:false) { _ in
+        afterDiscovery(pane) {
             MainActor.assumeIsolated {
                 precondition(!pane.loading && pane.cleanup.choices.count == 2 && pane.transcription.choices.count == 1)
                 precondition(discoveries == 1, "Category changes must not refetch models")
@@ -258,7 +278,7 @@ import AppKit
                 pane.cleanup.commit(ModelChoice(id:remote.id,title:remote.id + " · remote"))
                 pane.endpoint.stringValue="http://127.0.0.1:13306/v1"; pane.refresh()
                 precondition(pane.loading && pane.save.isEnabled)
-                Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
+                afterDiscovery(pane) {
                     MainActor.assumeIsolated {
                         precondition(!pane.loading && pane.status.stringValue.contains("401"))
                         precondition(!pane.status.stringValue.contains("private-secret"))
@@ -268,7 +288,7 @@ import AppKit
                         precondition(pane.status.stringValue == error && !pane.loading)
                         precondition(pane.cleanup.selectedID == remote.id)
                         pane.endpoint.stringValue="http://127.0.0.1:13307/v1"; pane.refresh()
-                        Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
+                        afterDiscovery(pane) {
                             MainActor.assumeIsolated {
                                 precondition(pane.status.stringValue.contains("unavailable") && !pane.loading)
                                 precondition(pane.cleanup.selectedID == remote.id)
@@ -276,10 +296,10 @@ import AppKit
                                 pane.window.close()
                         precondition(closed && !pane.window.isVisible)
                         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
-                        pane.showPreferences(trigger:.combo(key:9,modifiers:2304),cancellation:.defaultMacCancellation,appearance:.dark,current:false) { trigger,cancellation,appearance,current in
-                            savedPreferences=(trigger,cancellation,appearance,current)
+                        pane.showPreferences(trigger:.combo(key:9,modifiers:2304),cancellation:.defaultMacCancellation,appearance:.dark) { trigger,cancellation,appearance in
+                            savedPreferences=(trigger,cancellation,appearance)
                         }
-                        Timer.scheduledTimer(withTimeInterval:0.6,repeats:false) { _ in
+                        afterDiscovery(pane) {
                             MainActor.assumeIsolated {
                                 pane.prompt.string = "Saved across categories"
                                 pane.categoryList.selectRowIndexes(IndexSet(integer:2), byExtendingSelection:false)
@@ -288,7 +308,7 @@ import AppKit
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
                                 precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
                                 precondition(savedPreferences?.0 == .combo(key:9,modifiers:2304))
-                                precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark && savedPreferences?.3 == false)
+                                precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark)
                                 try? FileManager.default.removeItem(at:directory)
                                 print("PASS: Settings opens during delayed discovery; selectors independent; offline/retry preserves choices; close/reopen and save preserve config; errors redacted")
                                 NSApp.terminate(nil)

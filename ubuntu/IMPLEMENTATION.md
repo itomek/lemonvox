@@ -1,3 +1,12 @@
+> Current behavior: the GNOME extension automatically pastes completed dictation
+> once at current focus, with Copy fallback when dispatch is unavailable. Copy-only
+> and original safety-policy descriptions below record the initial implementation.
+> Install and run Lemonade or another OpenAI-compatible server separately
+> on the same computer; audio transcription, chat completions and compatible
+> model-discovery metadata are required. Only loopback endpoints are supported.
+> Lemonade 2026.44.1 is the tested baseline; generic API compatibility alone is
+> insufficient and other servers remain unverified.
+
 # Ubuntu 24+ implementation starting point
 
 ## Scope

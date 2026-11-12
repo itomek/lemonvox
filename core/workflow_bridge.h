@@ -84,6 +84,7 @@ typedef struct {
     LVProtocolSlice cleanup_model;
     LVProtocolSlice cleanup_prompt;
     uint8_t insert_current_target;
+    uint8_t paste_at_current_focus;
 } LVWorkflowConfig;
 
 typedef struct {

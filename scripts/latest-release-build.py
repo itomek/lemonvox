@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
-"""Read the current public release's verified build number without executing it."""
+"""Read the newest public stable macOS release's verified build without executing it."""
 import hashlib,io,json,plistlib,re,subprocess,sys,zipfile
 metadata=json.load(open(sys.argv[1]))
-assets=[a for a in metadata['assets'] if re.fullmatch(r'LemonVox-[0-9]+\.[0-9]+\.[0-9]+-arm64\.zip',a['name'])]
+def macos_assets(release):
+    return [a for a in release['assets'] if re.fullmatch(r'LemonVox-[0-9]+\.[0-9]+\.[0-9]+-arm64\.zip', a['name'])]
+
+if isinstance(metadata, list):
+    # gh api --paginate --slurp produces one array per page. Also accept a flat
+    # release list, and retain the historical single-release input contract.
+    releases = [release for page in metadata for release in (page if isinstance(page, list) else [page])]
+    candidates = [release for release in releases
+                  if not release.get('draft', False) and not release.get('prerelease', False)
+                  and release.get('published_at') and macos_assets(release)]
+    assert candidates, 'Cannot identify a public stable macOS release'
+    metadata = max(candidates, key=lambda release: release['published_at'])
+assets = macos_assets(metadata)
 assert len(assets)==1, 'Cannot identify the previous release archive'
 a=assets[0];url=a['browser_download_url'];digest=a.get('digest','')
 assert url.startswith('https://github.com/itomek/lemonvox/releases/download/'), 'Unexpected release host'
