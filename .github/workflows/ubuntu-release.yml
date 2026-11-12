@@ -64,7 +64,7 @@ jobs:
           cat > notes.md <<'NOTES'
           Ubuntu 24.04 GNOME 46 Wayland packages with automatic paste into the current focus after Stop and transcription/cleanup. Includes native Settings, configurable global shortcuts and a nonactivating dictation bar.
 
-          Download the .deb matching your architecture and run sudo apt install ./lemonvox_0.2.1_ARCH.deb. Install and run Lemonade separately. Enable the LemonVox GNOME extension, then log out and back in after first install or an extension upgrade. Paste replaces clipboard contents and sends Ctrl+V without Enter.
+          Download the .deb matching your architecture and run sudo apt install ./lemonvox_0.2.1_ARCH.deb. Requires Lemonade or another compatible OpenAI API server running separately, with a local loopback endpoint, audio transcription, chat completion and compatible model-discovery metadata. Enable the LemonVox GNOME extension, then log out and back in after first install or an extension upgrade. Paste replaces clipboard contents and sends Ctrl+V without Enter.
 
           Live microphone dictation and automatic paste were owner-verified on Ubuntu arm64. Packages for both architectures pass their build and CTest checks. These are downloadable Debian packages. Public APT repository hosting remains pending.
           NOTES
