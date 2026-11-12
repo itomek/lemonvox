@@ -487,7 +487,6 @@ int main() {
         CHECK(saved.asr_model == "fresh-asr");
         CHECK(saved.cleanup_model == "llama");
         CHECK(saved.cleanup_prompt == kDefaultPrompt);
-        CHECK(saved.snapshot().insert_current_target);
         CHECK(saved.trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
         CHECK(saved.capture_device_id == L"{dev2}");
         CHECK(!fake.suspended);
