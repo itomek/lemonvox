@@ -1231,7 +1231,54 @@ void operation_uses_a_copied_configuration_snapshot_after_settings_mutate() {
 
 } // namespace
 
+void test_paste_at_current_focus() {
+    for (const auto error : {AdapterError::none, AdapterError::unavailable}) {
+        FakeCapture capture;
+        FakeTransport transport;
+        FakeInsertion insertion;
+        FakeDiagnostics diagnostics;
+        insertion.auto_original = false;
+        insertion.auto_inspect = false;
+        insertion.auto_insert = false;
+        std::vector<WorkflowOutcome> outcomes;
+        std::vector<std::string> copied;
+        WorkflowCoreCallbacks callbacks;
+        callbacks.completed = [&](OperationId, WorkflowOutcome result) { outcomes.push_back(result); };
+        callbacks.text_ready = [&](OperationId, std::string text) { copied.push_back(std::move(text)); };
+        WorkflowCore workflow(capture, transport, insertion, diagnostics, callbacks);
+        auto config = valid_config();
+        config.preferences.paste_at_current_focus = true;
+        start_recording(workflow, capture, transport, config);
+        assert(insertion.captured.empty());
+        finish_with_cleanup(workflow, capture, transport);
+        assert(insertion.inspected.empty());
+        assert(insertion.inserted.size() == 1 && insertion.inserted[0].target.value == 0);
+        insertion.complete_insert(0, {error});
+        insertion.complete_insert(0, {error}); // Duplicate native completion is ignored.
+        assert(outcomes.size() == 1);
+        assert(outcomes[0].kind == (error == AdapterError::none ? WorkflowOutcomeKind::inserted : WorkflowOutcomeKind::copy_fallback));
+        assert(error == AdapterError::none ? copied.empty() : copied.size() == 1);
+        if (error != AdapterError::none) assert(outcomes[0].fallback_reason == WorkflowFallbackReason::paste_unavailable);
+    }
+    FakeCapture capture;
+    FakeTransport transport;
+    FakeInsertion insertion;
+    FakeDiagnostics diagnostics;
+    WorkflowCore workflow(capture, transport, insertion, diagnostics);
+    auto config = valid_config();
+    config.preferences.paste_at_current_focus = true;
+    start_recording(workflow, capture, transport, config);
+    assert(workflow.stop("LemonVox-fixture"));
+    capture.complete_stop(0, wav_bytes());
+    transport.complete_next(successful_inventory());
+    transport.complete_next(successful_response(R"({"text":"synthetic"})"));
+    workflow.cancel();
+    transport.complete_next(successful_response(R"({"choices":[{"message":{"content":"synthetic"},"finish_reason":"stop"}]})"));
+    assert(insertion.inserted.empty());
+}
+
 int main() {
+    test_paste_at_current_focus();
     start_validates_models_before_starting_capture();
     invalid_configuration_completes_before_return_and_rejects_reentrant_restart();
     stop_runs_second_model_gate_then_transcribes_cleans_and_inserts();

@@ -2,7 +2,7 @@
 Type=Application
 Version=1.0
 Name=LemonVox
-Comment=Speech-to-text dictation with Lemonade
+Comment=Dictation; requires a separately running Lemonade or compatible OpenAI-compatible server
 Exec=lemonvox --settings
 Icon=audio-input-microphone-symbolic
 Terminal=false

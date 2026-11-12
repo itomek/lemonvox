@@ -98,6 +98,10 @@ Assert ($installer.Contains($sourceHash)) 'WinGet does not hash the actual EXE'
 Assert ($installer.Contains($wingetArgs.InstallerUrl)) 'WinGet URL changed'
 Assert ($installer -match 'InstallerType: portable' -and $installer -notmatch 'Scope:') 'Wrong WinGet portable lifecycle'
 Assert ($installer -match 'Commands:\s*\r?\n- lemonvox') 'Missing portable command alias'
+$localeText = Get-Content (Join-Path $wingetArgs.Output 'LemonVox.LemonVox.locale.en-US.yaml') -Raw
+Assert ($localeText.Contains('separately installed Lemonade or another OpenAI-compatible server')) 'Missing separate server prerequisite'
+Assert ($localeText.Contains('Only loopback endpoints are supported')) 'Missing local endpoint restriction'
+Assert ($localeText.Contains('discoverable compatible model metadata')) 'Missing model compatibility requirement'
 $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
 if ($winget) {
     & $winget.Source validate --manifest $wingetArgs.Output --disable-interactivity

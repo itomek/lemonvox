@@ -16,6 +16,7 @@ struct WorkflowBridgeConfig {
     let cleanupModel: String
     let cleanupPrompt: String
     let insertCurrentTarget: Bool
+    var pasteAtCurrentFocus: Bool = false
 }
 
 struct WorkflowBridgeTarget {
@@ -545,6 +546,7 @@ private final class WorkflowBridgeLifetime: @unchecked Sendable {
                         raw.cleanup_model = cleanupModel
                         raw.cleanup_prompt = cleanupPrompt
                         raw.insert_current_target = config.insertCurrentTarget ? 1 : 0
+                        raw.paste_at_current_focus = config.pasteAtCurrentFocus ? 1 : 0
                         return body(raw)
                     }
                 }

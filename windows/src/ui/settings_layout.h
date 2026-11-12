@@ -23,7 +23,7 @@ struct ModelChoices {
     int selected = -1; // -1: nothing selected
 };
 
-// "<id>" or "<id> (remote via Lemonade)".
+// "<id>" or "<id> (remote via server)".
 std::wstring model_label(const SettingsModelOption &option);
 // Eligible models sorted by ID. A non-empty `selected` that is missing is kept
 // as "(unavailable) <id>". Before the first load (`loaded` false) only the saved

@@ -83,6 +83,6 @@ jobs:
           gh api "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$env:RELEASE_VERSION" -f "sha=$env:SOURCE_COMMIT"
           if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; reconcile before retrying' }
           $files = @(Get-ChildItem "$env:RUNNER_TEMP\assets" -File | ForEach-Object FullName)
-          $notes = "Windows 11 x64. Includes a standalone EXE and a ZIP with per-user installer and Start menu shortcut. Requires Lemonade separately with downloaded transcription/chat models. Direct Windows binaries are unsigned. WinGet package ID: LemonVox.LemonVox (candidate, not yet indexed). Built and validated from $env:SOURCE_COMMIT. Windows-only release; macOS binaries and update feeds are unchanged."
+          $notes = "Windows 11 x64. Includes a standalone EXE and a ZIP with per-user installer and Start menu shortcut. Requires Lemonade or another compatible OpenAI API server running separately, with a local endpoint, transcription, chat completion and compatible model discovery. Direct Windows binaries are unsigned. WinGet package ID: LemonVox.LemonVox (candidate, not yet indexed). Built and validated from $env:SOURCE_COMMIT. Windows-only release; macOS binaries and update feeds are unchanged."
           gh release create "v$env:RELEASE_VERSION" @files --repo $env:GITHUB_REPOSITORY --verify-tag --target $env:SOURCE_COMMIT --title "LemonVox $env:RELEASE_VERSION (Windows)" --draft --notes $notes
           if ($LASTEXITCODE -ne 0) { throw 'Draft creation failed after tag creation; reconcile before retrying' }

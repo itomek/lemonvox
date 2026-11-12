@@ -17,8 +17,11 @@ reaches the core through the single serialized `UiThreadExecutor` (`common/execu
   statically, so `LemonVox.exe` has no redistributable dependency.
 - Run: Windows 11 x64 is the only tested configuration (see [Validation](#validation)).
   Windows 10 and Arm64 are untested.
-- Lemonade installed and running separately, with a downloaded transcription model and a chat
-  model. LemonVox neither installs, starts nor version-gates Lemonade.
+- Install and run Lemonade separately, or another OpenAI-compatible server on this PC.
+  Only loopback endpoints are supported. The server must provide audio transcription, chat
+  completions and discoverable compatible model metadata; OpenAI API compatibility alone
+  does not guarantee model discovery or successful dictation. LemonVox neither installs nor
+  starts the server. Lemonade is the tested baseline below; other servers need verification.
 
 ## Build & test
 

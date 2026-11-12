@@ -122,7 +122,8 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$RELEASE_BUILD" =~ ^[1-9][0-9]*$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/latest-release.json"
+          # Latest may be Windows-only; inspect all pages for the last public macOS release.
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --slurp > "$RUNNER_TEMP/latest-release.json"
           PREVIOUS_BUILD=$(python3 scripts/latest-release-build.py "$RUNNER_TEMP/latest-release.json")
           test "$RELEASE_BUILD" -gt "$PREVIOUS_BUILD"
           echo "PREVIOUS_BUILD=$PREVIOUS_BUILD" >> "$GITHUB_ENV"
@@ -227,7 +228,7 @@ jobs:
           # Create the tag atomically. An existing/concurrently created tag
           # fails here instead of silently releasing a different source commit.
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/v$RELEASE_VERSION" -f "sha=$SOURCE_COMMIT" >/dev/null
-          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" "$RUNNER_TEMP/windows-release/"* --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon macOS 26+ and Windows 11 x64. Requires Lemonade separately. macOS installs as LemonVox.app. Windows direct artifacts are unsigned; optional MSIX and WinGet candidates still require their documented installed-package and publication checks. Built from $SOURCE_COMMIT."
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/distribution/LemonVox-$RELEASE_VERSION-arm64.zip" "$RUNNER_TEMP/distribution/SHA256SUMS" "$RUNNER_TEMP/distribution/appcast.xml" "$RUNNER_TEMP/windows-release/"* --repo "$GITHUB_REPOSITORY" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION" --draft --notes "Apple silicon macOS 26+ and Windows 11 x64. Requires Lemonade or another compatible OpenAI API server running separately, with a local endpoint, transcription, chat completion and compatible model discovery. macOS installs as LemonVox.app. Windows direct artifacts are unsigned; optional MSIX and WinGet candidates still require their documented installed-package and publication checks. Built from $SOURCE_COMMIT."
       - name: Remove temporary signing material
         if: ${{ always() }}
         run: |

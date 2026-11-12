@@ -3,6 +3,13 @@
 This recipe is **not a release candidate**. It uses strict confinement and
 `grade: devel` deliberately.
 
+LemonVox also requires Lemonade or another OpenAI-compatible server
+installed and running separately on the same computer. Audio transcription,
+chat completions and compatible model-discovery metadata are required; generic
+API compatibility alone is insufficient. Only loopback endpoints are supported.
+Lemonade 2026.44.1 is the tested baseline. No other server or installed-snap
+compatibility is established here.
+
 Ubuntu 24.04 GNOME does not advertise the GlobalShortcuts portal. LemonVox
 therefore needs a host GNOME Shell extension for its supported global shortcut
 and nonactivating dictation bar. A strict Snap cannot install or update that

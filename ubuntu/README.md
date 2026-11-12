@@ -23,9 +23,16 @@ ctest --test-dir .build/ubuntu --output-on-failure
 .build/ubuntu/lemonvox --settings
 ```
 
-Install and run Lemonade separately. Settings defaults to
-`http://127.0.0.1:13305/v1`; select a downloaded transcription model and an
-independent cleanup model after Refresh models. Only loopback HTTP/HTTPS
+Install and run [Lemonade](https://lemonade-server.ai/) or another
+OpenAI-compatible server separately on this computer before using LemonVox.
+The server must provide audio transcription, chat completions for cleanup and
+model-discovery metadata supported by LemonVox. Generic OpenAI API compatibility
+alone does not establish compatibility: model discovery currently requires
+capability/download/recipe metadata understood by LemonVox. Lemonade 2026.44.1
+is the tested baseline; other servers have not been verified.
+
+Settings defaults to `http://127.0.0.1:13305/v1`; select an available transcription
+model and an independent cleanup model after Refresh models. Only loopback HTTP/HTTPS
 endpoints without credentials, queries or fragments are accepted. Settings
 loads asynchronously and remains usable if the server is unavailable.
 
@@ -68,8 +75,7 @@ The extension waits briefly for held shortcut modifiers to be released.
 Upgrade with `sudo apt install ./new-package.deb`. Remove with
 `sudo apt remove lemonvox`; local per-user settings remain in
 `~/.config/lemonvox/settings.ini`. The extension must be disabled before
-removal if GNOME is still running it. The app does not manage Lemonade or
-remove model downloads.
+removal if GNOME is still running it. The app does not install or manage the separate server or remove model downloads.
 
 Settings are private per-user files. Logs rotate at 256 KiB with one backup in
 `~/.local/state/lemonvox/events.log`; default logging records errors/fallback

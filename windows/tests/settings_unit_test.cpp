@@ -36,10 +36,10 @@ static void model_choices_filter_sort_and_label() {
     CHECK(asr.selected == 2);
     const auto cleanup = build_model_choices(sample_models(), ModelRole::cleanup, "", true);
     CHECK((cleanup.ids == std::vector<std::string>{"both", "gpt-x", "llama"}));
-    CHECK(cleanup.labels[1] == L"gpt-x (remote via Lemonade)");
+    CHECK(cleanup.labels[1] == L"gpt-x (remote via server)");
     CHECK(cleanup.labels[2] == L"llama");
     CHECK(cleanup.selected == -1);
-    CHECK(model_label({"m\xC3\xA9", false, true, true}) == L"m\u00E9 (remote via Lemonade)");
+    CHECK(model_label({"m\xC3\xA9", false, true, true}) == L"m\u00E9 (remote via server)");
 }
 
 static void model_choices_preserve_selection() {
@@ -135,10 +135,10 @@ static void endpoint_validation() {
     CHECK(validate_endpoint(L"  http://localhost:13305/v1/  ").empty());
     CHECK(validate_endpoint(L"https://[::1]:8000/api/v1").empty());
     CHECK(validate_endpoint(L"HTTP://LOCALHOST/v1").empty());
-    CHECK(validate_endpoint(L"").find(L"Enter the Lemonade endpoint") == 0);
-    CHECK(validate_endpoint(L"   ").find(L"Enter the Lemonade endpoint") == 0);
+    CHECK(validate_endpoint(L"").find(L"Enter the server endpoint") == 0);
+    CHECK(validate_endpoint(L"   ").find(L"Enter the server endpoint") == 0);
     CHECK(validate_endpoint(L"http://example.com:13305/v1").find(L"loopback") != std::wstring::npos);
-    CHECK(validate_endpoint(L"http://10.0.0.2/v1").find(L"only connects to Lemonade on this PC") != std::wstring::npos);
+    CHECK(validate_endpoint(L"http://10.0.0.2/v1").find(L"only connects to a server on this PC") != std::wstring::npos);
     for (const wchar_t *bad : {L"127.0.0.1:13305/v1", L"ftp://127.0.0.1/v1", L"http://127.0.0.1:13305/v2",
              L"http://127.0.0.1:13305", L"http://user@127.0.0.1/v1", L"http://127.0.0.1/v1?x=1",
              L"http://127.0.0.1/v1#frag", L"http://127.0.0.1:abc/v1", L"http://127.0.0.1:99999/v1",
@@ -157,12 +157,12 @@ static void newline_conversion() {
 
 static void status_text() {
     const std::wstring endpoint = L"http://127.0.0.1:13305/v1";
-    CHECK(loading_status().text == L"Loading models from Lemonade\u2026" && !loading_status().error);
+    CHECK(loading_status().text == L"Loading models from server\u2026" && !loading_status().error);
     SettingsCatalogResult result;
     result.status = SettingsCatalogResult::Status::network;
     auto status = catalog_status(result, endpoint);
     CHECK(status.error);
-    CHECK(status.text == L"Lemonade unavailable at http://127.0.0.1:13305/v1 \u2014 start Lemonade and press Refresh models.");
+    CHECK(status.text == L"Server unavailable at http://127.0.0.1:13305/v1 \u2014 start your server and press Refresh models.");
     result.status = SettingsCatalogResult::Status::http;
     result.message = L"HTTP 500";
     CHECK(catalog_status(result, endpoint).text.find(L"(HTTP 500)") != std::wstring::npos);
@@ -179,7 +179,7 @@ static void status_text() {
     result.models = {{"a", true, false, false}};
     result.message = L"No cleanup model is downloaded.";
     status = catalog_status(result, endpoint);
-    CHECK(status.error && status.text == L"Lemonade offered no cleanup models. No cleanup model is downloaded.");
+    CHECK(status.error && status.text == L"The server offered no cleanup models. No cleanup model is downloaded.");
     result.models.clear();
     CHECK(catalog_status(result, endpoint).text.find(L"no compatible models") != std::wstring::npos);
 }
@@ -193,7 +193,8 @@ static void layout_scales_without_overlap() {
         const int line = MulDiv(16, dpi, 96);
         const Layout layout = compute_layout(dpi, line, [line](SettingsControl control, int width) {
             if (width == 0) return line * 5; // button text width
-            return control == SettingsControl::routing_note ? 2 * line : line;
+            if (control == SettingsControl::endpoint_hint) return 2 * line;
+            return control == SettingsControl::routing_note ? 3 * line : line;
         });
         CHECK(layout.client.cx == MulDiv(560, dpi, 96) - 2 * MulDiv(16, dpi, 96) + 2 * MulDiv(16, dpi, 96));
         CHECK(layout.row_height >= line);

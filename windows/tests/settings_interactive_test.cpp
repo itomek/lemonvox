@@ -240,7 +240,7 @@ std::vector<std::string> check_automation(const SettingsWindow &window) {
         const wchar_t *name;
     };
     const std::vector<Expect> expectations{
-        {item(window, SettingsControl::endpoint_edit), L"Lemonade endpoint"},
+        {item(window, SettingsControl::endpoint_edit), L"Server endpoint"},
         {item(window, SettingsControl::asr_combo), L"Transcription model"},
         {item(window, SettingsControl::cleanup_combo), L"Cleanup model"},
         {item(window, SettingsControl::prompt_edit), L"Cleanup prompt"},
@@ -345,7 +345,12 @@ int main() {
         CHECK(elapsed < std::chrono::milliseconds(200));
         std::printf("Settings visible after %lld ms\n",
             static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
-        CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from Lemonade\u2026");
+        const auto prerequisite = text_of(item(window, SettingsControl::endpoint_hint));
+        CHECK(prerequisite.find(L"Requires separate Lemonade or another OpenAI-compatible server") == 0);
+        CHECK(prerequisite.find(L"Only loopback endpoints") != std::wstring::npos);
+        const auto capabilities = text_of(item(window, SettingsControl::routing_note));
+        CHECK(capabilities.find(L"transcription, chat and discoverable compatible model metadata") != std::wstring::npos);
+        CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from server\u2026");
         CHECK(combo_items(item(window, SettingsControl::asr_combo)) == std::vector<std::wstring>{L"whisper-old"});
         CHECK(fake.endpoints == std::vector<std::string>{"http://127.0.0.1:13305/v1"});
         CHECK(text_of(item(window, SettingsControl::endpoint_edit)) == L"http://127.0.0.1:13305/v1");
@@ -357,13 +362,13 @@ int main() {
 
         // Models arrive; the missing saved selection is preserved and flagged.
         CHECK(pump_until([&] {
-            return text_of(item(window, SettingsControl::status)) != L"Loading models from Lemonade\u2026";
+            return text_of(item(window, SettingsControl::status)) != L"Loading models from server\u2026";
         }));
         CHECK(combo_items(item(window, SettingsControl::asr_combo))
             == (std::vector<std::wstring>{L"whisper-a", L"whisper-b", L"(unavailable) whisper-old"}));
         CHECK(combo_selected(item(window, SettingsControl::asr_combo)) == L"(unavailable) whisper-old");
         CHECK(combo_items(item(window, SettingsControl::cleanup_combo))
-            == (std::vector<std::wstring>{L"gpt-x (remote via Lemonade)", L"llama"}));
+            == (std::vector<std::wstring>{L"gpt-x (remote via server)", L"llama"}));
         CHECK(combo_selected(item(window, SettingsControl::cleanup_combo)) == L"llama");
         CHECK(text_of(item(window, SettingsControl::status)) == L"2 transcription models and 2 cleanup models available.");
 
@@ -377,7 +382,7 @@ int main() {
         fake.plan.push_back({500, models({{"stale-asr", true, false, false}, {"stale-cleanup", false, true, false}})});
         fake.plan.push_back({30, models({{"fresh-asr", true, false, false}, {"llama", false, true, false}})});
         click(window, SettingsControl::refresh_button);
-        CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from Lemonade\u2026");
+        CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from server\u2026");
         click(window, SettingsControl::refresh_button);
         pump_for(800);
         CHECK(combo_items(item(window, SettingsControl::asr_combo))
@@ -388,7 +393,7 @@ int main() {
         fake.plan.push_back({20, SettingsCatalogResult{SettingsCatalogResult::Status::network, {}, L""}});
         click(window, SettingsControl::refresh_button);
         CHECK(pump_until([&] {
-            return text_of(item(window, SettingsControl::status)).find(L"Lemonade unavailable at http://127.0.0.1:13305/v1")
+            return text_of(item(window, SettingsControl::status)).find(L"Server unavailable at http://127.0.0.1:13305/v1")
                 == 0;
         }));
         CHECK(combo_items(item(window, SettingsControl::asr_combo)).front() == L"fresh-asr");
@@ -419,7 +424,7 @@ int main() {
         SetWindowTextW(item(window, SettingsControl::endpoint_edit), L"");
         click(window, SettingsControl::save_button);
         CHECK(window.is_open() && fake.save_calls == 0);
-        CHECK(text_of(item(window, SettingsControl::status)).find(L"Enter the Lemonade endpoint") == 0);
+        CHECK(text_of(item(window, SettingsControl::status)).find(L"Enter the server endpoint") == 0);
         SetWindowTextW(item(window, SettingsControl::endpoint_edit), L"http://localhost:13305/v1");
         pump_once();
         CHECK(text_of(item(window, SettingsControl::status)).find(L"Endpoint changed.") == 0);

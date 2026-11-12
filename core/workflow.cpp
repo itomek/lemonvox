@@ -70,7 +70,8 @@ OperationId WorkflowCore::start(WorkflowConfig config) {
     active_operation_ = operation;
     set_phase(operation, WorkflowPhase::preparing);
     if (active_operation_ != operation || shutting_down_) return operation;
-    request_original_target(operation);
+    if (config_.preferences.paste_at_current_focus) request_models(operation, Step::first_models);
+    else request_original_target(operation);
     return operation;
 }
 
@@ -311,6 +312,10 @@ void WorkflowCore::request_insertion(OperationId operation, std::string text) {
     result_text_ = std::move(text);
     set_phase(operation, WorkflowPhase::inserting);
     if (active_operation_ != operation || shutting_down_) return;
+    if (config_.preferences.paste_at_current_focus) {
+        request_insert(operation, {});
+        return;
+    }
     if (!config_.preferences.insert_current_target && original_target_.value == 0) {
         fallback_to_text(operation, original_fallback_reason_);
         return;

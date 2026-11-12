@@ -1,8 +1,11 @@
 # Windows distribution
 
 Windows distribution is part of the Windows milestone. The supported build target is
-Windows 11 x64. Lemonade and its downloaded transcription/chat models are separate
-prerequisites in every channel. The app runs at normal user integrity.
+Windows 11 x64. Every channel requires separately installed Lemonade or another
+OpenAI-compatible server running on this PC. Only loopback endpoints are supported.
+The server must expose audio transcription, chat completions and discoverable compatible
+model metadata; a generic OpenAI-compatible API alone is insufficient. Lemonade is the
+tested baseline; other servers require verification. The app runs at normal user integrity.
 
 The required public channels are GitHub Releases (standalone EXE and installer ZIP)
 and the WinGet community package `LemonVox.LemonVox`, publisher `LemonVox`.
@@ -75,7 +78,8 @@ Before Store submission:
 
 - Complete developer account registration and reserve LemonVox in Partner Center.
 - Supply the reserved package identity, listing text, screenshots, privacy/support
-  information and an explicit explanation that Lemonade is installed separately.
+  information and an explicit explanation that Lemonade or another compatible local OpenAI server is
+  installed separately and must expose compatible model metadata.
 - Test a signed/test-deployed package through an owner-authorized route, or a Store
   flight when available; run the Windows App Certification Kit.
 - Verify Start menu launch, tray, microphone and loopback Lemonade, shortcuts, target
