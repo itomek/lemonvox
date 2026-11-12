@@ -169,10 +169,11 @@ enum RunningAppVersion {
         }
         scroll.removeFromSuperview()
         for document in [generalView, modelsView, diagnosticsView] {
-            let pane = NSScrollView(frame:NSRect(x:180,y:52,width:640,height:638))
+            let pane = NSScrollView(frame:NSRect(x:180,y:128,width:640,height:562))
             pane.autoresizingMask = [.width,.height]; pane.hasVerticalScroller = true; pane.drawsBackground = false
             document.autoresizingMask = [.width]; pane.documentView = document
             root.addSubview(pane); scrolls.append(pane)
+            pane.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-pane.contentView.bounds.height)))
         }
         let sidebar = NSScrollView(frame:NSRect(x:0,y:52,width:180,height:638))
         sidebar.autoresizingMask = [.height]; sidebar.drawsBackground = false
@@ -194,7 +195,7 @@ enum RunningAppVersion {
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
         appVersion.setAccessibilityLabel("Running \(AppIdentity.running.name) version and build")
         generalView.addSubview(appVersion)
-        serverRequirement.frame=NSRect(x:24,y:8,width:660,height:38)
+        serverRequirement.frame=NSRect(x:204,y:64,width:592,height:54)
         serverRequirement.font = .systemFont(ofSize:11); serverRequirement.textColor = .secondaryLabelColor
         serverRequirement.autoresizingMask = [.width]; serverRequirement.isSelectable = true
         serverRequirement.setAccessibilityLabel("Inference server requirement")
