@@ -8,10 +8,28 @@ import AppKit
         precondition(IndicatorPanel.clampedOrigin(inside, in: bounds) == inside.origin)
         precondition(IndicatorPanel.clampedOrigin(NSRect(x: 20, y: 900,
             width: IndicatorPanel.speechBarSize.width, height: IndicatorPanel.speechBarSize.height), in: bounds) ==
-            NSPoint(x: -IndicatorPanel.speechBarSize.width, y: 656))
+            NSPoint(x: -IndicatorPanel.speechBarSize.width, y: bounds.maxY - IndicatorPanel.speechBarSize.height - 120))
         precondition(IndicatorPanel.clampedOrigin(NSRect(x: -1100, y: -20,
             width: IndicatorPanel.speechBarSize.width, height: IndicatorPanel.speechBarSize.height), in: bounds) == NSPoint(x: -1000, y: 20))
-        print("PASS: panel clamping and message clearance")
+        let display = NSRect(x: -1920, y: -200, width: 1920, height: 1080)
+        let bottomDock = NSRect(x: -1920, y: -140, width: 1920, height: 996)
+        let dockOrigin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: bottomDock,
+            dockIsHidden: false, dockOrientation: "bottom")
+        precondition(dockOrigin == NSPoint(x: -1020, y: -132),
+            "The tile must center on its screen, 8 pt above a visible bottom Dock")
+        for orientation in ["bottom", "left", "right"] {
+            let origin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: bottomDock,
+                dockIsHidden: true, dockOrientation: orientation)
+            precondition(origin == NSPoint(x: -1020, y: -192),
+                "An autohidden Dock must leave the tile 8 pt above the physical screen bottom")
+        }
+        for orientation in ["left", "right"] {
+            let origin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: bottomDock,
+                dockIsHidden: false, dockOrientation: orientation)
+            precondition(origin == NSPoint(x: -1020, y: -192),
+                "A side Dock must not alter screen-centered bottom positioning")
+        }
+        print("PASS: panel clamping, message clearance and Dock-aware bottom placement")
         if CommandLine.arguments.contains("--geometry") { return }
         NSApplication.shared.setActivationPolicy(.prohibited)
         let appearancePanel = IndicatorPanel()
@@ -38,7 +56,23 @@ import AppKit
         appearancePanel.appearance = nil
         precondition(appearancePanel.messagePanel.appearance == nil)
         print("PASS: message appearance and transparency transitions")
+        let solidOverlay = appearancePanel.overlay
+        var tileColors: [CGColor] = []
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            appearancePanel.appearance = NSAppearance(named: appearance)
+            solidOverlay.applyTransparencyPreference(true)
+            tileColors.append(solidOverlay.content.layer!.backgroundColor!)
+            precondition(solidOverlay.microphone.contentTintColor == .labelColor)
+            precondition(solidOverlay.stopButton.contentTintColor == .labelColor)
+            precondition(solidOverlay.cancelButton.contentTintColor == .labelColor)
+        }
+        precondition(tileColors[0] != tileColors[1],
+            "The solid tile background must adapt between light and dark appearances")
+        solidOverlay.applyTransparencyPreference(false)
+        precondition(!solidOverlay.glass.isHidden && solidOverlay.glass.contentView === solidOverlay.content)
+        print("PASS: slim tile appearance and Reduce Transparency transitions")
         if CommandLine.arguments.contains("--appearance") { return }
+        if CommandLine.arguments.contains("--render-only") { try renderComparison(); return }
         for dark in [false, true] {
             let panel = IndicatorPanel()
             panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -47,13 +81,17 @@ import AppKit
             precondition(panel.frame.size == IndicatorPanel.speechBarSize,
                 "Speech bar geometry must use the declared compact native size")
             precondition(panel.frame.width <= 128 && panel.frame.height <= 44,
-                "Speech controls must fit a compact, roughly quarter-area bar")
+                "Speech controls must fit a compact bar")
+            precondition(panel.overlay.glass.frame.size == NSSize(width: 120, height: 32),
+                "The visible tile must match the approved slim 120 × 32 pt design")
             precondition(panel.overlay.statusLabel.isHidden,
                 "The compact speech bar must not show status text")
-            precondition(panel.overlay.cancelButton.frame.width >= 32 && panel.overlay.cancelButton.frame.height >= 32)
+            precondition(panel.overlay.cancelButton.frame.width >= 20 && panel.overlay.cancelButton.frame.height >= 20)
+            precondition(panel.overlay.bounds.contains(panel.overlay.cancelButton.frame),
+                "The secondary cancel control must remain inside the panel hit region")
             precondition(panel.isMovableByWindowBackground)
             precondition(panel.overlay.hitTest(NSPoint(x:40,y:22))?.mouseDownCanMoveWindow == true)
-            precondition(panel.overlay.hitTest(NSPoint(x:20,y:22)) is OverlayButton)
+            assertControlIsNotDragHandle(panel.overlay.cancelButton)
             precondition(panel.overlay.cancelButton.mouseDownCanMoveWindow == false)
             precondition(!panel.canBecomeKey && !panel.canBecomeMain)
             precondition(!panel.overlay.cancelButton.acceptsFirstResponder)
@@ -131,7 +169,6 @@ import AppKit
             print("PASS: native glass, separate messages, light/dark controls and phase callbacks")
         }
         if CommandLine.arguments.contains("--render") { try renderComparison() }
-        if CommandLine.arguments.contains("--render-only") { try renderComparison(); return }
         focusCheck()
     }
     static func assertControlIsNotDragHandle(_ button: OverlayButton) {
