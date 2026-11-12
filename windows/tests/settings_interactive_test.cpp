@@ -329,7 +329,7 @@ int main() {
     check_common_controls_v6();
 
     Fake fake;
-    WinPreferences initial{"http://127.0.0.1:13305/v1", "whisper-old", "llama", "Clean up.\nKeep meaning.", false,
+    WinPreferences initial{"http://127.0.0.1:13305/v1", "whisper-old", "llama", "Clean up.\nKeep meaning.",
         default_trigger(), L""};
     {
         SettingsWindow window(GetModuleHandleW(nullptr), fake.services(), kDefaultPrompt);

@@ -192,6 +192,11 @@ void WinInsertion::capture_original(OperationId operation, TargetCompletion comp
             // This token authorizes a paste operation, not a discovered field.
             result.target = {{table_->allocate(operation, {})}, true, false, true, true};
         }
+        if (canceled(operation)) {
+            table_->invalidate(operation);
+            result = {};
+            result.error = AdapterError::canceled;
+        }
         post(std::move(completion), operation, result);
     });
 }
@@ -208,6 +213,11 @@ void WinInsertion::inspect(OperationId operation, TargetToken original, TargetCo
             const TargetToken token = original.value ? original : TargetToken{table_->allocate(operation, {})};
             // Shared-core dispatch eligibility, not claims about an OS field.
             result.target = {token, true, false, true, original.value != 0};
+        }
+        if (canceled(operation)) {
+            table_->invalidate(operation);
+            result = {};
+            result.error = AdapterError::canceled;
         }
         post(std::move(completion), operation, result);
     });
