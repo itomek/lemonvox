@@ -29,7 +29,7 @@ import AppKit
     }
 
     pane.debugDiagnostics.state = .on
-    pane.endpoint.stringValue = "https://example.invalid/v1"
+    pane.endpoint.stringValue = "ftp://example.invalid/v1"
     pane.saveSettings()
     precondition(pane.window.isVisible && !log.debugEnabled && persisted.isEmpty)
 

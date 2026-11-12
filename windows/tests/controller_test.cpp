@@ -192,7 +192,7 @@ void failed_dispatch_offers_copy() {
 void invalid_configuration_fails_synchronously_with_settings_action() {
     Harness h;
     WinPreferences broken = configured();
-    broken.endpoint = "http://example.com/v1";
+    broken.endpoint = "ftp://example.com/v1";
     h.preferences.replace(broken);
     h.controller.toggle();
     assert(h.failed && h.failure.action == FailureAction::open_settings);

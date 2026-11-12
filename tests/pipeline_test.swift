@@ -99,6 +99,6 @@ actor FakeHTTP: HTTPTransport {
         try Data([1,2,3]).write(to: audio.url)
         audio.remove()
         precondition(!FileManager.default.fileExists(atPath: directory.path))
-        print("PASS: local-only configuration/models, WAV request, cleanup data boundary, errors, cancellation, transient cleanup")
+        print("PASS: local/remote configuration/models, WAV request, cleanup data boundary, errors, cancellation, transient cleanup")
     }
 }

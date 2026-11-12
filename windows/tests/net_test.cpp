@@ -647,7 +647,7 @@ void catalog_fetches_and_classifies(TestServer &server) {
     pump_until([&] { return results.size() == 2; });
     assert(results[1].status == CatalogStatus::ok && results[1].models.size() == 2);
 
-    catalog.refresh("http://example.com/v1", record);
+    catalog.refresh("ftp://example.com/v1", record);
     assert(results.size() == 2); // Configuration errors are asynchronous too.
     pump_until([&] { return results.size() == 3; });
     assert(results[2].status == CatalogStatus::configuration && !results[2].safe_message.empty());
