@@ -1,4 +1,4 @@
-#include "ui/settings_window.h"
+﻿#include "ui/settings_window.h"
 
 #include "common/utf.h"
 #include "ui/settings_layout.h"
@@ -48,7 +48,7 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"Server &endpoint", Kind::label},
     {L"", Kind::edit},
     {L"&Refresh models", Kind::button},
-    {L"Requires a separate compatible server. Local and remote HTTP/HTTPS endpoints ending in /v1 are supported.", Kind::note},
+    {L"\u25CF Checking server\nChecking the saved server endpoint.", Kind::note},
     {L"", Kind::note},
     {L"&Transcription model", Kind::label},
     {L"", Kind::combo},
@@ -170,6 +170,7 @@ public:
         create_controls();
         update_font();
         populate(current);
+        set_server_health(server_health_);
         apply_theme();
         apply_layout(true, nullptr);
         saved_focus_ = control(SettingsControl::endpoint_edit);
@@ -177,6 +178,15 @@ public:
         bring_forward();
         SetFocus(control(SettingsControl::endpoint_edit));
         refresh();
+    }
+
+    void set_server_health(LVServerHealthStatus status) {
+        server_health_ = status;
+        if (!hwnd_) return;
+        SetWindowTextW(control(SettingsControl::endpoint_hint), settings::server_health_text(status).c_str());
+        apply_layout(false, nullptr);
+        InvalidateRect(control(SettingsControl::endpoint_hint), nullptr, TRUE);
+        NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, control(SettingsControl::endpoint_hint), OBJID_CLIENT, CHILDID_SELF);
     }
 
     void destroy() {
@@ -634,6 +644,10 @@ private:
         if (child == control(SettingsControl::endpoint_hint) || child == control(SettingsControl::routing_note)) {
             color = secondary_;
         }
+        if (child == control(SettingsControl::endpoint_hint) && !high_contrast_on()) {
+            if (server_health_ == LV_SERVER_HEALTH_CONNECTED) color = dark_ ? RGB(90, 210, 125) : RGB(20, 115, 50);
+            else if (server_health_ == LV_SERVER_HEALTH_DISCONNECTED) color = error_;
+        }
         SetTextColor(dc, color);
         SetBkColor(dc, field ? field_ : background_);
         return reinterpret_cast<LRESULT>(field ? field_brush_ : background_brush_);
@@ -810,6 +824,7 @@ private:
 
     HINSTANCE instance_;
     SettingsServices services_;
+    LVServerHealthStatus server_health_ = LV_SERVER_HEALTH_CHECKING;
     std::string default_prompt_;
     HWND hwnd_ = nullptr;
     HWND controls_[kControlCount] = {};
@@ -855,5 +870,6 @@ bool SettingsWindow::is_open() const { return impl_->hwnd() != nullptr; }
 HWND SettingsWindow::hwnd() const { return impl_->hwnd(); }
 bool SettingsWindow::pre_translate(MSG *message) { return impl_->pre_translate(message); }
 bool SettingsWindow::dark_mode_active() const { return impl_->dark(); }
+void SettingsWindow::set_server_health(LVServerHealthStatus status) { impl_->set_server_health(status); }
 
 } // namespace lemonvox::win

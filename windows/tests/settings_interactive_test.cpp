@@ -1,4 +1,4 @@
-// Opens the real Settings window, drives it with window messages and injected
+﻿// Opens the real Settings window, drives it with window messages and injected
 // keyboard input, and inspects it through UI Automation. Labeled interactive:
 // it needs an unlocked desktop and holds the shared interactive lock.
 
@@ -346,8 +346,13 @@ int main() {
         std::printf("Settings visible after %lld ms\n",
             static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
         const auto prerequisite = text_of(item(window, SettingsControl::endpoint_hint));
-        CHECK(prerequisite.find(L"Requires separate Lemonade or another OpenAI-compatible server") == 0);
-        CHECK(prerequisite.find(L"Local and remote HTTP/HTTPS endpoints") != std::wstring::npos);
+        CHECK(prerequisite.find(L"Checking server") != std::wstring::npos);
+        window.set_server_health(LV_SERVER_HEALTH_CONNECTED);
+        CHECK(text_of(item(window, SettingsControl::endpoint_hint)).find(L"Server connected") != std::wstring::npos);
+        window.set_server_health(LV_SERVER_HEALTH_DISCONNECTED);
+        const auto disconnected = text_of(item(window, SettingsControl::endpoint_hint));
+        CHECK(disconnected.find(L"Could not connect") != std::wstring::npos);
+        CHECK(disconnected.find(L"Lemonade or another compatible OpenAI server") != std::wstring::npos);
         const auto capabilities = text_of(item(window, SettingsControl::routing_note));
         CHECK(capabilities.find(L"transcription, chat and discoverable compatible model metadata") != std::wstring::npos);
         CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from server\u2026");
@@ -496,10 +501,13 @@ int main() {
         CHECK(saved.capture_device_id == L"{dev2}");
         CHECK(!fake.suspended);
 
+        // The application can publish a newer health snapshot while Settings is closed.
+        window.set_server_health(LV_SERVER_HEALTH_CONNECTED);
         // Esc = Cancel, and a refresh finishing after close is ignored.
         fake.plan.push_back({200, models({{"late", true, true, false}})});
         window.show(saved);
         CHECK(window.is_open());
+        CHECK(text_of(item(window, SettingsControl::endpoint_hint)).find(L"Server connected") != std::wstring::npos);
         CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Ctrl+Shift+K");
         CHECK(combo_selected(item(window, SettingsControl::microphone_combo)) == L"Headset");
         focus(window, SettingsControl::prompt_edit);

@@ -219,11 +219,29 @@ import AppKit
         precondition(pane.appearance.indexOfSelectedItem == 2 && pane.prompt.string == "Unsaved synthetic draft")
         precondition(pane.debugDiagnostics.state == .on && pane.loading)
         precondition(discoveries <= 1, "Switching categories must not restart discovery")
-        for row in 0..<3 {
-            pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
-            precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
-            precondition(pane.serverRequirement.stringValue.contains("Lemonade or another OpenAI-compatible server"))
-            precondition(pane.serverRequirement.visibleRect.contains(pane.serverRequirement.bounds))
+        for size in [NSSize(width:820,height:690), NSSize(width:820,height:480)] {
+            pane.window.setContentSize(size)
+            for health in [LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING] {
+                pane.setServerHealth(health)
+                for row in 0..<3 {
+                    pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
+                    precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
+                    precondition(pane.serverRequirement.stringValue.contains("Requires Lemonade") == (health == LV_SERVER_HEALTH_DISCONNECTED))
+                    precondition(pane.serverStatus.stringValue.contains("connected") == (health == LV_SERVER_HEALTH_CONNECTED))
+                    precondition(pane.serverIndicator.contentTintColor == (health == LV_SERVER_HEALTH_CONNECTED ? NSColor.systemGreen : health == LV_SERVER_HEALTH_DISCONNECTED ? NSColor.systemRed : NSColor.secondaryLabelColor))
+                    precondition(pane.serverRequirement.visibleRect.contains(pane.serverRequirement.bounds))
+                    let notice = pane.serverRequirement.frame
+                    precondition(notice.minX >= pane.scrolls[row].frame.minX + 20,
+                                 "Server notice must align with Settings content, not the sidebar")
+                    precondition(notice.minY >= pane.save.frame.maxY + 12,
+                                 "Server notice must sit above the Save action row")
+                    precondition(notice.maxY <= pane.scrolls[row].frame.minY - 8,
+                                 "Settings scroll content must reserve space for the notice")
+                    let textHeight = pane.serverRequirement.cell!.cellSize(forBounds:
+                        NSRect(x:0,y:0,width:notice.width,height:1000)).height
+                    precondition(textHeight <= notice.height, "Server notice text must fit without clipping")
+                }
+            }
         }
         pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
         pane.categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
@@ -247,11 +265,17 @@ import AppKit
                 precondition(discoveries == 1, "Category changes must not refetch models")
                 precondition(pane.cleanup.selectedID == gemma.id)
                 if CommandLine.arguments.contains("--render"), let view=pane.window.contentView {
-                    pane.window.setContentSize(NSSize(width:820,height:690))
-                    let output=NSImage(size:NSSize(width:1640,height:2070))
+                    let renderHeight = CommandLine.arguments.contains("--render-minimum") ? 480 : 690
+                    pane.window.setContentSize(NSSize(width:820,height:renderHeight))
+                    let output=NSImage(size:NSSize(width:1640,height:renderHeight*3))
                     output.lockFocus()
                     for row in 0..<3 {
                     pane.categoryList.selectRowIndexes(IndexSet(integer:row),byExtendingSelection:false)
+                    pane.setServerHealth([LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING][row])
+                    let activeScroll = pane.scrolls[row]
+                    if let document = activeScroll.documentView {
+                        activeScroll.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-activeScroll.contentView.bounds.height)))
+                    }
                     for (column,dark) in [false,true].enumerated() {
                         pane.window.appearance=NSAppearance(named:dark ? .darkAqua : .aqua)
                         view.layoutSubtreeIfNeeded()
@@ -259,12 +283,12 @@ import AppKit
                         RunLoop.main.run(until:Date().addingTimeInterval(0.15))
                         view.effectiveAppearance.performAsCurrentDrawingAppearance {
                             NSColor.windowBackgroundColor.setFill()
-                            NSRect(x:column*820,y:(2-row)*690,width:820,height:690).fill()
+                            NSRect(x:column*820,y:(2-row)*renderHeight,width:820,height:renderHeight).fill()
                         }
                         if let bitmap=view.bitmapImageRepForCachingDisplay(in:view.bounds) {
                             view.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in:view.bounds,to:bitmap) }
                             let image=NSImage(size:view.bounds.size); image.addRepresentation(bitmap)
-                            image.draw(in:NSRect(x:column*820,y:(2-row)*690,width:820,height:690))
+                            image.draw(in:NSRect(x:column*820,y:(2-row)*renderHeight,width:820,height:renderHeight))
                         }
                     }
                     }

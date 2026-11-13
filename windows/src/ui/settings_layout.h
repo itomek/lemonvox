@@ -78,6 +78,7 @@ struct StatusText {
     std::wstring text;
     bool error = false;
 };
+std::wstring server_health_text(LVServerHealthStatus status);
 StatusText loading_status();
 StatusText endpoint_changed_status();
 StatusText catalog_status(const SettingsCatalogResult &result, const std::wstring &endpoint);

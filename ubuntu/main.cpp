@@ -33,7 +33,8 @@ const char *phase_name(lv::WorkflowPhase phase) {
 class Application {
 public:
     Application() : app_(ADW_APPLICATION(adw_application_new("com.itomek.LemonVox", G_APPLICATION_HANDLES_COMMAND_LINE))),
-        executor_(g_main_context_default()), capture_(executor_), transport_(executor_), discovery_(executor_), insertion_(executor_) {
+        executor_(g_main_context_default()), capture_(executor_), transport_(executor_), discovery_(executor_),
+        health_transport_(executor_, native::SoupTransportOptions{8U * 1024U * 1024U, 3000}), insertion_(executor_) {
         g_signal_connect(app_, "startup", G_CALLBACK(+[](GApplication *, gpointer self) { static_cast<Application *>(self)->startup(); }), this);
         g_signal_connect(app_, "activate", G_CALLBACK(+[](GApplication *, gpointer self) { static_cast<Application *>(self)->show_settings(); }), this);
         g_signal_connect(app_, "command-line", G_CALLBACK(+[](GApplication *, GApplicationCommandLine *line, gpointer self) -> int {
@@ -131,6 +132,11 @@ private:
             registration_ = g_dbus_connection_register_object(bus, bus_path, node_->interfaces[0], &table, this, nullptr, &error);
         }
         if (error) { g_warning("LemonVox service registration failed"); g_clear_error(&error); }
+        lv_server_health_init(&health_);
+        health_source_ = g_timeout_add_seconds(1, +[](gpointer data) -> gboolean {
+            static_cast<Application *>(data)->poll_health(); return G_SOURCE_CONTINUE;
+        }, this);
+        poll_health();
         g_application_hold(G_APPLICATION(app_));
     }
     int command_line(GApplicationCommandLine *line) {
@@ -230,7 +236,13 @@ private:
                 [this](const native::Settings &value, std::string &error) {
                     if (!native::endpoint_is_valid(value.endpoint)) { error = "Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment."; return false; }
                     if (!store_.save(value, error)) return false;
+                    const bool endpoint_changed = settings_.endpoint != value.endpoint;
                     settings_ = value; diagnostics_.set_debug(settings_.debug);
+                    if (endpoint_changed) {
+                        health_transport_.cancel(health_.active_request);
+                        lv_server_health_reset(&health_);
+                        poll_health();
+                    }
                     native::apply_appearance(settings_); native::apply_extension_shortcuts(settings_);
                     refresh_palette(); changed(); return true;
                 }, [this](const std::string &endpoint) { refresh(endpoint); }, [this]() {
@@ -244,7 +256,34 @@ private:
                 }, [this](const std::string &name) { action(name); });
             refresh(settings_.endpoint);
         }
+        window_->health(health_.status);
         changed(); window_->present();
+    }
+    static double health_now() { return static_cast<double>(g_get_monotonic_time()) / G_USEC_PER_SEC; }
+    void poll_health() {
+        if (shutdown_) return;
+        const auto old_status = health_.status;
+        const auto previous = health_.active_request;
+        const auto token = lv_server_health_begin(&health_, health_now());
+        // The core invalidates an expired token before another request is due.
+        if (previous && !health_.active_request) health_transport_.cancel(previous);
+        if (window_ && old_status != health_.status) window_->health(health_.status);
+        if (!token) return;
+        lv::ProtocolConfiguration config; native::endpoint_facts(settings_.endpoint, config.endpoint);
+        lv::TransportRequest request;
+        if (lv::Protocol::make_models_request(config, request) != LV_PROTOCOL_OK) {
+            lv_server_health_complete(&health_, token, health_now(), 0, 0, {nullptr, 0});
+            if (window_) window_->health(health_.status);
+            return;
+        }
+        request.timeout_ms = 3000;
+        health_transport_.send(token, std::move(request), [this, token](lv::OperationId id, lv::TransportResponse response) {
+            if (shutdown_ || id != token) return;
+            const auto before = health_.status;
+            if (lv_server_health_complete(&health_, token, health_now(), response.error == lv::AdapterError::none,
+                response.status, {response.bytes.data(), response.bytes.size()}) && window_ && before != health_.status)
+                window_->health(health_.status);
+        });
     }
     void refresh(const std::string &endpoint) {
         discovery_.cancel(discovery_operation_);
@@ -267,6 +306,8 @@ private:
         if (shutdown_) return;
         shutdown_ = true;
         if (core_) core_->shutdown();
+        if (health_source_) { g_source_remove(health_source_); health_source_ = 0; }
+        health_transport_.shutdown(); lv_server_health_reset(&health_);
         discovery_.shutdown(); clear_result();
         if (capture_limit_) { g_source_remove(capture_limit_); capture_limit_ = 0; }
         if (palette_source_) { g_source_remove(palette_source_); palette_source_ = 0; }
@@ -282,7 +323,9 @@ private:
     AdwApplication *app_;
     native::GlibExecutor executor_;
     native::PipeWireCaptureAdapter capture_;
-    native::SoupByteTransport transport_, discovery_;
+    native::SoupByteTransport transport_, discovery_, health_transport_;
+    LVServerHealth health_{};
+    guint health_source_ = 0;
     native::ManualCopyInsertionAdapter insertion_;
     native::PrivateDiagnostics diagnostics_;
     native::SettingsStore store_;

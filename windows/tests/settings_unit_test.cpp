@@ -1,4 +1,4 @@
-#include "ui/settings_layout.h"
+﻿#include "ui/settings_layout.h"
 
 #include <windows.h>
 
@@ -187,6 +187,14 @@ static void status_text() {
     CHECK(catalog_status(result, endpoint).text.find(L"no compatible models") != std::wstring::npos);
 }
 
+static void server_health_copy() {
+    CHECK(server_health_text(LV_SERVER_HEALTH_CHECKING).find(L"Checking server") != std::wstring::npos);
+    CHECK(server_health_text(LV_SERVER_HEALTH_CONNECTED).find(L"Server connected") != std::wstring::npos);
+    const auto failed = server_health_text(LV_SERVER_HEALTH_DISCONNECTED);
+    CHECK(failed.find(L"Could not connect") != std::wstring::npos);
+    CHECK(failed.find(L"Lemonade or another compatible OpenAI server") != std::wstring::npos);
+}
+
 static bool overlaps(const RECT &a, const RECT &b) {
     return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
@@ -196,7 +204,7 @@ static void layout_scales_without_overlap() {
         const int line = MulDiv(16, dpi, 96);
         const Layout layout = compute_layout(dpi, line, [line](SettingsControl control, int width) {
             if (width == 0) return line * 5; // button text width
-            if (control == SettingsControl::endpoint_hint) return 2 * line;
+            if (control == SettingsControl::endpoint_hint) return 3 * line;
             return control == SettingsControl::routing_note ? 3 * line : line;
         });
         CHECK(layout.client.cx == MulDiv(560, dpi, 96) - 2 * MulDiv(16, dpi, 96) + 2 * MulDiv(16, dpi, 96));
@@ -224,6 +232,7 @@ int main() {
     endpoint_validation();
     newline_conversion();
     status_text();
+    server_health_copy();
     layout_scales_without_overlap();
     std::puts("settings_unit_test passed");
     return 0;

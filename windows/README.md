@@ -92,6 +92,13 @@ active or focused (ctest `ui_demo_smoke`).
 - Debug/test launch options: `--settings` (open Settings), `--settings-key <HKCU subkey under
   Software\>`, `--sample-wav <file>` (replay a WAV instead of the microphone), `--smoke`.
 
+The application checks the saved server endpoint in the background from startup, every
+10 seconds, using `GET /models` with a 3-second deadline. Settings displays a neutral
+checking state, green **Server connected**, or red **Could not connect** with the separate
+server requirement. This validates the inventory response, not selected-model readiness
+or inference. Unsaved endpoint edits do not change the background check; Save does.
+Closing and reopening Settings shows the latest application-owned status.
+
 Settings persist in `HKCU\Software\LemonVox`. Audio and transcripts stay in memory; the clipboard
 is used briefly with history/cloud exclusion formats and restored only if nothing else changed it;
 diagnostics (tray > Open diagnostics) contain fixed events, error categories and HTTP status codes

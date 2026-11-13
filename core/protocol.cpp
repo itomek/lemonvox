@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <optional>
 #include <regex>
@@ -647,6 +648,49 @@ static LVProtocolInventory parseInventory(LVProtocolSlice json, bool includeMeta
     }
     yyjson_doc_free(document);
     return inventory;
+}
+
+void lv_server_health_init(LVServerHealth *health) {
+    if (!health) return;
+    *health = {LV_SERVER_HEALTH_CHECKING, 1, 0, 0, 0};
+}
+void lv_server_health_reset(LVServerHealth *health) {
+    if (!health) return;
+    health->status = LV_SERVER_HEALTH_CHECKING;
+    health->active_request = 0;
+    health->request_started_at = 0;
+    health->next_check_at = 0;
+}
+uint64_t lv_server_health_begin(LVServerHealth *health, double now) {
+    if (!health || !std::isfinite(now) || now < 0) return 0;
+    if (health->active_request) {
+        if (now - health->request_started_at >= 3) {
+            health->active_request = 0;
+            health->status = LV_SERVER_HEALTH_DISCONNECTED;
+        }
+        return 0;
+    }
+    if (now < health->next_check_at) return 0;
+    auto request = health->next_request++;
+    if (!request) request = health->next_request++;
+    health->active_request = request;
+    health->request_started_at = now;
+    health->next_check_at = now + 10;
+    return request;
+}
+uint8_t lv_server_health_complete(LVServerHealth *health, uint64_t request,
+    double now, uint8_t transport_ok, int http_status, LVProtocolSlice body) {
+    if (!health || !request || request != health->active_request) return 0;
+    health->active_request = 0;
+    bool connected = transport_ok && http_status == 200 && std::isfinite(now) &&
+        now >= health->request_started_at && now - health->request_started_at < 3;
+    if (connected) {
+        auto inventory = lv_protocol_parse_inventory(body);
+        connected = inventory.status == LV_PROTOCOL_OK;
+        lv_protocol_inventory_free(&inventory);
+    }
+    health->status = connected ? LV_SERVER_HEALTH_CONNECTED : LV_SERVER_HEALTH_DISCONNECTED;
+    return 1;
 }
 
 LVProtocolInventory lv_protocol_parse_inventory(LVProtocolSlice json) {
