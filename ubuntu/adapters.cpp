@@ -729,8 +729,15 @@ bool valid_header_value(const std::string &value) {
 
 bool request_url_allowed(const std::string &url) {
     ProtocolEndpointFacts facts;
-    return endpoint_facts(url, facts) && facts.scheme_allowed && facts.no_userinfo &&
-        facts.no_query_fragment;
+    if (!endpoint_facts(url, facts) || !facts.scheme_allowed || !facts.no_userinfo) return false;
+    if (facts.no_query_fragment) return true;
+    // The setup catalog is the sole request that needs a query. Keep endpoint
+    // settings and all other query/fragment-bearing request URLs restricted.
+    constexpr std::string_view catalog_suffix = "/models?show_all=true";
+    const std::string_view text(url);
+    return text.size() > catalog_suffix.size() &&
+        text.substr(text.size() - catalog_suffix.size()) == catalog_suffix &&
+        endpoint_is_valid(std::string(text.substr(0, text.size() - catalog_suffix.size())));
 }
 
 bool equal_ascii_case_insensitive(const std::string &left, const char *right) {
