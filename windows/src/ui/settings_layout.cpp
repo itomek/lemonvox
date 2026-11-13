@@ -1,4 +1,4 @@
-#include "ui/settings_layout.h"
+﻿#include "ui/settings_layout.h"
 
 #include "common/utf.h"
 #include "protocol.h"
@@ -212,6 +212,16 @@ std::wstring from_edit_newlines(const std::wstring &text) {
         }
     }
     return result;
+}
+
+std::wstring server_health_text(LVServerHealthStatus status) {
+    if (status == LV_SERVER_HEALTH_CONNECTED) {
+        return L"\u25CF Server connected\nConfigured server responded with a compatible model inventory.";
+    }
+    if (status == LV_SERVER_HEALTH_DISCONNECTED) {
+        return L"\u25CF Could not connect\nRequires Lemonade or another compatible OpenAI server, running locally or remotely.";
+    }
+    return L"\u25CF Checking server\nChecking the saved server endpoint.";
 }
 
 StatusText loading_status() {

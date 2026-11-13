@@ -8,6 +8,8 @@ macOS comes first. Windows and Ubuntu follow, sharing the dictation pipeline and
 
 The server must provide audio transcription, chat completion for cleanup, and compatible model-discovery metadata. Local and remote HTTP/HTTPS server endpoints ending in /v1 are supported; an OpenAI-compatible chat API alone is insufficient. Lemonade 2026.44.1 is the tested baseline. LemonVox does not bundle an inference server or models.
 
+Settings on macOS, Windows and Ubuntu show a live server connection indicator. The app checks the saved endpoint in the background every ten seconds (three-second timeout), including while Settings is closed. Green means the models API is reachable, not that the selected models are ready; red shows the connection failure and server prerequisite.
+
 ## Start here
 
 - [Product specification](docs/spec.md): workflow, technical proposal, and milestones.

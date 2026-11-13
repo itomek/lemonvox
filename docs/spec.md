@@ -31,6 +31,8 @@ For example, “um send Alex the 14 invoices on Friday” should become “Send 
 
 Settings provide the Lemonade endpoint, ASR model, cleanup model, cleanup prompt, separate dictation and cancellation shortcuts, and appearance. Windows retains its existing target policy. The Mac dictation default is Command twice, with configurable regular combinations and modifier double taps; its cancellation default is Right Command–Escape. Windows and Ubuntu are planned to default to Alt twice for dictation and must provide an equivalent configurable cancellation action in their native settings. Dictation and cancellation choices must be distinct.
 
+The native app monitors its saved endpoint independently of Settings. Shared core policy schedules a lightweight models-API check every ten seconds with a three-second deadline. Settings shows neutral checking, green API connectivity, or a red failure plus the server prerequisite. Selected-model readiness is separate; health checks do not run inference or send audio. Endpoint changes and shutdown invalidate pending health results.
+
 Appearance choices are Auto, Light, and Dark. Auto follows the OS setting; native shells use their platform semantic colors and controls rather than application-specific color treatments.
 
 Local inference is preferred. Lemonade manages model loading, inference, GPU acceleration, and provider routing. An explicitly configured provider can be reached through Lemonade; settings should make the selected endpoint and routing implications clear.

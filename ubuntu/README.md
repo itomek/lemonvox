@@ -36,6 +36,13 @@ model and an independent cleanup model after Refresh models. Local and remote HT
 endpoints ending in /v1, without embedded credentials, queries or fragments, are accepted. Settings
 loads asynchronously and remains usable if the server is unavailable.
 
+A background check requests the saved endpoint's `/models` API every ten seconds,
+with a three-second timeout, even while Settings is closed. Each Settings page
+shows neutral checking, green API-connected, or red API-unavailable status; the
+separate-server requirement appears only when unavailable. This checks API
+reachability and inventory format, not model readiness or server identity.
+Unsaved endpoint edits do not change the health check until Save.
+
 The Settings window provides Start, Stop, Cancel and Copy even without the
 extension. Settings changes apply after Save and to the next operation.
 Auto follows the OS; Light and Dark apply native libadwaita appearance.

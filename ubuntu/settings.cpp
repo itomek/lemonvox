@@ -103,15 +103,18 @@ AdwEntryRow *entry(AdwPreferencesGroup *parent, const char *title, const std::st
     gtk_editable_set_text(GTK_EDITABLE(row), value.c_str());
     adw_preferences_group_add(parent, GTK_WIDGET(row)); return row;
 }
-AdwPreferencesPage *page(AdwPreferencesWindow *window, const char *title, const char *icon) {
+AdwPreferencesPage *page(AdwPreferencesWindow *window, const char *title, const char *icon,
+    std::vector<AdwActionRow *> &health_rows, std::vector<GtkImage *> &health_icons) {
     auto *p = ADW_PREFERENCES_PAGE(adw_preferences_page_new());
     adw_preferences_page_set_title(p, title); adw_preferences_page_set_name(p, title); adw_preferences_page_set_icon_name(p, icon);
-    // Keep the separate server prerequisite visible on every Settings page.
-    group(p, "Server required",
-        "Install and run Lemonade or another OpenAI-compatible server separately on this computer. "
-        "It must provide audio transcription, chat completions and model-discovery metadata supported by LemonVox. "
-        "Local and remote HTTP/HTTPS endpoints are supported. Generic OpenAI API compatibility alone is insufficient. "
-        "Lemonade 2026.44.1 is the tested baseline; other servers are unverified.");
+    auto *health_group = group(p, "Server connection");
+    auto *row = ADW_ACTION_ROW(adw_action_row_new());
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), "Checking server API…");
+    auto *indicator = GTK_IMAGE(gtk_image_new_from_icon_name("network-server-symbolic"));
+    gtk_widget_add_css_class(GTK_WIDGET(indicator), "dim-label");
+    adw_action_row_add_prefix(row, GTK_WIDGET(indicator));
+    adw_preferences_group_add(health_group, GTK_WIDGET(row));
+    health_rows.push_back(row); health_icons.push_back(indicator);
     adw_preferences_window_add(window, p); return p;
 }
 AdwComboRow *combo(AdwPreferencesGroup *parent, const char *title) {
@@ -129,7 +132,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     gtk_window_set_default_size(window_, 680, 680);
     gtk_window_set_hide_on_close(window_, TRUE);
     auto *preferences = ADW_PREFERENCES_WINDOW(window_);
-    auto *general = page(preferences, "General", "preferences-system-symbolic");
+    auto *general = page(preferences, "General", "preferences-system-symbolic", health_rows_, health_icons_);
     auto *interaction = group(general, "Dictation", "Stop finishes the recording. Cancel discards it. Use a key combination; Alt twice is unavailable.");
     state_ = GTK_LABEL(gtk_label_new("Ready. Start here or use the LemonVox desktop extension."));
     gtk_label_set_wrap(state_, TRUE);
@@ -175,7 +178,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     adw_action_row_set_subtitle(version, "Development build · Ubuntu GNOME Wayland");
 #endif
     adw_preferences_group_add(appearance, GTK_WIDGET(version));
-    auto *models_page = page(preferences, "Models", "audio-input-microphone-symbolic");
+    auto *models_page = page(preferences, "Models", "audio-input-microphone-symbolic", health_rows_, health_icons_);
     auto *connection = group(models_page, "Server connection", "Local and remote HTTP/HTTPS endpoints are supported. The separate server manages models, providers and credentials; models marked remote provider send text through that configured provider.");
     endpoint_ = entry(connection, "API endpoint", settings_.endpoint);
     auto *refresh_button = gtk_button_new_with_label("Refresh models");
@@ -193,7 +196,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     gtk_text_buffer_set_text(gtk_text_view_get_buffer(prompt_), settings_.cleanup_prompt.c_str(), -1);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), GTK_WIDGET(prompt_));
     adw_preferences_group_add(prompt_group, scroller);
-    auto *diagnostics_page = page(preferences, "Diagnostics", "dialog-information-symbolic");
+    auto *diagnostics_page = page(preferences, "Diagnostics", "dialog-information-symbolic", health_rows_, health_icons_);
     auto *logging = group(diagnostics_page, "Private diagnostics", "Logs contain fixed event categories and HTTP status only. Audio, transcripts and model responses are never logged.");
     auto *debug_row = ADW_ACTION_ROW(adw_action_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(debug_row), "Debug traces");
@@ -226,6 +229,21 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
 }
 SettingsWindow::~SettingsWindow() { gtk_window_destroy(window_); g_object_unref(window_); }
 void SettingsWindow::present() { gtk_window_present(window_); }
+void SettingsWindow::health(LVServerHealthStatus status) {
+    const char *title = status == LV_SERVER_HEALTH_CONNECTED ? "Server API connected" :
+        status == LV_SERVER_HEALTH_DISCONNECTED ? "Server API unavailable" : "Checking server API…";
+    const char *detail = status == LV_SERVER_HEALTH_DISCONNECTED ?
+        "Run Lemonade or another OpenAI-compatible server separately, then check the saved endpoint. "
+        "Audio transcription, chat completions and supported model-discovery metadata are required." : "";
+    for (std::size_t i = 0; i < health_rows_.size(); ++i) {
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(health_rows_[i]), title);
+        adw_action_row_set_subtitle(health_rows_[i], detail);
+        auto *icon = GTK_WIDGET(health_icons_[i]);
+        for (const char *style : {"dim-label", "success", "error"}) gtk_widget_remove_css_class(icon, style);
+        gtk_widget_add_css_class(icon, status == LV_SERVER_HEALTH_CONNECTED ? "success" :
+            status == LV_SERVER_HEALTH_DISCONNECTED ? "error" : "dim-label");
+    }
+}
 void SettingsWindow::state(const std::string &text, bool recording, bool active, bool has_result) {
     gtk_label_set_text(state_, text.c_str());
     gtk_widget_set_sensitive(GTK_WIDGET(start_), !active);

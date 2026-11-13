@@ -10,6 +10,7 @@
 #include "insertion/integrity.h"
 #include "insertion/win_insertion.h"
 #include "net/model_catalog.h"
+#include "net/server_health.h"
 #include "net/winhttp_transport.h"
 #include "prefs/preferences.h"
 #include "trigger/global_trigger.h"
@@ -125,6 +126,9 @@ private:
     std::unique_ptr<WinHttpTransport> transport_;
     std::unique_ptr<WinHttpTransport> catalog_transport_;
     std::unique_ptr<ModelCatalog> catalog_;
+    std::unique_ptr<WinHttpTransport> health_transport_;
+    std::unique_ptr<ServerHealthMonitor> health_;
+    UINT_PTR health_timer_ = 0;
     std::unique_ptr<WinInsertion> insertion_;
     std::unique_ptr<DictationController> controller_;
     std::unique_ptr<GlobalTrigger> trigger_;
@@ -275,6 +279,7 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
         // Applies to the next operation; a running one keeps its snapshot.
         preferences_->replace(updated);
         capture_->set_device_id(updated.capture_device_id);
+        health_->set_endpoint(updated.endpoint);
         return true;
     };
     services.open_microphone_privacy = [] { open_uri(L"ms-settings:privacy-microphone"); };
@@ -282,6 +287,19 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
 
     open_settings_signal_ = [this] { open_settings(); };
     instance_app_ = this;
+    WinHttpTransport::Options health_options;
+    health_options.default_request_timeout_ms = 3000;
+    health_options.resource_timeout_ms = 3000;
+    health_transport_ = std::make_unique<WinHttpTransport>(executor_, health_options);
+    health_ = std::make_unique<ServerHealthMonitor>(*health_transport_, [] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }, [this](LVServerHealthStatus status) {
+        if (settings_) settings_->set_server_health(status);
+    });
+    health_->set_endpoint(current.endpoint);
+    health_timer_ = SetTimer(nullptr, 0, 1000, [](HWND, UINT, UINT_PTR, DWORD) {
+        if (instance_app_ && instance_app_->health_) instance_app_->health_->tick();
+    });
     foreground_hook_ = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
         &App::foreground_changed, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
     WNDCLASSEXW signal_class{};
@@ -318,6 +336,9 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     // Orderly shutdown: stop input sources, then the workflow (which shuts down
     // every adapter), then the executor, then windows.
     if (foreground_hook_) UnhookWinEvent(foreground_hook_);
+    if (health_timer_) KillTimer(nullptr, health_timer_);
+    health_->shutdown();
+    health_transport_->shutdown();
     instance_app_ = nullptr;
     trigger_->shutdown();
     controller_->shutdown();

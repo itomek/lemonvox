@@ -74,6 +74,9 @@ xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/
 "$OUT/app-identity-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/settings_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/settings-test"
+xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/tests/server_health_test.swift" "${CORE_OBJECTS[@]}" -lc++ -o "$OUT/server-health-test"
+"$OUT/server-health-test"
+
 "$OUT/settings-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/AppIdentity.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -o "$OUT/settings-ui-test"

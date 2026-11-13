@@ -88,6 +88,34 @@ typedef struct {
     uint8_t has_reason;
 } LVProtocolInventory;
 
+/* Serialized by the native UI executor. Times are monotonic seconds. The
+ * platform owns GET /models, a 3-second transport timeout and cancellation.
+ * Connected means valid inventory API response, not available inference models.
+ * begin invalidates a timed-out active_request and returns 0; the native owner
+ * must cancel that transport before asking begin again. Poll every second. */
+typedef enum {
+    LV_SERVER_HEALTH_CHECKING,
+    LV_SERVER_HEALTH_CONNECTED,
+    LV_SERVER_HEALTH_DISCONNECTED,
+} LVServerHealthStatus;
+
+typedef struct {
+    LVServerHealthStatus status;
+    uint64_t next_request;
+    uint64_t active_request;
+    double request_started_at;
+    double next_check_at;
+} LVServerHealth;
+
+void lv_server_health_init(LVServerHealth *health);
+/* Call when the saved endpoint changes; cancel native work first. */
+void lv_server_health_reset(LVServerHealth *health);
+uint64_t lv_server_health_begin(LVServerHealth *health, double monotonic_seconds);
+/* Returns 1 if this completion belonged to the current request, including
+ * failure. Returns 0 for stale/duplicate completions. Borrows body synchronously. */
+uint8_t lv_server_health_complete(LVServerHealth *health, uint64_t request,
+    double monotonic_seconds, uint8_t transport_ok, int http_status, LVProtocolSlice body);
+
 LVProtocolStatus lv_protocol_validate_endpoint(const LVEndpointFacts *endpoint);
 LVProtocolStatus lv_protocol_validate_config(const LVProtocolConfig *config);
 /* Uses endpoint facts only so Settings can discover models before selections exist. */

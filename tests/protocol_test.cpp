@@ -111,6 +111,52 @@ void expectCleanupPayload(const LVProtocolBytes &bytes, const std::string &model
 } // namespace
 
 int main() {
+    // Server health is API reachability, not selected-model readiness.
+    LVServerHealth health{};
+    lv_server_health_init(&health);
+    assert(health.status == LV_SERVER_HEALTH_CHECKING);
+    const auto firstHealth = lv_server_health_begin(&health, 100);
+    assert(firstHealth && !lv_server_health_begin(&health, 101));
+    assert(lv_server_health_complete(&health, firstHealth, 101, 1, 200, slice(R"({"data":[]})")));
+    assert(health.status == LV_SERVER_HEALTH_CONNECTED);
+    assert(!lv_server_health_begin(&health, 109.9));
+    auto healthRequest = lv_server_health_begin(&health, 110);
+    assert(healthRequest && health.status == LV_SERVER_HEALTH_CONNECTED);
+    assert(lv_server_health_complete(&health, healthRequest, 111, 1, 200, slice("<html>error</html>")));
+    assert(health.status == LV_SERVER_HEALTH_DISCONNECTED);
+    for (const auto &invalidBody : {"{", "{}", "{\"data\":null}"}) {
+        healthRequest = lv_server_health_begin(&health, health.next_check_at);
+        assert(healthRequest);
+        assert(lv_server_health_complete(&health, healthRequest, health.request_started_at + 1, 1, 200, slice(invalidBody)));
+        assert(health.status == LV_SERVER_HEALTH_DISCONNECTED);
+    }
+    for (const int code : {401, 404, 500}) {
+        healthRequest = lv_server_health_begin(&health, health.next_check_at);
+        assert(healthRequest);
+        assert(lv_server_health_complete(&health, healthRequest, health.request_started_at + 1, 1, code, slice(R"({"data":[]})")));
+        assert(health.status == LV_SERVER_HEALTH_DISCONNECTED);
+    }
+    healthRequest = lv_server_health_begin(&health, health.next_check_at);
+    assert(lv_server_health_complete(&health, healthRequest, health.request_started_at + 1, 0, 200, slice(R"({"data":[]})")));
+    assert(health.status == LV_SERVER_HEALTH_DISCONNECTED);
+    healthRequest = lv_server_health_begin(&health, health.next_check_at);
+    const auto timedOutAt = health.request_started_at + 3;
+    assert(!lv_server_health_begin(&health, timedOutAt));
+    assert(!health.active_request && health.status == LV_SERVER_HEALTH_DISCONNECTED);
+    assert(!lv_server_health_complete(&health, healthRequest, timedOutAt, 1, 200, slice(R"({"data":[]})")));
+    healthRequest = lv_server_health_begin(&health, health.next_check_at);
+    lv_server_health_reset(&health);
+    assert(health.status == LV_SERVER_HEALTH_CHECKING && !health.active_request);
+    const auto newEndpointRequest = lv_server_health_begin(&health, 200);
+    assert(newEndpointRequest && newEndpointRequest != healthRequest);
+    assert(!lv_server_health_complete(&health, healthRequest, 201, 1, 200, slice(R"({"data":[]})")));
+    assert(lv_server_health_complete(&health, newEndpointRequest, 201, 1, 200, slice(R"({"data":[]})")));
+    assert(health.status == LV_SERVER_HEALTH_CONNECTED);
+    assert(!lv_server_health_complete(&health, newEndpointRequest, 202, 0, 0, slice("")));
+    healthRequest = lv_server_health_begin(&health, 210);
+    assert(lv_server_health_complete(&health, healthRequest, 213, 1, 200, slice(R"({"data":[]})")));
+    assert(health.status == LV_SERVER_HEALTH_DISCONNECTED);
+
     // Remote servers use the same API paths as localhost; the host fact must
     // not prevent a request to an explicitly configured LAN/HTTPS endpoint.
     for (const char *remote : {"http://192.168.1.231:13305/api/v1", "https://inference.example.com/v1"}) {

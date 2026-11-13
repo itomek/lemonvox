@@ -36,7 +36,9 @@ enum RunningAppVersion {
 @MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     let window: NSWindow
     let appVersion = NSTextField(labelWithString: RunningAppVersion.display(info: Bundle.main.infoDictionary ?? [:]))
-    let serverRequirement = NSTextField(wrappingLabelWithString: "Requires Lemonade or another OpenAI-compatible server, running separately.\nUse a local or remote HTTP/HTTPS endpoint with transcription, chat completion, and compatible model discovery.")
+    let serverIndicator = NSImageView()
+    let serverStatus = NSTextField(labelWithString: "Checking configured server…")
+    let serverRequirement = NSTextField(wrappingLabelWithString: "Checking the configured inference server.")
     let scroll = NSScrollView()
     let categoryList = NSTableView()
     var scrolls: [NSScrollView] = []
@@ -169,7 +171,7 @@ enum RunningAppVersion {
         }
         scroll.removeFromSuperview()
         for document in [generalView, modelsView, diagnosticsView] {
-            let pane = NSScrollView(frame:NSRect(x:180,y:128,width:640,height:562))
+            let pane = NSScrollView(frame:NSRect(x:180,y:148,width:640,height:542))
             pane.autoresizingMask = [.width,.height]; pane.hasVerticalScroller = true; pane.drawsBackground = false
             document.autoresizingMask = [.width]; pane.documentView = document
             root.addSubview(pane); scrolls.append(pane)
@@ -195,11 +197,19 @@ enum RunningAppVersion {
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
         appVersion.setAccessibilityLabel("Running \(AppIdentity.running.name) version and build")
         generalView.addSubview(appVersion)
-        serverRequirement.frame=NSRect(x:204,y:64,width:592,height:54)
+        serverIndicator.frame=NSRect(x:204,y:114,width:14,height:14)
+        serverIndicator.image=NSImage(systemSymbolName:"circle.fill", accessibilityDescription:nil)
+        serverIndicator.setAccessibilityElement(false)
+        root.addSubview(serverIndicator)
+        serverStatus.frame=NSRect(x:226,y:112,width:570,height:20)
+        serverStatus.font = .systemFont(ofSize:12,weight:.medium); serverStatus.autoresizingMask = [.width]
+        root.addSubview(serverStatus)
+        serverRequirement.frame=NSRect(x:226,y:64,width:570,height:44)
         serverRequirement.font = .systemFont(ofSize:11); serverRequirement.textColor = .secondaryLabelColor
         serverRequirement.autoresizingMask = [.width]; serverRequirement.isSelectable = true
-        serverRequirement.setAccessibilityLabel("Inference server requirement")
+        serverRequirement.setAccessibilityLabel("Inference server status detail")
         root.addSubview(serverRequirement)
+        setServerHealth(LV_SERVER_HEALTH_CHECKING)
         save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:706,y:16,width:90,height:30); save.autoresizingMask = [.minXMargin]; root.addSubview(save)
     }
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
@@ -261,13 +271,13 @@ enum RunningAppVersion {
         guard notification.object as? NSTextField === endpoint else { return }
         generation += 1; refreshTask?.cancel(); versionTask?.cancel(); loading=false
         status.stringValue="Endpoint changed. Refresh models to discover available choices."
-        version.stringValue="Tested with Lemonade 2026.44.1 · connected version not checked"
+        version.stringValue="Tested with Lemonade 2026.44.1 · server version not checked"
     }
     @objc func refresh() {
         refreshTask?.cancel(); versionTask?.cancel(); generation += 1
         let current=generation; let base=endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines)
         loading=true; status.stringValue="Loading models from server…"; retry.title="Refresh"
-        version.stringValue="Tested with Lemonade 2026.44.1 · checking connected version…"
+        version.stringValue="Tested with Lemonade 2026.44.1 · checking server version…"
         log.record(.discoveryStarted)
         refreshTask=Task { [weak self] in
             guard let self else { return }
@@ -293,7 +303,7 @@ enum RunningAppVersion {
             guard let self else { return }
             let actual=await self.readVersion(base)
             guard !Task.isCancelled, self.generation == current, self.window.isVisible else { return }
-            self.version.stringValue="Tested with Lemonade 2026.44.1 · connected: " + (actual ?? "unavailable")
+            self.version.stringValue="Tested with Lemonade 2026.44.1 · server version: " + (actual ?? "unavailable")
         }
     }
     private var selectedAppearance: AppearanceChoice {
@@ -349,6 +359,23 @@ enum RunningAppVersion {
     }
     @objc func refreshLogs() {
         logPath.stringValue=(log.problem.map { $0 + " · " } ?? "") + log.file.path
+    }
+    func setServerHealth(_ status: LVServerHealthStatus) {
+        switch status {
+        case LV_SERVER_HEALTH_CONNECTED:
+            serverIndicator.contentTintColor = .systemGreen
+            serverStatus.stringValue = "Server connected"
+            serverRequirement.stringValue = "The configured server is reachable. Model availability is checked separately."
+        case LV_SERVER_HEALTH_DISCONNECTED:
+            serverIndicator.contentTintColor = .systemRed
+            serverStatus.stringValue = "Could not connect to configured server"
+            serverRequirement.stringValue = "Requires Lemonade or another OpenAI-compatible server, running separately, with transcription, chat completion and compatible model discovery."
+        default:
+            serverIndicator.contentTintColor = .secondaryLabelColor
+            serverStatus.stringValue = "Checking configured server…"
+            serverRequirement.stringValue = "Checking the configured inference server."
+        }
+        serverStatus.setAccessibilityLabel(serverStatus.stringValue)
     }
     func setAccessibilityStatus(_ text: String) {
         accessibilityStatus.stringValue=text; accessibilityStatus.toolTip=text

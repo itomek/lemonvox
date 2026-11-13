@@ -9,8 +9,15 @@ struct Test {
     GtkApplication *app;
     std::unique_ptr<lemonvox::ubuntu::SettingsWindow> window;
     std::string output, page;
+    LVServerHealthStatus health_status = LV_SERVER_HEALTH_CHECKING;
     int result = 1;
 };
+bool has_label(GtkWidget *widget, const std::string &text) {
+    if (GTK_IS_LABEL(widget) && std::string(gtk_label_get_text(GTK_LABEL(widget))) == text) return true;
+    for (auto *child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child))
+        if (has_label(child, text)) return true;
+    return false;
+}
 gboolean snapshot(gpointer data) {
     auto &test = *static_cast<Test *>(data);
     auto *windows = gtk_application_get_windows(test.app);
@@ -18,6 +25,10 @@ gboolean snapshot(gpointer data) {
     auto *window = GTK_WINDOW(windows->data);
     assert(std::string(gtk_window_get_title(window)) == "LemonVox Settings");
     auto *widget = GTK_WIDGET(window);
+    const auto expected = test.health_status == LV_SERVER_HEALTH_CONNECTED ? "Server API connected" :
+        test.health_status == LV_SERVER_HEALTH_DISCONNECTED ? "Server API unavailable" : "Checking server API…";
+    assert(has_label(widget, expected));
+    assert(!has_label(widget, "Server required"));
     const int width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
     assert(width >= 600 && height >= 600);
     auto *paintable = gtk_widget_paintable_new(widget);
@@ -40,6 +51,8 @@ int main(int argc, char **argv) {
     Test test;
     test.output = argc > 1 ? argv[1] : "";
     test.page = argc > 3 ? argv[3] : "General";
+    if (argc > 4 && std::string(argv[4]) == "connected") test.health_status = LV_SERVER_HEALTH_CONNECTED;
+    if (argc > 4 && std::string(argv[4]) == "disconnected") test.health_status = LV_SERVER_HEALTH_DISCONNECTED;
     lemonvox::ubuntu::Settings settings;
     settings.appearance = argc > 2 ? argv[2] : "auto";
     test.app = GTK_APPLICATION(adw_application_new("com.itomek.LemonVox.SettingsTest", G_APPLICATION_NON_UNIQUE));
@@ -49,6 +62,7 @@ int main(int argc, char **argv) {
         lemonvox::ubuntu::apply_appearance(start.settings);
         test.window = std::make_unique<lemonvox::ubuntu::SettingsWindow>(app, start.settings,
             [](const auto &, std::string &) { return true; }, [](const auto &) {}, [] {}, [](const auto &) {});
+        test.window->health(test.health_status);
         test.window->present();
         auto *windows = gtk_application_get_windows(app);
         assert(windows);

@@ -33,6 +33,7 @@ public:
     SettingsWindow(GtkApplication *, Settings, Save, Refresh, std::function<void()> open_log, std::function<void(const std::string &)> control);
     ~SettingsWindow();
     void present();
+    void health(LVServerHealthStatus);
     void notice(const std::string &text) { status(text); }
     void state(const std::string &, bool recording, bool active, bool has_result);
     void models(std::vector<ProtocolModel>, const std::string &status);
@@ -48,6 +49,8 @@ private:
     GtkSwitch *debug_ = nullptr;
     GtkLabel *state_ = nullptr;
     std::vector<GtkLabel *> status_labels_;
+    std::vector<AdwActionRow *> health_rows_;
+    std::vector<GtkImage *> health_icons_;
     GtkButton *start_ = nullptr, *stop_ = nullptr, *cancel_button_ = nullptr, *copy_ = nullptr;
     Settings settings_;
     Save save_;

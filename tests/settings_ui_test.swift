@@ -221,21 +221,26 @@ import AppKit
         precondition(discoveries <= 1, "Switching categories must not restart discovery")
         for size in [NSSize(width:820,height:690), NSSize(width:820,height:480)] {
             pane.window.setContentSize(size)
-            for row in 0..<3 {
-                pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
-                precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
-                precondition(pane.serverRequirement.stringValue.contains("Lemonade or another OpenAI-compatible server"))
-                precondition(pane.serverRequirement.visibleRect.contains(pane.serverRequirement.bounds))
-                let notice = pane.serverRequirement.frame
-                precondition(notice.minX >= pane.scrolls[row].frame.minX + 20,
-                             "Server notice must align with Settings content, not the sidebar")
-                precondition(notice.minY >= pane.save.frame.maxY + 12,
-                             "Server notice must sit above the Save action row")
-                precondition(notice.maxY <= pane.scrolls[row].frame.minY - 8,
-                             "Settings scroll content must reserve space for the notice")
-                let textHeight = pane.serverRequirement.cell!.cellSize(forBounds:
-                    NSRect(x:0,y:0,width:notice.width,height:1000)).height
-                precondition(textHeight <= notice.height, "Server notice text must fit without clipping")
+            for health in [LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING] {
+                pane.setServerHealth(health)
+                for row in 0..<3 {
+                    pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
+                    precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
+                    precondition(pane.serverRequirement.stringValue.contains("Requires Lemonade") == (health == LV_SERVER_HEALTH_DISCONNECTED))
+                    precondition(pane.serverStatus.stringValue.contains("connected") == (health == LV_SERVER_HEALTH_CONNECTED))
+                    precondition(pane.serverIndicator.contentTintColor == (health == LV_SERVER_HEALTH_CONNECTED ? NSColor.systemGreen : health == LV_SERVER_HEALTH_DISCONNECTED ? NSColor.systemRed : NSColor.secondaryLabelColor))
+                    precondition(pane.serverRequirement.visibleRect.contains(pane.serverRequirement.bounds))
+                    let notice = pane.serverRequirement.frame
+                    precondition(notice.minX >= pane.scrolls[row].frame.minX + 20,
+                                 "Server notice must align with Settings content, not the sidebar")
+                    precondition(notice.minY >= pane.save.frame.maxY + 12,
+                                 "Server notice must sit above the Save action row")
+                    precondition(notice.maxY <= pane.scrolls[row].frame.minY - 8,
+                                 "Settings scroll content must reserve space for the notice")
+                    let textHeight = pane.serverRequirement.cell!.cellSize(forBounds:
+                        NSRect(x:0,y:0,width:notice.width,height:1000)).height
+                    precondition(textHeight <= notice.height, "Server notice text must fit without clipping")
+                }
             }
         }
         pane.window.setFrame(NSRect(x:0,y:0,width:820,height:480), display:true)
@@ -266,6 +271,7 @@ import AppKit
                     output.lockFocus()
                     for row in 0..<3 {
                     pane.categoryList.selectRowIndexes(IndexSet(integer:row),byExtendingSelection:false)
+                    pane.setServerHealth([LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING][row])
                     let activeScroll = pane.scrolls[row]
                     if let document = activeScroll.documentView {
                         activeScroll.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-activeScroll.contentView.bounds.height)))

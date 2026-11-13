@@ -2,6 +2,7 @@
 
 #include "common/trigger_binding.h"
 #include "prefs/preferences.h"
+#include "protocol.h"
 
 #include <windows.h>
 
@@ -111,6 +112,8 @@ public:
     bool pre_translate(MSG *message);
     // Whether the dark palette is in use (system dark mode, not high contrast).
     bool dark_mode_active() const;
+    // Snapshot supplied by the application-owned background monitor, even while closed.
+    void set_server_health(LVServerHealthStatus status);
 
     class Impl;
 

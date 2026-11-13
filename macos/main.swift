@@ -132,6 +132,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         return UpdateSafety(sessionBusy:self.workflowBusy || self.sampleSession.state != LV_IDLE,
             pasteBusy:self.inserting || self.paste.active,pendingText:self.pendingText != nil,settingsOpen:self.configuring)
     },changed:{ [weak self] in self?.updateMenuIndicator() })
+    let serverHealth = ServerHealthMonitor(transport: LocalHTTP())
     let diagnostics = DiagnosticLog.shared
     lazy var settings: SettingsController = {
         let synthetic = syntheticRun
@@ -218,6 +219,11 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if status == noErr { _ = installTrigger(triggerChoice) }
         else { panel.show("Shortcut handler unavailable (\(status)); use LV menu") }
         refreshMenu()
+        serverHealth.onChange = { [weak self] status in
+            guard let self, self.settingsLoaded else { return }
+            self.settings.setServerHealth(status)
+        }
+        if !syntheticRun { serverHealth.start(endpoint:config.endpoint) }
         diagnostics.record(.appStarted)
         if CommandLine.arguments.contains("--debug-status") {
             reportDebugState()
@@ -535,6 +541,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         // Normal Settings/dictation behavior remains unchanged.
         if updater.blocksNewDictation { updater.check(); return }
         settingsLoaded = true
+        settings.setServerHealth(serverHealth.status)
         settings.openAccessibility={ [weak self] in self?.openAccessibilitySettings() }
         settings.retryAccessibility={ [weak self] in self?.retryPermissionTrigger() }
         refreshAccessibilityStatus()
@@ -560,6 +567,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             guard let self else { return }
             UserDefaults.standard.set(try JSONEncoder().encode(updated), forKey:"dictationConfig")
             self.config=updated
+            self.serverHealth.setEndpoint(updated.endpoint)
         }, close: { [weak self] in
             guard let self else { return }
             self.configuring=false
@@ -979,6 +987,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
+        serverHealth.stop()
         debugTimer?.invalidate(); debugTimer=nil
         modifierTrigger?.stop(); cancel()
         if workflowCreated {
