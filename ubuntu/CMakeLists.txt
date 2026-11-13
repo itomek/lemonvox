@@ -30,6 +30,13 @@ target_include_directories(lemonvox_ubuntu_adapters PUBLIC "${CMAKE_CURRENT_LIST
 target_link_libraries(lemonvox_ubuntu_adapters PUBLIC lemonvox_core PkgConfig::GLIB PkgConfig::SOUP PkgConfig::GSTREAMER)
 
 if(BUILD_TESTING)
+    foreach(test_name model_setup model_setup_client)
+        add_executable(lemonvox_${test_name}_test "${LEMONVOX_ROOT}/tests/${test_name}_test.cpp")
+        target_compile_features(lemonvox_${test_name}_test PRIVATE cxx_std_17)
+        target_compile_options(lemonvox_${test_name}_test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+        target_link_libraries(lemonvox_${test_name}_test PRIVATE lemonvox_core)
+        add_test(NAME lemonvox_${test_name}_test COMMAND lemonvox_${test_name}_test)
+    endforeach()
     add_executable(lemonvox_ubuntu_adapters_test tests/adapters_test.cpp)
     target_compile_features(lemonvox_ubuntu_adapters_test PRIVATE cxx_std_17)
     # Narrow white-box lifetime regression; production targets retain normal

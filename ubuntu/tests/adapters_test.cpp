@@ -85,11 +85,14 @@ public:
 
     std::string endpoint() const { return endpoint_; }
     bool saw_request() const { return saw_request_; }
+    const std::string &query() const { return query_; }
 
 private:
     static void handle(SoupServer *, SoupServerMessage *message, const char *, GHashTable *, void *data) {
         auto *self = static_cast<LocalServer *>(data);
         self->saw_request_ = true;
+        const char *query = g_uri_get_query(soup_server_message_get_uri(message));
+        self->query_ = query ? query : "";
         if (self->hold_open_) {
             soup_server_message_pause(message);
             return;
@@ -104,6 +107,7 @@ private:
     std::string response_;
     bool hold_open_ = false;
     bool saw_request_ = false;
+    std::string query_;
 };
 
 void endpoint_facts_accept_local_and_remote() {
@@ -159,6 +163,44 @@ void loopback_transport_returns_owned_response() {
     });
     assert(context.until([&] { return completed; }));
     assert(server.saw_request());
+}
+
+// Rejecting every query URL prevents the production setup catalog from reaching
+// the server. Exercise the shared request builder through the native adapter.
+void transport_sends_the_model_setup_catalog_query() {
+    Context context;
+    LocalServer server(R"({"data":[]})");
+    SoupByteTransport transport(context.get());
+    lemonvox::ProtocolConfiguration config;
+    assert(lemonvox::ubuntu::endpoint_facts(server.endpoint() + "api/v1", config.endpoint));
+    TransportRequest request;
+    assert(lemonvox::Protocol::make_catalog_request(config, request) == LV_PROTOCOL_OK);
+    bool completed = false;
+    transport.send(40, std::move(request), [&](OperationId, TransportResponse response) {
+        assert(response.error == AdapterError::none && response.status == 200);
+        completed = true;
+    });
+    assert(context.until([&] { return completed; }));
+    assert(server.saw_request() && server.query() == "show_all=true");
+}
+
+void transport_still_rejects_other_query_and_fragment_urls() {
+    Context context;
+    LocalServer server;
+    SoupByteTransport transport(context.get());
+    for (const auto *suffix : {"v1/models?token=private", "v1/models?show_all=true&token=private",
+            "v1/models?show_all=true#fragment", "v1/models#fragment",
+            "v1/downloads?show_all=true", "models?show_all=true"}) {
+        TransportRequest request;
+        request.url = server.endpoint() + suffix;
+        bool completed = false;
+        transport.send(41, std::move(request), [&](OperationId, TransportResponse response) {
+            assert(response.error == AdapterError::invalid_input);
+            completed = true;
+        });
+        assert(context.until([&] { return completed; }));
+        assert(!server.saw_request());
+    }
 }
 
 void transport_accepts_a_host_outside_the_old_loopback_allowlist() {
@@ -366,6 +408,8 @@ int main() {
     endpoint_facts_accept_local_and_remote();
     manual_insertion_never_claims_a_safe_target();
     loopback_transport_returns_owned_response();
+    transport_sends_the_model_setup_catalog_query();
+    transport_still_rejects_other_query_and_fragment_urls();
     transport_accepts_a_host_outside_the_old_loopback_allowlist();
     synthetic_capture_returns_a_bounded_wav();
     cancel_suppresses_a_queued_capture_completion();

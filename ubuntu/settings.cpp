@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "adapters.h"
 #include <glib/gstdio.h>
 #include <sys/stat.h>
 #include <utility>
@@ -133,8 +134,8 @@ AdwComboRow *combo(AdwPreferencesGroup *parent, const char *title) {
     adw_preferences_group_add(parent, GTK_WIDGET(row)); return row;
 }
 }
-SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save, Refresh refresh, std::function<void()> open_log, std::function<void(const std::string &)> control)
-    : settings_(std::move(settings)), save_(std::move(save)), refresh_(std::move(refresh)) {
+SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save, Refresh refresh, std::function<void()> open_log, std::function<void(const std::string &)> control, Install install, std::function<void()> cancel_install)
+    : settings_(std::move(settings)), save_(std::move(save)), refresh_(std::move(refresh)), install_(std::move(install)), cancel_install_(std::move(cancel_install)) {
     window_ = GTK_WINDOW(adw_preferences_window_new());
     g_object_ref_sink(window_);
     gtk_window_set_application(window_, app);
@@ -201,6 +202,32 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     adw_combo_row_set_model(execution_, G_LIST_MODEL(execution_model)); g_object_unref(execution_model);
     adw_combo_row_set_selected(execution_, settings_.cleanup_backend == LV_CLEANUP_BACKEND_LEMONADE ?
         (settings_.cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT ? 2 : 1) : 0);
+    auto selected_state = +[](GObject *object, GParamSpec *, gpointer data) {
+        auto &self = *static_cast<SettingsWindow *>(data);
+        if (self.setup_active_) return;
+        const bool asr = object == G_OBJECT(self.asr_);
+        const auto selection = self.read();
+        ProtocolInventory catalog; catalog.models = self.inventory_;
+        self.status(Protocol::model_setup(catalog, asr ? selection.asr_model : selection.cleanup_model,
+            asr ? LV_MODEL_ASR : LV_MODEL_CLEANUP, self.server_available_, self.installation_supported_).message);
+    };
+    g_signal_connect(asr_, "notify::selected", G_CALLBACK(selected_state), this);
+    g_signal_connect(cleanup_, "notify::selected", G_CALLBACK(selected_state), this);
+    auto *setup = group(models_page, "Model setup", "The inference server downloads and stores model files. A download may be several GB. Loading an already installed model uses memory, usually at first inference. Setup never installs the server itself.");
+    auto *setup_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    install_asr_ = GTK_BUTTON(gtk_button_new_with_label("Set up transcription…"));
+    install_cleanup_ = GTK_BUTTON(gtk_button_new_with_label("Set up cleanup…"));
+    cancel_install_button_ = GTK_BUTTON(gtk_button_new_with_label("Cancel setup"));
+    gtk_box_append(GTK_BOX(setup_actions), GTK_WIDGET(install_asr_));
+    gtk_box_append(GTK_BOX(setup_actions), GTK_WIDGET(install_cleanup_));
+    gtk_box_append(GTK_BOX(setup_actions), GTK_WIDGET(cancel_install_button_));
+    g_signal_connect(install_asr_, "clicked", G_CALLBACK(+[](GtkButton *, gpointer p) { static_cast<SettingsWindow *>(p)->install(true); }), this);
+    g_signal_connect(install_cleanup_, "clicked", G_CALLBACK(+[](GtkButton *, gpointer p) { static_cast<SettingsWindow *>(p)->install(false); }), this);
+    g_signal_connect(cancel_install_button_, "clicked", G_CALLBACK(+[](GtkButton *, gpointer p) {
+        auto &self = *static_cast<SettingsWindow *>(p); if (self.cancel_install_) self.cancel_install_();
+    }), this);
+    gtk_widget_set_sensitive(GTK_WIDGET(cancel_install_button_), FALSE);
+    adw_preferences_group_add(setup, setup_actions);
     auto *prompt_group = group(models_page, "Cleanup prompt", "Choose Lemonade thinking off only for a Lemonade server. Compatible server keeps vendor options unset. The default prompt asks cleanup to preserve wording, facts and closings; selected models and custom prompts stay unchanged.");
     auto *scroller = gtk_scrolled_window_new();
     gtk_widget_set_size_request(scroller, -1, 150);
@@ -273,7 +300,11 @@ void SettingsWindow::state(const std::string &text, bool recording, bool active,
     gtk_widget_set_sensitive(GTK_WIDGET(cancel_button_), active || has_result);
     gtk_widget_set_sensitive(GTK_WIDGET(copy_), has_result);
 }
-void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::string &status) {
+void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::string &status, bool installation_supported, const std::string &catalog_endpoint, bool server_available) {
+    server_available_ = server_available;
+    catalog_endpoint_ = catalog_endpoint;
+    installation_supported_ = installation_supported;
+    inventory_ = inventory;
     auto fill = [&](AdwComboRow *row, bool asr, std::vector<std::string> &ids, const std::string &selected) {
         // Preserve an unsaved selection across an asynchronous refresh.
         const auto old_index = adw_combo_row_get_selected(row);
@@ -282,7 +313,7 @@ void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::str
         auto *model = gtk_string_list_new(nullptr); gtk_string_list_append(model, "Choose a model");
         for (const auto &m : inventory) if (asr ? m.asr : m.cleanup) {
             ids.push_back(m.id);
-            const auto label = (m.remote ? std::string("Remote provider · ") : std::string{}) + m.id;
+            const auto label = (m.remote ? std::string("Remote provider · ") : std::string{}) + m.id + (!m.remote && !m.downloaded ? " (not installed)" : m.loaded ? " (loaded)" : !m.remote && m.loaded_known ? " (installed; not loaded)" : !m.remote ? " (installed)" : "");
             gtk_string_list_append(model, label.c_str());
         }
         guint index = 0;
@@ -295,6 +326,54 @@ void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::str
     };
     fill(asr_, true, asr_ids_, settings_.asr_model); fill(cleanup_, false, cleanup_ids_, settings_.cleanup_model);
     this->status(status);
+}
+void SettingsWindow::setup_status(const std::string &text, bool active, const std::string &installed, bool asr) {
+    setup_active_ = active;
+    gtk_widget_set_sensitive(GTK_WIDGET(install_asr_), !active);
+    gtk_widget_set_sensitive(GTK_WIDGET(install_cleanup_), !active);
+    gtk_widget_set_sensitive(GTK_WIDGET(cancel_install_button_), active);
+    gtk_widget_set_sensitive(GTK_WIDGET(endpoint_), !active);
+    gtk_widget_set_sensitive(GTK_WIDGET(asr_), !active);
+    gtk_widget_set_sensitive(GTK_WIDGET(cleanup_), !active);
+    if (!installed.empty()) {
+        auto &ids = asr ? asr_ids_ : cleanup_ids_;
+        for (std::size_t i = 0; i < ids.size(); ++i) if (ids[i] == installed)
+            adw_combo_row_set_selected(asr ? asr_ : cleanup_, static_cast<guint>(i));
+    }
+    status(text);
+}
+void SettingsWindow::install(bool asr) {
+    if (setup_active_) return;
+    ProtocolEndpointFacts facts;
+    if (!endpoint_facts(read().endpoint, facts) || facts.canonical_base_url != catalog_endpoint_) { status("Server endpoint changed. Refresh models before setup."); return; }
+    if (!installation_supported_ || !install_) {
+        status("Automatic model installation is unavailable for this server/version. Open the inference server’s model manager, download a transcription or chat model with compatible metadata, then return and Refresh models. Settings are preserved."); return;
+    }
+    const auto selection = read();
+    std::string id = asr ? selection.asr_model : selection.cleanup_model;
+    ProtocolInventory catalog; catalog.models = inventory_;
+    const auto info = Protocol::model_setup(catalog, id, asr ? LV_MODEL_ASR : LV_MODEL_CLEANUP, server_available_, installation_supported_);
+    if (!info.can_install) { status(info.message); return; }
+    auto *dialog = ADW_MESSAGE_DIALOG(adw_message_dialog_new(window_, "Download model through the server?", nullptr));
+    const auto body = "The inference server at " + selection.endpoint + " will download and store “" + id + "”. Model files may be several GB and need network access, free disk space and permission to write the server’s model directory. No existing selection changes until setup succeeds.";
+    gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
+    gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
+    adw_message_dialog_set_body(dialog, body.c_str());
+    adw_message_dialog_add_responses(dialog, "cancel", "Cancel", "download", "Download model", nullptr);
+    adw_message_dialog_set_default_response(dialog, "cancel");
+    adw_message_dialog_set_close_response(dialog, "cancel");
+    struct Consent { SettingsWindow *window; std::string endpoint, id; bool asr; };
+    auto *consent = new Consent{this, selection.endpoint, id, asr};
+    g_signal_connect_data(dialog, "response", G_CALLBACK(+[](AdwMessageDialog *d, const char *response, gpointer data) {
+        auto &c = *static_cast<Consent *>(data);
+        if (std::string(response) == "download" && c.window->install_ && c.window->read().endpoint == c.endpoint &&
+            (c.asr ? c.window->read().asr_model : c.window->read().cleanup_model) == c.id) {
+            c.window->setup_status("Installing through the inference server…", true);
+            c.window->install_(c.endpoint, c.id, c.asr);
+        }
+        gtk_window_destroy(GTK_WINDOW(d));
+    }), consent, +[](gpointer data, GClosure *) { delete static_cast<Consent *>(data); }, G_CONNECT_DEFAULT);
+    gtk_window_present(GTK_WINDOW(dialog));
 }
 Settings SettingsWindow::read() const {
     auto result = settings_;

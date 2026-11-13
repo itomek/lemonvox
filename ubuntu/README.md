@@ -162,6 +162,30 @@ linked system packages, generally LGPL; GNOME Shell/GJS provides the extension
 runtime. Vendored yyjson is MIT and ships its license. No Qt, X11 input adapter,
 privileged keyboard hook, provider SDK or second dictation engine is added.
 
+## Model setup
+
+Installing the inference server, downloading model files, and loading an installed
+model into memory are separate steps. Install and start the server separately.
+Settings → Refresh models checks its catalog without starting downloads. Choose
+transcription and cleanup models independently. Use Set up transcription / Set up
+cleanup and confirm the named model before allowing the server to download it;
+files may occupy several GB on the server machine. The server owns storage,
+network access, disk space and filesystem permissions. An installed but unloaded
+model can load at first inference and is not a missing download.
+
+Setup shows an activity state while the server works. Cancel setup requests cancellation on the server and waits until its worker
+stops; the server may retain partial or completed files. If cancellation cannot
+be confirmed after network loss, check the server model manager and Refresh
+models before retrying. Failed setup preserves saved settings. After successful setup the chosen
+compatible model is selected in Settings; Save settings applies it to later sessions.
+For servers or versions without verified model-management support, open that
+server’s model manager, install a compatible transcription or chat model, and
+return to Refresh models. LemonVox never constructs shell commands from model IDs.
+
+Model installation requires verified Lemonade 2026.46.2+ management support and
+a compatible downloads API probe. See [shared model setup](../docs/model-setup.md)
+for the API contract and verification limits.
+
 ## Cleanup execution
 
 New settings target the factory Lemonade server with **Lemonade · thinking off**
@@ -184,9 +208,9 @@ than pasted. Model behavior can still change words, so review the result.
 Gemma-4-E2B-it-GGUF remains a fast candidate awaiting broader fidelity and native
 performance qualification. It is not selected automatically. An already installed
 Gemma-4-E4B-it-GGUF with thinking off is a quality-oriented alternative, also
-requiring review. Choose a compatible installed model explicitly; LemonVox does
-not download models or change server residency. First-load latency can exceed
-warm generation time.
+requiring review. Choose a compatible installed model explicitly. Cleanup does
+not download models or change server residency; model setup requires a separate
+confirmed action. First-load latency can exceed warm generation time.
 
 Cleanup diagnostics contain request duration, available token/reasoning counts
 and a fixed finish-reason category. Duration includes loading, queueing and

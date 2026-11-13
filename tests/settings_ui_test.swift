@@ -98,6 +98,102 @@ import AppKit
     }
 }
 
+@MainActor private func modelSetupUITest() async throws {
+    _ = NSApplication.shared
+    var downloaded=false, installs=0, confirmations=0, fail=false, slow=false
+    let asr=LocalModel(id:"setup-asr",downloaded:false,recipe:"whispercpp",labels:["transcription"],cloud_provider:nil)
+    let cleanup=LocalModel(id:"existing-cleanup",downloaded:true,recipe:"llamacpp",labels:["chat"],cloud_provider:nil)
+    func discovery() -> DiscoveredModels {
+        let json=Data("{\"data\":[{\"id\":\"setup-asr\",\"downloaded\":\(downloaded),\"recipe\":\"whispercpp\",\"labels\":[\"transcription\"]},{\"id\":\"existing-cleanup\",\"downloaded\":true,\"recipe\":\"llamacpp\",\"labels\":[\"chat\"]}]}".utf8)
+        return DiscoveredModels(transcription:[asr],cleanup:[cleanup],reason:nil,version:nil,
+            setupCatalog:ModelSetupCatalog(json:json,managementSupported:true))
+    }
+    let logDirectory=FileManager.default.temporaryDirectory.appendingPathComponent("lemonvox-combined-setup-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at:logDirectory) }
+    let pane=SettingsController(log:DiagnosticLog(directory:logDirectory),discover:{ _ in discovery() },install:{ _,_,_,_,progress in
+        installs += 1
+        await progress(ModelInstallUpdate(percent:25,message:"Downloading test model"))
+        if slow { try? await Task.sleep(nanoseconds:150_000_000) }
+        if fail { throw ModelSetupFailure(message:"Disk space unavailable") }
+        downloaded=true
+    })
+    pane.window.alphaValue=0
+    let longID="ValidCatalogModelIdentifierWithMoreThanThirtyTwoCharacters"
+    let confirmation=pane.downloadConfirmation(modelID:longID,sizeGB:1.25)
+    precondition(confirmation.informativeText.contains(longID),"Download consent must name the exact validated model, including long IDs")
+    precondition(confirmation.informativeText.contains("1.25 GB"))
+    let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:"setup-asr",cleanupModel:"existing-cleanup",cleanupPrompt:"Keep draft",cleanupBackend:.lemonade,cleanupThinking:.serverDefault,cleanupContextTokens:32768)
+    var saved:DictationConfig?
+    pane.show(config:config,save:{ saved=$0 },close:{})
+    pane.categoryList.selectRowIndexes(IndexSet(integer:1),byExtendingSelection:false)
+    pane.saveDiagnosticPreferences = { _ in }
+    func checkCleanupDraft() {
+        precondition(pane.cleanupBackend.indexOfSelectedItem == 1 && pane.cleanupThinking.state == .on)
+        precondition(pane.prompt.string == "Keep draft" && pane.cleanup.selectedID == "existing-cleanup")
+    }
+    checkCleanupDraft()
+    for height in [690,480] {
+        pane.window.setContentSize(NSSize(width:820,height:height))
+        pane.window.contentView?.layoutSubtreeIfNeeded()
+        precondition(!pane.cleanupBackend.frame.intersects(pane.setupTranscription.frame))
+        precondition(!pane.cleanupThinking.frame.intersects(pane.setupStatus.frame))
+        pane.cleanupBackend.scrollToVisible(pane.cleanupBackend.bounds)
+        precondition(pane.cleanupBackend.visibleRect.contains(pane.cleanupBackend.bounds))
+        pane.setupStatus.scrollToVisible(pane.setupStatus.bounds)
+        precondition(pane.setupStatus.visibleRect.contains(pane.setupStatus.bounds))
+    }
+    pane.window.setContentSize(NSSize(width:820,height:690))
+    func wait(_ condition: () -> Bool) async throws {
+        let deadline=Date().addingTimeInterval(5)
+        while !condition() {
+            precondition(Date() < deadline,"Timed out waiting for model setup UI")
+            try await Task.sleep(nanoseconds:5_000_000)
+        }
+    }
+    try await wait { !pane.loading }
+    precondition(installs == 0 && confirmations == 0,"Settings discovery must not start model downloads")
+    precondition(pane.setupStatus.stringValue.contains("Not installed"))
+    pane.confirmModelDownload={ _,_ in confirmations += 1; return false }
+    pane.beginModelSetup(purpose:LV_MODEL_ASR)
+    try await wait { !pane.installing }
+    precondition(installs == 0 && confirmations == 1,"Declining consent must not contact an installation endpoint")
+    checkCleanupDraft()
+    pane.confirmModelDownload={ _,_ in confirmations += 1; return true }
+    fail=true
+    pane.beginModelSetup(purpose:LV_MODEL_ASR)
+    try await wait { !pane.installing }
+    precondition(pane.setupStatus.stringValue.contains("Disk space") && pane.transcription.selectedID == "setup-asr")
+    precondition(pane.setupStatus.visibleRect.contains(pane.setupStatus.bounds),"Explicit setup must scroll its status fully into view")
+    precondition(pane.cleanup.selectedID == "existing-cleanup" && pane.prompt.string == "Keep draft" && saved == nil)
+    checkCleanupDraft()
+    fail=false; slow=true
+    pane.beginModelSetup(purpose:LV_MODEL_ASR)
+    try await wait { installs == 2 }
+    pane.transcription.commit(ModelChoice(id:"new-explicit-choice",title:"new-explicit-choice"))
+    try await wait { !pane.installing }
+    precondition(pane.transcription.selectedID == "new-explicit-choice","Install completion must preserve a newer explicit model choice")
+    precondition(pane.cleanup.selectedID == "existing-cleanup")
+    checkCleanupDraft()
+    downloaded=false
+    pane.transcription.commit(ModelChoice(id:"setup-asr",title:"setup-asr")); pane.refresh()
+    try await wait { !pane.loading }
+    pane.beginModelSetup(purpose:LV_MODEL_ASR)
+    try await wait { installs == 3 }
+    pane.endpoint.stringValue="http://127.0.0.1:13306/v1"
+    pane.controlTextDidChange(Notification(name:NSControl.textDidChangeNotification,object:pane.endpoint))
+    precondition(!pane.installing)
+    try await Task.sleep(nanoseconds:200_000_000)
+    precondition(pane.endpoint.stringValue.contains("13306") && pane.transcription.selectedID == "setup-asr")
+    precondition(pane.cleanup.selectedID == "existing-cleanup" && saved == nil)
+    checkCleanupDraft()
+    pane.saveSettings()
+    precondition(saved?.cleanupBackend == .lemonade && saved?.cleanupThinking == .serverDefault)
+    precondition(saved?.cleanupContextTokens == 32768 && saved?.cleanupPrompt == "Keep draft")
+    precondition(saved?.asrModel == "setup-asr" && saved?.cleanupModel == "existing-cleanup")
+    pane.window.close()
+    print("PASS: native setup requires consent, reports failures, preserves settings and newer selections, and rejects stale endpoint completions")
+}
+
 @main struct SettingsUITests {
     @MainActor static func main() {
         setbuf(stdout,nil)
@@ -117,6 +213,15 @@ import AppKit
         if CommandLine.arguments.contains("--diagnostics-only") {
             debugDiagnosticsPreferenceTest()
             return
+        }
+        if CommandLine.arguments.contains("--setup-only") {
+            _ = NSApplication.shared
+            Task { @MainActor in
+                do { try await modelSetupUITest() }
+                catch { fatalError("Model setup UI test failed: \(error)") }
+                NSApp.terminate(nil)
+            }
+            NSApp.run(); return
         }
         generalPreferencesTest()
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -275,7 +380,8 @@ import AppKit
                     pane.setServerHealth([LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING][row])
                     let activeScroll = pane.scrolls[row]
                     if let document = activeScroll.documentView {
-                        activeScroll.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-activeScroll.contentView.bounds.height)))
+                        let bottom = row == 1 && CommandLine.arguments.contains("--render-model-bottom")
+                        activeScroll.contentView.scroll(to:NSPoint(x:0,y:bottom ? 0 : max(0,document.frame.height-activeScroll.contentView.bounds.height)))
                     }
                     for (column,dark) in [false,true].enumerated() {
                         pane.window.appearance=NSAppearance(named:dark ? .darkAqua : .aqua)

@@ -10,6 +10,10 @@ Requirements
 - Lemonade installed and running, with a transcription model (for example
   Whisper-Base) and a chat model downloaded. LemonVox does not install,
   start or update Lemonade. Default endpoint: http://127.0.0.1:13305/v1
+- Model download is separate from loading a downloaded model into memory.
+  Settings > Set up offers explicit downloads only for a supported server;
+  confirm the named model and allow several GB of server disk space. Otherwise
+  use the server model manager, then Refresh models. No background download.
 
 Install / update
   powershell -ExecutionPolicy Bypass -File install.ps1 [-StartAtSignIn]

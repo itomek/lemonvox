@@ -9,7 +9,9 @@
 #include "insertion/clipboard.h"
 #include "insertion/integrity.h"
 #include "insertion/win_insertion.h"
-#include "net/model_catalog.h"
+#include "net/endpoint_facts.h"
+#include "model_setup_client.h"
+#include <map>
 #include "net/server_health.h"
 #include "net/winhttp_transport.h"
 #include "prefs/preferences.h"
@@ -52,17 +54,6 @@ CaptureProblem capture_problem(CaptureFailureReason reason) {
     return CaptureProblem::other;
 }
 
-SettingsCatalogResult::Status catalog_status(CatalogStatus status) {
-    switch (status) {
-    case CatalogStatus::ok: return SettingsCatalogResult::Status::ok;
-    case CatalogStatus::configuration: return SettingsCatalogResult::Status::configuration;
-    case CatalogStatus::network: return SettingsCatalogResult::Status::network;
-    case CatalogStatus::http: return SettingsCatalogResult::Status::http;
-    case CatalogStatus::response: return SettingsCatalogResult::Status::response;
-    }
-    return SettingsCatalogResult::Status::response;
-}
-
 std::wstring g_registry_key = L"Software\\LemonVox";
 
 std::optional<POINT> load_anchor() {
@@ -97,6 +88,28 @@ LRESULT CALLBACK signal_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     return DefWindowProcW(window, message, wparam, lparam);
 }
 
+// UI-thread timers adapt the shared setup controller to the Win32 run loop.
+class SetupTimers {
+public:
+    static void schedule(unsigned delay, std::function<void()> callback) {
+        const auto id = SetTimer(nullptr, 0, delay, +[](HWND, UINT, UINT_PTR token, DWORD) {
+            KillTimer(nullptr, token);
+            auto found = callbacks().find(token);
+            if (found == callbacks().end()) return;
+            auto done = std::move(found->second); callbacks().erase(found); done();
+        });
+        if (id) callbacks().emplace(id, std::move(callback));
+    }
+    static void shutdown() {
+        for (const auto &entry : callbacks()) KillTimer(nullptr, entry.first);
+        callbacks().clear();
+    }
+private:
+    static std::map<UINT_PTR, std::function<void()>> &callbacks() {
+        static std::map<UINT_PTR, std::function<void()>> value; return value;
+    }
+};
+
 class App {
 public:
     App(HINSTANCE instance, std::wstring registry_key, std::vector<std::uint8_t> sample_wav)
@@ -125,7 +138,9 @@ private:
     std::unique_ptr<FileCapture> sample_capture_;
     std::unique_ptr<WinHttpTransport> transport_;
     std::unique_ptr<WinHttpTransport> catalog_transport_;
-    std::unique_ptr<ModelCatalog> catalog_;
+    std::unique_ptr<lemonvox::ModelSetupClient> setup_;
+    std::function<void(SettingsCatalogResult)> setup_catalog_done_;
+    std::function<void(std::wstring, bool, bool)> setup_install_done_;
     std::unique_ptr<WinHttpTransport> health_transport_;
     std::unique_ptr<ServerHealthMonitor> health_;
     UINT_PTR health_timer_ = 0;
@@ -184,7 +199,6 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     capture_ = std::make_unique<WasapiCapture>(executor_, current.capture_device_id);
     transport_ = std::make_unique<WinHttpTransport>(executor_);
     catalog_transport_ = std::make_unique<WinHttpTransport>(executor_);
-    catalog_ = std::make_unique<ModelCatalog>(*catalog_transport_, executor_);
     InsertionOptions insertion_options;
     insertion_ = std::make_unique<WinInsertion>(executor_, std::move(insertion_options));
 
@@ -251,20 +265,38 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     apply_trigger_at_launch();
 
     SettingsServices services;
-    services.refresh_models = [this](const std::string &endpoint, std::function<void(SettingsCatalogResult)> done) {
-        catalog_->refresh(endpoint, [done](CatalogResult result) {
-            SettingsCatalogResult converted;
-            converted.status = catalog_status(result.status);
-            for (const auto &model : result.models) {
-                converted.models.push_back({model.id, model.asr, model.cleanup, model.remote});
+    setup_ = std::make_unique<lemonvox::ModelSetupClient>(*catalog_transport_, SetupTimers::schedule,
+        [this](lemonvox::ModelSetupClient::Snapshot view) {
+            if (setup_catalog_done_) {
+                SettingsCatalogResult result;
+                result.status = view.available ? SettingsCatalogResult::Status::ok : SettingsCatalogResult::Status::network;
+                result.installation_supported = view.management_supported;
+                result.setup_active = view.active;
+                result.message = utf8_to_wide(view.message);
+                for (const auto &model : view.catalog.models)
+                    result.models.push_back({model.id, model.asr, model.cleanup, model.remote, model.downloaded, model.loaded, model.loaded_known, model.size_gb});
+                setup_catalog_done_(std::move(result));
             }
-            converted.message = utf8_to_wide(result.safe_message);
-            if (result.status == CatalogStatus::http && converted.message.empty()) {
-                converted.message = L"HTTP " + std::to_wstring(result.http_status);
+            if (setup_install_done_) {
+                auto done = setup_install_done_;
+                if (!view.active) setup_install_done_ = {};
+                done(utf8_to_wide(view.message), !view.active, !view.installed_id.empty());
             }
-            done(std::move(converted));
         });
+    services.refresh_models = [this](const std::string &endpoint, std::function<void(SettingsCatalogResult)> done) {
+        setup_catalog_done_ = std::move(done);
+        lemonvox::ProtocolConfiguration config; endpoint_facts(endpoint, config.endpoint);
+        setup_->refresh(std::move(config));
     };
+    services.install_model = [this](const std::string &endpoint, const std::string &id, bool asr, std::function<void(std::wstring, bool, bool)> done) {
+        lemonvox::ProtocolEndpointFacts facts;
+        if (!endpoint_is_valid(endpoint, &facts) || facts.canonical_base_url != setup_->snapshot().endpoint) {
+            done(L"Server endpoint changed. Refresh models before setup.", true, false); return;
+        }
+        setup_install_done_ = std::move(done);
+        setup_->install(id, asr ? LV_MODEL_ASR : LV_MODEL_CLEANUP, true);
+    };
+    services.cancel_install = [this] { setup_->cancel(); };
     services.list_devices = [] {
         std::vector<SettingsDevice> devices;
         for (const auto &device : list_capture_devices().devices) devices.push_back({device.id, device.name});
@@ -342,7 +374,7 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     instance_app_ = nullptr;
     trigger_->shutdown();
     controller_->shutdown();
-    catalog_.reset();
+    SetupTimers::shutdown(); setup_.reset();
     catalog_transport_->shutdown();
     executor_.shutdown();
     settings_.reset();

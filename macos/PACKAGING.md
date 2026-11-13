@@ -46,6 +46,10 @@ References: [Apple code-signing requirements and update recognition](https://dev
 
 ## Distribution
 
+The package includes no inference server or model files. Server installation,
+model downloading through an explicit Settings action and loading installed
+models into memory are separate prerequisites; see [model setup](../docs/model-setup.md).
+
 Homebrew cask is the direct-distribution plan. The cask must state that Lemonade or another compatible OpenAI API server runs separately; the app bundles neither server nor models. Local and remote HTTP/HTTPS endpoints ending in /v1 are supported, with transcription, chat completion and compatible model-discovery metadata required. A cask needs an immutable release URL, exact version and final SHA-256, actual app-bundle name, macOS minimum and supported architecture. The current builder emits host-architecture artifacts; advertise only architectures built and tested. Public artifact hosting and release publication are separate steps. Homebrew supplies neither signing trust nor privacy approvals; preserve settings during ordinary upgrade/uninstall and do not disable quarantine or reset permissions.
 
 Mac App Store distribution needs a separate feasibility effort. [App Review guideline 2.4.5](https://developer.apple.com/app-store/review/guidelines/) requires appropriate sandboxing, while [App Sandbox documentation](https://developer.apple.com/documentation/security/protecting-user-data-with-app-sandbox) restricts assistive Accessibility API use. Current cross-app targeting/insertion and Accessibility-dependent modifier monitoring need a supported sandbox-compatible approach before equivalent store behavior can be promised. The separate Lemonade prerequisite also needs assessment against guideline 4.2.3. No store acceptance is implied.

@@ -153,6 +153,22 @@ its MIT license; runtime artifact size is the relevant shipping measure.
 
 ## Swift ABI boundary
 
+### Model setup policy
+
+`Protocol` and its `lv_protocol_*` C bridge share catalog parsing, model-purpose
+eligibility, installed/loaded state, management-version checks, download request
+construction, job progress and cancellation request mapping. Catalog discovery
+includes uninstalled entries; ordinary workflow validation continues to require
+installed inference models. The setup request builder additionally requires
+explicit consent and a compatible catalog entry. No model ID is used as a shell
+command or interpolated into a URL path.
+
+Native adapters own HTTP delivery and polling, consent presentation, settings
+drafts and stale-result suppression. An installation response alone never proves
+the selected model is ready: the adapter refreshes and validates inventory before
+updating the corresponding draft selection. See [model setup](model-setup.md)
+for the separately verified server-management version and request contract.
+
 [`core/session.h`](../core/session.h) is the narrow C-compatible bridge used by
 Swift. Its ABI version is explicit and its C++ declarations assert standard
 layout, trivial copying, field order, and alignment for `LVSession`. Swift and

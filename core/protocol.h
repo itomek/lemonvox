@@ -93,6 +93,10 @@ typedef struct {
     uint8_t asr;
     uint8_t cleanup;
     uint8_t remote;
+    uint8_t downloaded;
+    uint8_t loaded;
+    uint8_t loaded_known;
+    double size_gb;
 } LVProtocolModel;
 
 typedef struct {
@@ -130,6 +134,50 @@ uint64_t lv_server_health_begin(LVServerHealth *health, double monotonic_seconds
  * failure. Returns 0 for stale/duplicate completions. Borrows body synchronously. */
 uint8_t lv_server_health_complete(LVServerHealth *health, uint64_t request,
     double monotonic_seconds, uint8_t transport_ok, int http_status, LVProtocolSlice body);
+/* Shared setup policy. Catalog parsing includes uninstalled and incompatible entries;
+ * normal inventory parsing remains restricted to inference-ready entries. */
+typedef enum {
+    LV_SETUP_NO_SELECTION, LV_SETUP_NOT_INSTALLED, LV_SETUP_INSTALLED_NOT_LOADED,
+    LV_SETUP_READY, LV_SETUP_SERVER_UNAVAILABLE, LV_SETUP_INCOMPATIBLE,
+    LV_SETUP_EXTERNAL_SERVER, LV_SETUP_INSTALLING, LV_SETUP_CANCELED, LV_SETUP_FAILED
+} LVModelSetupState;
+
+typedef struct {
+    LVModelSetupState state;
+    uint8_t can_install;
+    LVProtocolBytes message;
+} LVModelSetupInfo;
+
+typedef struct {
+    LVProtocolStatus status;
+    double percent; /* -1 when server supplies no numerical progress. */
+    uint8_t complete;
+    uint8_t failed;
+    uint8_t canceled;
+    uint8_t running;
+    LVProtocolBytes message;
+} LVModelInstallProgress;
+
+LVProtocolRequest lv_protocol_make_catalog_request(const LVProtocolConfig *config);
+LVProtocolRequest lv_protocol_make_downloads_request(const LVProtocolConfig *config);
+LVProtocolRequest lv_protocol_make_cancel_install_request(const LVProtocolConfig *config,
+    const LVProtocolInventory *catalog, LVProtocolSlice model_id, LVModelPurpose purpose,
+    uint8_t management_supported);
+LVProtocolInventory lv_protocol_parse_catalog(LVProtocolSlice json);
+LVProtocolStatus lv_protocol_catalog_apply_health(LVProtocolInventory *catalog, LVProtocolSlice health_json);
+LVModelSetupInfo lv_protocol_model_setup(const LVProtocolInventory *catalog,
+    LVProtocolSlice model_id, LVModelPurpose purpose, uint8_t server_available,
+    uint8_t management_supported);
+LVProtocolRequest lv_protocol_make_install_request(const LVProtocolConfig *config,
+    const LVProtocolInventory *catalog, LVProtocolSlice model_id, LVModelPurpose purpose,
+    uint8_t management_supported, uint8_t explicit_consent);
+/* A supported Lemonade version is required in addition to a compatible catalog. */
+int lv_protocol_supports_model_management(LVProtocolSlice version_json);
+LVModelInstallProgress lv_protocol_parse_install_progress(LVProtocolSlice bytes);
+LVModelInstallProgress lv_protocol_parse_install_progress_for_model(LVProtocolSlice bytes,
+    LVProtocolSlice model_id);
+void lv_protocol_model_setup_free(LVModelSetupInfo *info);
+void lv_protocol_install_progress_free(LVModelInstallProgress *progress);
 
 LVProtocolStatus lv_protocol_validate_endpoint(const LVEndpointFacts *endpoint);
 LVProtocolStatus lv_protocol_validate_config(const LVProtocolConfig *config);
@@ -211,6 +259,10 @@ struct ProtocolModel {
     bool asr = false;
     bool cleanup = false;
     bool remote = false;
+    bool downloaded = false;
+    bool loaded = false;
+    bool loaded_known = false;
+    double size_gb = 0;
 };
 
 struct ProtocolInventory {
@@ -225,8 +277,39 @@ struct ProtocolValue {
     std::string value;
 };
 
+struct ModelSetupInfo {
+    LVModelSetupState state = LV_SETUP_SERVER_UNAVAILABLE;
+    bool can_install = false;
+    std::string message;
+};
+struct ModelInstallProgress {
+    LVProtocolStatus status = LV_PROTOCOL_RESPONSE;
+    double percent = -1;
+    bool complete = false;
+    bool failed = false;
+    bool canceled = false;
+    bool running = false;
+    std::string message;
+};
+
 class Protocol {
 public:
+    static LVProtocolStatus make_catalog_request(const ProtocolConfiguration &config, TransportRequest &request);
+    static LVProtocolStatus make_downloads_request(const ProtocolConfiguration &config, TransportRequest &request);
+    static LVProtocolStatus make_cancel_install_request(const ProtocolConfiguration &config,
+        const ProtocolInventory &catalog, const std::string &model_id, LVModelPurpose purpose,
+        bool management_supported, TransportRequest &request);
+    static LVProtocolStatus parse_catalog(const std::vector<std::uint8_t> &json, ProtocolInventory &inventory);
+    static LVProtocolStatus catalog_apply_health(ProtocolInventory &catalog, const std::vector<std::uint8_t> &health_json);
+    static ModelSetupInfo model_setup(const ProtocolInventory &catalog, const std::string &model_id,
+        LVModelPurpose purpose, bool server_available, bool management_supported);
+    static LVProtocolStatus make_install_request(const ProtocolConfiguration &config,
+        const ProtocolInventory &catalog, const std::string &model_id, LVModelPurpose purpose,
+        bool management_supported, bool explicit_consent, TransportRequest &request);
+    static bool supports_model_management(const std::vector<std::uint8_t> &version_json);
+    static ModelInstallProgress parse_install_progress(const std::vector<std::uint8_t> &bytes);
+    static ModelInstallProgress parse_install_progress_for_model(const std::vector<std::uint8_t> &bytes,
+        const std::string &model_id);
     static LVProtocolStatus validate_endpoint(const ProtocolEndpointFacts &endpoint);
     static LVProtocolStatus validate_config(const ProtocolConfiguration &config);
     static LVProtocolStatus make_models_request(const ProtocolConfiguration &config, TransportRequest &request);

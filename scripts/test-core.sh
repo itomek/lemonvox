@@ -31,4 +31,8 @@ mkdir -p "$OUT"
 "$OUT/protocol-test"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/workflow_core_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/workflow-core-test"
 "$OUT/workflow-core-test"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/model_setup_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/model-setup-test"
+"$OUT/model-setup-test"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/model_setup_client_test.cpp" "$OUT/liblemonvox_core.a" -o "$OUT/model-setup-client-test"
+"$OUT/model-setup-client-test"
 echo 'PASS: portable core library, protocol mapper, workflow and adapter contracts'

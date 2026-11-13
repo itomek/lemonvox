@@ -37,7 +37,7 @@ target_compile_options(lemonvox_core PRIVATE ${LEMONVOX_WARNINGS})
 target_compile_definitions(lemonvox_core PRIVATE ${LEMONVOX_RELEASE_DEFINES})
 
 enable_testing()
-foreach(test_name session trigger_core contracts protocol workflow_core)
+foreach(test_name session trigger_core contracts protocol workflow_core model_setup model_setup_client)
     add_executable(${test_name}_test "${LEMONVOX_ROOT}/tests/${test_name}_test.cpp")
     target_link_libraries(${test_name}_test PRIVATE lemonvox_core)
     # The portable tests compare C int results with bool; C4805 is MSVC-only noise there.

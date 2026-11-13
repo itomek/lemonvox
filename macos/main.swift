@@ -148,6 +148,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             },
             readVersion: { [transport] endpoint in
                 synthetic ? "synthetic" : await ModelDiscovery(transport: transport).version(endpoint: endpoint)
+            }, install: { [transport] endpoint, modelID, purpose, catalog, progress in
+                try await ModelDiscovery(transport: transport).install(endpoint:endpoint,modelID:modelID,purpose:purpose,catalog:catalog,progress:progress)
             })
     }()
     var config = UserDefaults.standard.data(forKey: "dictationConfig").flatMap { try? JSONDecoder().decode(DictationConfig.self, from: $0) } ?? .empty

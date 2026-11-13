@@ -28,6 +28,10 @@ CORE_OBJECTS=("$OUT/session.o" "$OUT/protocol.o" "$OUT/yyjson.o")
 WORKFLOW_OBJECTS=("${CORE_OBJECTS[@]}" "$OUT/workflow.o" "$OUT/workflow_bridge.o")
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" "$ROOT/tests/protocol_test.cpp" "${CORE_OBJECTS[@]}" -o "$OUT/protocol-test"
 "$OUT/protocol-test"
+xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" "$ROOT/tests/model_setup_test.cpp" "${CORE_OBJECTS[@]}" -o "$OUT/model-setup-test"
+"$OUT/model-setup-test"
+xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -I"$ROOT/core" "$ROOT/tests/model_setup_client_test.cpp" "${CORE_OBJECTS[@]}" -o "$OUT/model-setup-client-test"
+"$OUT/model-setup-client-test"
 xcrun clang++ -mmacosx-version-min=26.0 -std=c++17 -Wall -Wextra -Werror -DYYJSON_READER_DEPTH_LIMIT=513 -I"$ROOT/core" -I"$ROOT/third_party/yyjson" "$ROOT/tests/workflow_core_test.cpp" "${WORKFLOW_OBJECTS[@]}" -o "$OUT/workflow-core-test"
 "$OUT/workflow-core-test"
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/session.h" "$ROOT/tests/core_bridge_test.swift" "$OUT/session.o" -lc++ -o "$OUT/core-bridge-test"
@@ -82,6 +86,7 @@ xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors -import-objc-header "$ROOT/core/protocol.h" "$ROOT/macos/LemonadeClient.swift" "$ROOT/macos/Diagnostics.swift" "$ROOT/macos/ModelDiscovery.swift" "$ROOT/macos/TriggerChoice.swift" "$ROOT/macos/TriggerControl.swift" "$ROOT/macos/AppIdentity.swift" "$ROOT/macos/ConfigDialog.swift" "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/settings_ui_test.swift" "${CORE_OBJECTS[@]}" -lc++ -framework AppKit -o "$OUT/settings-ui-test"
 "$OUT/settings-ui-test" --metadata-only
 "$OUT/settings-ui-test" --diagnostics-only
+"$OUT/settings-ui-test" --setup-only
 "$OUT/settings-ui-test"
 
 xcrun swiftc -target "$SWIFT_TARGET" -parse-as-library -module-cache-path "$OUT/ModuleCache" -warnings-as-errors "$ROOT/macos/ModelPicker.swift" "$ROOT/tests/model_picker_test.swift" -framework AppKit -o "$OUT/model-picker-test"

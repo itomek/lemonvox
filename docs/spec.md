@@ -35,6 +35,8 @@ The native app monitors its saved endpoint independently of Settings. Shared cor
 
 Appearance choices are Auto, Light, and Dark. Auto follows the OS setting; native shells use their platform semantic colors and controls rather than application-specific color treatments.
 
+Model setup distinguishes server installation, model download and loading installed files into memory. Missing transcription or cleanup models require an explicit setup action with download consent, progress and cancellation/retry feedback. Shared core policy validates catalog membership, capabilities and supported management requests; native Settings render that policy. Health checks, launch and ordinary dictation never authorize installation. Generic compatible servers provide setup through their own management interface. See [model setup](model-setup.md).
+
 Local inference is preferred. Lemonade manages model loading, inference, GPU acceleration, and provider routing. An explicitly configured provider can be reached through Lemonade; settings should make the selected endpoint and routing implications clear.
 
 Audio and in-process transcripts are transient in the first version; a pasted or explicitly copied transcript remains on the desktop clipboard. Keep them in memory where practical, clean up temporary audio on completion or cancellation, and keep dictated content out of logs. Settings persist locally. Any future saved dictation data stays on the person's machine by default. Server-side retention depends on the configured Lemonade deployment and provider.

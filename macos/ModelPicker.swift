@@ -5,6 +5,7 @@ struct ModelChoice { let id: String; let title: String }
 @MainActor final class ModelPicker: NSButton, NSPopoverDelegate {
     private(set) var choices: [ModelChoice] = []
     private(set) var selectedID = ""
+    var onChange: (() -> Void)?
     let popover = NSPopover()
     lazy var pickerContent = ModelPickerContent(owner:self)
     override init(frame: NSRect) {
@@ -43,7 +44,7 @@ struct ModelChoice { let id: String; let title: String }
     }
     func commit(_ choice:ModelChoice) {
         selectedID=choice.id; title=choice.title; toolTip=title; setAccessibilityValue(title)
-        popover.close()
+        popover.close(); onChange?()
     }
     func popoverDidShow(_ notification:Notification) {
         pickerContent.view.window?.makeFirstResponder(pickerContent.search)

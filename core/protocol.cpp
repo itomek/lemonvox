@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cmath>
+#include <cctype>
+#include <sstream>
+#include <cmath>
 #include <cstring>
 #include <optional>
 #include <regex>
@@ -396,6 +399,10 @@ struct ParsedModel {
     uint8_t asr = 0;
     uint8_t cleanup = 0;
     uint8_t remote = 0;
+    uint8_t downloaded = 0;
+    uint8_t loaded = 0;
+    uint8_t loaded_known = 0;
+    double size_gb = 0;
 };
 
 LVProtocolSlice sliceFrom(const std::string &value) {
@@ -583,7 +590,7 @@ LVProtocolRequest lv_protocol_make_cleanup_request(const LVProtocolConfig *confi
     return request;
 }
 
-static LVProtocolInventory parseInventory(LVProtocolSlice json, bool includeMetadata) {
+static LVProtocolInventory parseInventory(LVProtocolSlice json, bool includeMetadata, bool catalog = false) {
     auto *document = readJSON(json);
     if (!document) return failedInventory(LV_PROTOCOL_RESPONSE);
     const auto *root = yyjson_doc_get_root(document);
@@ -636,9 +643,20 @@ static LVProtocolInventory parseInventory(LVProtocolSlice json, bool includeMeta
         facts.is_ryzenai_llm_recipe = recipe && *recipe == "ryzenai-llm";
         facts.has_transcription_label = hasTranscription;
         facts.has_chat_label = hasChat;
+        if (catalog && !facts.has_cloud_provider) facts.downloaded = true;
         const auto asr = static_cast<uint8_t>(lv_model_supports(&facts, LV_MODEL_ASR));
         const auto cleanup = static_cast<uint8_t>(lv_model_supports(&facts, LV_MODEL_CLEANUP));
-        if (asr || cleanup) models.push_back({std::move(id), asr, cleanup, static_cast<uint8_t>(cloudProvider.has_value())});
+        bool loaded = false;
+        if (catalog && !readOptionalBool(item, "loaded", loaded)) {
+            yyjson_doc_free(document);
+            return failedInventory(LV_PROTOCOL_RESPONSE);
+        }
+        const auto *sizeValue = yyjson_obj_get(item, "size");
+        double sizeGB = sizeValue && yyjson_is_num(sizeValue) ? yyjson_get_num(sizeValue) : 0;
+        if (!std::isfinite(sizeGB) || sizeGB < 0) sizeGB = 0;
+        if (catalog || asr || cleanup) models.push_back({std::move(id), asr, cleanup,
+            static_cast<uint8_t>(cloudProvider.has_value()), static_cast<uint8_t>(downloaded),
+            static_cast<uint8_t>(loaded), static_cast<uint8_t>(catalog && yyjson_obj_get(item, "loaded") != nullptr), sizeGB});
     }
     std::sort(models.begin(), models.end(), [](const ParsedModel &left, const ParsedModel &right) {
         return left.id < right.id;
@@ -662,6 +680,10 @@ static LVProtocolInventory parseInventory(LVProtocolSlice json, bool includeMeta
         inventory.models[modelIndex].asr = models[modelIndex].asr;
         inventory.models[modelIndex].cleanup = models[modelIndex].cleanup;
         inventory.models[modelIndex].remote = models[modelIndex].remote;
+        inventory.models[modelIndex].downloaded = models[modelIndex].downloaded;
+        inventory.models[modelIndex].loaded = models[modelIndex].loaded;
+        inventory.models[modelIndex].loaded_known = models[modelIndex].loaded_known;
+        inventory.models[modelIndex].size_gb = models[modelIndex].size_gb;
         if (!inventory.models[modelIndex].id.data && !models[modelIndex].id.empty()) {
             lv_protocol_inventory_free(&inventory);
             yyjson_doc_free(document);
@@ -907,6 +929,222 @@ void lv_protocol_inventory_free(LVProtocolInventory *inventory) {
     inventory->status = LV_PROTOCOL_RESPONSE;
 }
 
+namespace {
+bool validSetupID(const std::string &id) {
+    if (id.empty() || id.size() > 256 || id.find("..") != std::string::npos) return false;
+    return std::all_of(id.begin(), id.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '/' || c == ':';
+    });
+}
+const LVProtocolModel *findSetupModel(const LVProtocolInventory *catalog, const std::string &id) {
+    if (!catalog || catalog->status != LV_PROTOCOL_OK || (catalog->count && !catalog->models)) return nullptr;
+    const LVProtocolModel *found = nullptr;
+    for (size_t i = 0; i < catalog->count; ++i) {
+        if (copiedString(catalog->models[i].id) != id) continue;
+        if (found) return nullptr; // Ambiguous catalog IDs never authorize a download.
+        found = &catalog->models[i];
+    }
+    return found;
+}
+bool setupCompatible(const LVProtocolModel &model, LVModelPurpose purpose) {
+    return purpose == LV_MODEL_ASR ? model.asr != 0 : purpose == LV_MODEL_CLEANUP && model.cleanup != 0;
+}
+LVProtocolRequest setupRequest(const LVProtocolConfig *config, const char *path, const std::string &body = {}) {
+    if (!config || lv_protocol_validate_endpoint(&config->endpoint) != LV_PROTOCOL_OK)
+        return failedRequest(LV_PROTOCOL_CONFIGURATION);
+    LVProtocolRequest request{};
+    request.status = LV_PROTOCOL_OK;
+    request.method = body.empty() ? LV_PROTOCOL_GET : LV_PROTOCOL_POST;
+    request.url = bytesFrom(appendPath(config->endpoint.canonical_base_url, path));
+    if (!body.empty()) {
+        request.body = bytesFrom(body);
+        request.content_type = bytesFrom("application/json");
+    }
+    if (!request.url.data || (!body.empty() && (!request.body.data || !request.content_type.data))) {
+        lv_protocol_request_free(&request);
+        return failedRequest(LV_PROTOCOL_RESPONSE);
+    }
+    return request;
+}
+LVModelInstallProgress failedProgress() {
+    LVModelInstallProgress result{};
+    result.status = LV_PROTOCOL_RESPONSE;
+    result.percent = -1;
+    result.message = bytesFrom("Server download status is unavailable. Check the server and retry.");
+    return result;
+}
+bool parseJob(const yyjson_val *job, const std::string &requested, LVModelInstallProgress &result, bool &matched) {
+    if (!job || !yyjson_is_obj(job)) return false;
+    std::string id, status;
+    if (!readString(yyjson_obj_get(job, "id"), id) || !readString(yyjson_obj_get(job, "status"), status)) return false;
+    static const std::vector<std::string> knownStatuses = {
+        "pending", "queued", "downloading", "paused", "cancelled", "canceled", "completed", "error"
+    };
+    if (std::find(knownStatuses.begin(), knownStatuses.end(), status) == knownStatuses.end()) return false;
+    std::optional<std::string> type, name;
+    if (!readOptionalString(job, "type", type) || !readOptionalString(job, "model_name", name)) return false;
+    if (name && (!validSetupID(*name) || id != "model:" + *name || (type && *type != "model"))) return false;
+    bool running = false, complete = false;
+    if (!readOptionalBool(job, "running", running) || !readOptionalBool(job, "complete", complete)) return false;
+    if (complete && status != "completed") return false;
+    if (!requested.empty() && id != "model:" + requested) return true;
+    if (matched) return false;
+    matched = true;
+    result.running = running;
+    result.complete = !running && status == "completed";
+    result.canceled = !running && (status == "cancelled" || status == "canceled");
+    result.failed = !running && status == "error";
+    auto *percent = yyjson_obj_get(job, "percent");
+    if (percent && !yyjson_is_null(percent)) {
+        if (!yyjson_is_num(percent)) return false;
+        const double value = yyjson_get_num(percent);
+        if (!std::isfinite(value) || value < 0 || value > 100) return false;
+        result.percent = value;
+    }
+    std::string message = "Downloading on the inference server";
+    if (result.complete) message = "Download finished. Refreshing the server catalog.";
+    else if (result.canceled) message = "Download canceled. Settings were preserved. Retry when ready.";
+    else if (result.failed) message = "Download failed. Check the server network, free disk space and model-directory permissions, then retry.";
+    else if (status == "cancelled" || status == "canceled") message = "Canceling on the server; waiting for the download worker to stop.";
+    else if (status == "paused") message = "Download paused on the server. Resume it in the server or cancel and retry.";
+    else if (status == "error") message = "Server is stopping the failed download. Check network, disk space and permissions.";
+    result.message = bytesFrom(message);
+    return true;
+}
+}
+
+LVProtocolRequest lv_protocol_make_catalog_request(const LVProtocolConfig *config) {
+    return setupRequest(config, "/models?show_all=true");
+}
+LVProtocolRequest lv_protocol_make_downloads_request(const LVProtocolConfig *config) {
+    return setupRequest(config, "/downloads");
+}
+LVProtocolInventory lv_protocol_parse_catalog(LVProtocolSlice json) {
+    auto inventory = parseInventory(json, true, true);
+    if (inventory.status != LV_PROTOCOL_OK) return inventory;
+    for (size_t i = 0; i < inventory.count; ++i) {
+        if (!validSetupID(copiedString(inventory.models[i].id)) ||
+            (i && copiedString(inventory.models[i - 1].id) == copiedString(inventory.models[i].id))) {
+            lv_protocol_inventory_free(&inventory);
+            return failedInventory(LV_PROTOCOL_RESPONSE);
+        }
+    }
+    return inventory;
+}
+LVProtocolStatus lv_protocol_catalog_apply_health(LVProtocolInventory *catalog, LVProtocolSlice json) {
+    if (!catalog || catalog->status != LV_PROTOCOL_OK) return LV_PROTOCOL_RESPONSE;
+    auto *document = readJSON(json);
+    if (!document) return LV_PROTOCOL_RESPONSE;
+    const auto *root = yyjson_doc_get_root(document);
+    const auto *loaded = root && yyjson_is_obj(root) ? yyjson_obj_get(root, "all_models_loaded") : nullptr;
+    const auto *single = root && yyjson_is_obj(root) ? yyjson_obj_get(root, "model_loaded") : nullptr;
+    if ((!loaded || !yyjson_is_arr(loaded)) && (!single || (!yyjson_is_str(single) && !yyjson_is_null(single)))) {
+        yyjson_doc_free(document);
+        return LV_PROTOCOL_RESPONSE;
+    }
+    std::vector<std::string> ids;
+    if (loaded && yyjson_is_arr(loaded)) {
+        size_t i, n; yyjson_val *item;
+        yyjson_arr_foreach(loaded, i, n, item) {
+            std::string id;
+            bool isLoaded = true;
+            if (!yyjson_is_obj(item) || !readString(yyjson_obj_get(item,"model_name"),id) ||
+                (yyjson_obj_get(item,"loaded") && !readOptionalBool(item,"loaded",isLoaded))) {
+                yyjson_doc_free(document);
+                return LV_PROTOCOL_RESPONSE;
+            }
+            if (isLoaded) ids.push_back(id);
+        }
+    } else if (single && yyjson_is_str(single)) ids.emplace_back(yyjson_get_str(single),yyjson_get_len(single));
+    for (size_t i = 0; i < catalog->count; ++i) {
+        catalog->models[i].loaded_known = 1;
+        catalog->models[i].loaded = std::find(ids.begin(),ids.end(),copiedString(catalog->models[i].id)) != ids.end();
+    }
+    yyjson_doc_free(document);
+    return LV_PROTOCOL_OK;
+}
+LVModelSetupInfo lv_protocol_model_setup(const LVProtocolInventory *catalog, LVProtocolSlice modelID,
+    LVModelPurpose purpose, uint8_t available, uint8_t management) {
+    LVModelSetupInfo info{};
+    std::string message;
+    const auto id = stringFrom(modelID);
+    const auto *model = findSetupModel(catalog,id);
+    if (!available) { info.state = LV_SETUP_SERVER_UNAVAILABLE; message = "Server unavailable. Start the configured inference server, check its address and retry. Settings were preserved."; }
+    else if (id.empty()) { info.state = LV_SETUP_NO_SELECTION; message = "No model selected. Choose an installed compatible model, or choose a catalog model and explicitly download it on the inference server."; }
+    else if (!management && !model) { info.state = LV_SETUP_EXTERNAL_SERVER; message = "Install or configure this model in the inference server application, then refresh models and select its exact model ID here."; }
+    else if (!validSetupID(id) || !model || !setupCompatible(*model,purpose)) { info.state = LV_SETUP_INCOMPATIBLE; message = "This model is not in the compatible server catalog for this task. Refresh models and choose a compatible catalog entry."; }
+    else if (model->downloaded || model->remote) {
+        if (model->loaded_known && !model->loaded && !model->remote) {
+            info.state = LV_SETUP_INSTALLED_NOT_LOADED; message = "Installed, not loaded into memory. The server loads it on first inference; no model download is needed.";
+        } else { info.state = LV_SETUP_READY; message = model->remote ? "Remote model configured in the server." : model->loaded ? "Installed and loaded into memory." : "Installed. The server loads it into memory when needed; no model download is needed."; }
+    } else if (!management) { info.state = LV_SETUP_EXTERNAL_SERVER; message = "Automatic installation is unavailable for this server/version. Install the model in the server application, then refresh models. LemonVox does not install the inference server."; }
+    else { info.state = LV_SETUP_NOT_INSTALLED; info.can_install = 1; message = "Not installed. Download this model on the configured inference server. The download may be large and uses that server's network and disk space. Installation starts only after the Download action."; }
+    info.message = bytesFrom(message);
+    return info;
+}
+LVProtocolRequest lv_protocol_make_install_request(const LVProtocolConfig *config,
+    const LVProtocolInventory *catalog, LVProtocolSlice modelID, LVModelPurpose purpose,
+    uint8_t management, uint8_t consent) {
+    const auto id = stringFrom(modelID);
+    const auto *model = findSetupModel(catalog,id);
+    if (!management || !consent || !validSetupID(id) || !model || !setupCompatible(*model,purpose) || model->remote || model->downloaded)
+        return failedRequest(LV_PROTOCOL_CONFIGURATION);
+    // IDs have already been restricted to a safe catalog identifier alphabet.
+    return setupRequest(config,"/pull","{\"model_name\":\""+id+"\",\"stream\":true,\"subscribe\":false}");
+}
+LVProtocolRequest lv_protocol_make_cancel_install_request(const LVProtocolConfig *config,
+    const LVProtocolInventory *catalog, LVProtocolSlice modelID, LVModelPurpose purpose, uint8_t management) {
+    const auto id = stringFrom(modelID);
+    const auto *model = findSetupModel(catalog,id);
+    if (!management || !validSetupID(id) || !model || !setupCompatible(*model,purpose) || model->remote)
+        return failedRequest(LV_PROTOCOL_CONFIGURATION);
+    return setupRequest(config,"/downloads/control","{\"id\":\"model:"+id+"\",\"action\":\"cancel\"}");
+}
+int lv_protocol_supports_model_management(LVProtocolSlice json) {
+    auto version = lv_protocol_parse_version(json);
+    const auto value = copiedString(version.value);
+    lv_protocol_result_free(&version);
+    std::smatch match;
+    if (!std::regex_match(value,match,std::regex(R"(v?(\d{4})\.(\d{1,2})\.(\d{1,3}))"))) return 0;
+    const int year=std::stoi(match[1]), week=std::stoi(match[2]), patch=std::stoi(match[3]);
+    if (week < 1 || week > 53) return 0;
+    return year > 2026 || (year == 2026 && (week > 46 || (week == 46 && patch >= 2)));
+}
+LVModelInstallProgress lv_protocol_parse_install_progress_for_model(LVProtocolSlice bytes, LVProtocolSlice modelID) {
+    auto *document=readJSON(bytes);
+    if (!document) return failedProgress();
+    const auto *root=yyjson_doc_get_root(document);
+    LVModelInstallProgress result{};
+    result.status=LV_PROTOCOL_OK; result.percent=-1;
+    bool matched=false, valid=true;
+    const auto requested=stringFrom(modelID);
+    if (yyjson_is_arr(root)) {
+        size_t i,n; yyjson_val *item;
+        yyjson_arr_foreach(root,i,n,item) {
+            if (requested.empty()) {
+                lv_protocol_install_progress_free(&result);
+                result = {}; result.status = LV_PROTOCOL_OK; result.percent = -1; matched = false;
+            }
+            if (!parseJob(item,requested,result,matched)) { valid=false; break; }
+        }
+    } else if (requested.empty() && yyjson_is_obj(root)) valid=parseJob(root,requested,result,matched);
+    else if (yyjson_is_obj(root) && yyjson_obj_get(root,"id")) valid=parseJob(root,requested,result,matched);
+    else valid=false;
+    yyjson_doc_free(document);
+    if (!valid) { lv_protocol_install_progress_free(&result); return failedProgress(); }
+    if (!matched) result.message=bytesFrom("Waiting for server download status.");
+    return result;
+}
+LVModelInstallProgress lv_protocol_parse_install_progress(LVProtocolSlice bytes) {
+    return lv_protocol_parse_install_progress_for_model(bytes,{});
+}
+void lv_protocol_model_setup_free(LVModelSetupInfo *info) {
+    if (info) lv_protocol_bytes_free(&info->message);
+}
+void lv_protocol_install_progress_free(LVModelInstallProgress *progress) {
+    if (progress) lv_protocol_bytes_free(&progress->message);
+}
+
 namespace lemonvox {
 
 LVProtocolStatus Protocol::validate_endpoint(const ProtocolEndpointFacts &endpoint) {
@@ -962,7 +1200,8 @@ LVProtocolStatus Protocol::parse_inventory(const std::vector<std::uint8_t> &json
         inventory.models.reserve(raw.count);
         for (size_t index = 0; index < raw.count; ++index) {
             inventory.models.push_back({copiedString(raw.models[index].id), raw.models[index].asr != 0,
-                raw.models[index].cleanup != 0, raw.models[index].remote != 0});
+                raw.models[index].cleanup != 0, raw.models[index].remote != 0, raw.models[index].downloaded != 0,
+                raw.models[index].loaded != 0, raw.models[index].loaded_known != 0, raw.models[index].size_gb});
         }
     }
     lv_protocol_inventory_free(&raw);
@@ -973,6 +1212,94 @@ LVProtocolStatus Protocol::validate_models(const std::vector<std::uint8_t> &json
     const ProtocolConfiguration &config) {
     const auto bridge = bridgeConfig(config);
     return lv_protocol_validate_models(sliceFrom(json), &bridge);
+}
+
+namespace {
+LVProtocolInventory borrowedCatalog(const ProtocolInventory &catalog, std::vector<LVProtocolModel> &models) {
+    models.reserve(catalog.models.size());
+    for (const auto &model : catalog.models) {
+        LVProtocolModel raw{};
+        raw.id = {model.id.empty() ? nullptr : reinterpret_cast<uint8_t *>(const_cast<char *>(model.id.data())),model.id.size()};
+        raw.asr=model.asr; raw.cleanup=model.cleanup; raw.remote=model.remote;
+        raw.downloaded=model.downloaded; raw.loaded=model.loaded; raw.loaded_known=model.loaded_known; raw.size_gb=model.size_gb;
+        models.push_back(raw);
+    }
+    LVProtocolInventory raw{};
+    raw.status=LV_PROTOCOL_OK; raw.models=models.data(); raw.count=models.size();
+    return raw;
+}
+ModelInstallProgress bridgeProgress(LVModelInstallProgress raw) {
+    ModelInstallProgress result{raw.status,raw.percent,raw.complete != 0,raw.failed != 0,raw.canceled != 0,raw.running != 0,copiedString(raw.message)};
+    lv_protocol_install_progress_free(&raw);
+    return result;
+}
+}
+LVProtocolStatus Protocol::make_catalog_request(const ProtocolConfiguration &config, TransportRequest &request) {
+    const auto bridge=bridgeConfig(config);
+    return bridgeRequest(lv_protocol_make_catalog_request(&bridge),request);
+}
+LVProtocolStatus Protocol::make_downloads_request(const ProtocolConfiguration &config, TransportRequest &request) {
+    const auto bridge=bridgeConfig(config);
+    return bridgeRequest(lv_protocol_make_downloads_request(&bridge),request);
+}
+LVProtocolStatus Protocol::parse_catalog(const std::vector<std::uint8_t> &json, ProtocolInventory &inventory) {
+    inventory={};
+    auto raw=lv_protocol_parse_catalog(sliceFrom(json));
+    const auto status=raw.status;
+    if (status==LV_PROTOCOL_OK) {
+        inventory.reason=copiedString(raw.reason); inventory.has_reason=raw.has_reason;
+        for (size_t i=0;i<raw.count;++i) {
+            const auto &m=raw.models[i];
+            inventory.models.push_back({copiedString(m.id),m.asr != 0,m.cleanup != 0,m.remote != 0,
+                m.downloaded != 0,m.loaded != 0,m.loaded_known != 0,m.size_gb});
+        }
+    }
+    lv_protocol_inventory_free(&raw);
+    return status;
+}
+LVProtocolStatus Protocol::catalog_apply_health(ProtocolInventory &catalog, const std::vector<std::uint8_t> &health) {
+    std::vector<LVProtocolModel> models;
+    auto raw=borrowedCatalog(catalog,models);
+    const auto status=lv_protocol_catalog_apply_health(&raw,sliceFrom(health));
+    if (status==LV_PROTOCOL_OK) for(size_t i=0;i<models.size();++i) {
+        catalog.models[i].loaded=models[i].loaded != 0;
+        catalog.models[i].loaded_known=models[i].loaded_known != 0;
+    }
+    return status;
+}
+ModelSetupInfo Protocol::model_setup(const ProtocolInventory &catalog, const std::string &id,
+    LVModelPurpose purpose, bool available, bool management) {
+    std::vector<LVProtocolModel> models;
+    auto raw=borrowedCatalog(catalog,models);
+    auto info=lv_protocol_model_setup(&raw,sliceFrom(id),purpose,available,management);
+    ModelSetupInfo result{info.state,info.can_install != 0,copiedString(info.message)};
+    lv_protocol_model_setup_free(&info);
+    return result;
+}
+LVProtocolStatus Protocol::make_install_request(const ProtocolConfiguration &config,
+    const ProtocolInventory &catalog, const std::string &id, LVModelPurpose purpose,
+    bool management, bool consent, TransportRequest &request) {
+    std::vector<LVProtocolModel> models;
+    auto raw=borrowedCatalog(catalog,models);
+    const auto bridge=bridgeConfig(config);
+    return bridgeRequest(lv_protocol_make_install_request(&bridge,&raw,sliceFrom(id),purpose,management,consent),request);
+}
+LVProtocolStatus Protocol::make_cancel_install_request(const ProtocolConfiguration &config,
+    const ProtocolInventory &catalog, const std::string &id, LVModelPurpose purpose,
+    bool management, TransportRequest &request) {
+    std::vector<LVProtocolModel> models;
+    auto raw=borrowedCatalog(catalog,models);
+    const auto bridge=bridgeConfig(config);
+    return bridgeRequest(lv_protocol_make_cancel_install_request(&bridge,&raw,sliceFrom(id),purpose,management),request);
+}
+bool Protocol::supports_model_management(const std::vector<std::uint8_t> &json) {
+    return lv_protocol_supports_model_management(sliceFrom(json)) != 0;
+}
+ModelInstallProgress Protocol::parse_install_progress(const std::vector<std::uint8_t> &bytes) {
+    return bridgeProgress(lv_protocol_parse_install_progress(sliceFrom(bytes)));
+}
+ModelInstallProgress Protocol::parse_install_progress_for_model(const std::vector<std::uint8_t> &bytes,const std::string &id) {
+    return bridgeProgress(lv_protocol_parse_install_progress_for_model(sliceFrom(bytes),sliceFrom(id)));
 }
 
 } // namespace lemonvox
