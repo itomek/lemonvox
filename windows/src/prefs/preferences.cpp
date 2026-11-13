@@ -70,8 +70,8 @@ bool write_utf8(HKEY key, const wchar_t *name, const std::string &value) {
 
 PreferencesSnapshot WinPreferences::snapshot() const {
     PreferencesSnapshot result{endpoint, asr_model, cleanup_model, cleanup_prompt, true};
-    result.cleanup_backend = cleanup_backend;
-    result.cleanup_thinking = cleanup_thinking;
+    result.cleanup_backend = static_cast<std::uint8_t>(cleanup_backend);
+    result.cleanup_thinking = static_cast<std::uint8_t>(cleanup_thinking);
     return result;
 }
 
