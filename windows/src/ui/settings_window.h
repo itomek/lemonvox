@@ -71,6 +71,8 @@ enum class SettingsControl : int {
     asr_combo,
     cleanup_label,
     cleanup_combo,
+    execution_label,
+    execution_combo,
     routing_note,
     prompt_label,
     prompt_edit,

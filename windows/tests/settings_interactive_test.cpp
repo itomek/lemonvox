@@ -243,6 +243,7 @@ std::vector<std::string> check_automation(const SettingsWindow &window) {
         {item(window, SettingsControl::endpoint_edit), L"Server endpoint"},
         {item(window, SettingsControl::asr_combo), L"Transcription model"},
         {item(window, SettingsControl::cleanup_combo), L"Cleanup model"},
+        {item(window, SettingsControl::execution_combo), L"Cleanup execution"},
         {item(window, SettingsControl::prompt_edit), L"Cleanup prompt"},
         {item(window, SettingsControl::shortcut_combo), L"Shortcut"},
         {item(window, SettingsControl::recorder_edit), L"Custom shortcut"},
@@ -364,6 +365,8 @@ int main() {
         CHECK(combo_items(item(window, SettingsControl::microphone_combo))
             == (std::vector<std::wstring>{L"System default", L"Desk mic", L"Headset"}));
         CHECK(combo_selected(item(window, SettingsControl::microphone_combo)) == L"System default");
+        CHECK(combo_items(item(window, SettingsControl::execution_combo)).size() == 3);
+        CHECK(combo_selected(item(window, SettingsControl::execution_combo)) == L"Lemonade (thinking off)");
 
         // Models arrive; the missing saved selection is preserved and flagged.
         CHECK(pump_until([&] {
@@ -405,7 +408,7 @@ int main() {
 
         // Tab order follows the visual order and wraps.
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
-            SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::prompt_edit,
+            SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::execution_combo, SettingsControl::prompt_edit,
             SettingsControl::reset_prompt_button, SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
             SettingsControl::microphone_combo, SettingsControl::privacy_button,
             SettingsControl::save_button, SettingsControl::cancel_button, SettingsControl::endpoint_edit};
@@ -477,6 +480,7 @@ int main() {
 
         select_combo(item(window, SettingsControl::asr_combo), L"fresh-asr");
         select_combo(item(window, SettingsControl::microphone_combo), L"Headset");
+        select_combo(item(window, SettingsControl::execution_combo), L"Lemonade (server default)");
 
         // Enter = Save. A shortcut the app cannot register aborts the save.
         fake.apply_fails = true;
@@ -497,6 +501,8 @@ int main() {
         CHECK(saved.asr_model == "fresh-asr");
         CHECK(saved.cleanup_model == "llama");
         CHECK(saved.cleanup_prompt == kDefaultPrompt);
+        CHECK(saved.cleanup_backend == LV_CLEANUP_BACKEND_LEMONADE);
+        CHECK(saved.cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT);
         CHECK(saved.trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
         CHECK(saved.capture_device_id == L"{dev2}");
         CHECK(!fake.suspended);

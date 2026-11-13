@@ -129,6 +129,17 @@ private func repeatedRotationKeepsOnlyCurrentAndPreviousPrivateFiles() throws {
 
 @main struct DiagnosticsTests {
     static func main() throws {
+        let directory = try fixtureDirectory()
+        defer { try? FileManager.default.removeItem(at:directory) }
+        let metricLog = DiagnosticLog(directory:directory, debugEnabled:true)
+        let response = Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"PRIVATE_DICTATION","reasoning_content":"PRIVATE_REASONING"}}],"usage":{"completion_tokens":8,"completion_tokens_details":{"reasoning_tokens":3}}}"#.utf8)
+        let metrics = CoreProtocolBridge.withSlice(response) { lv_protocol_cleanup_metrics($0) }
+        metricLog.recordCleanup(elapsed:0.5,metrics:metrics)
+        let logged = metricLog.contents()
+        precondition(logged.contains("total_ms=500") && logged.contains("finish=stop"))
+        precondition(logged.contains("completion_tokens=8") && logged.contains("reasoning_tokens=3"))
+        precondition(logged.contains("residency=unknown") && logged.contains("fidelity=unverified"))
+        precondition(!logged.contains("PRIVATE_DICTATION") && !logged.contains("PRIVATE_REASONING"))
         try normalModeFiltersTraceEvents()
         try diagnosticsNeverPersistSyntheticPrivateContent(debugEnabled: false)
         try diagnosticsNeverPersistSyntheticPrivateContent(debugEnabled: true)

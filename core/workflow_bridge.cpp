@@ -498,6 +498,11 @@ bool copy_config(const LVWorkflowConfig &source, lemonvox::WorkflowConfig &desti
         !copy_slice(source.cleanup_prompt, destination.preferences.cleanup_prompt)) {
         return false;
     }
+    if ((source.cleanup_backend != LV_CLEANUP_BACKEND_GENERIC && source.cleanup_backend != LV_CLEANUP_BACKEND_LEMONADE) ||
+        (source.cleanup_thinking != LV_CLEANUP_THINKING_DISABLED && source.cleanup_thinking != LV_CLEANUP_THINKING_SERVER_DEFAULT)) return false;
+    destination.preferences.cleanup_backend = static_cast<uint8_t>(source.cleanup_backend);
+    destination.preferences.cleanup_thinking = static_cast<uint8_t>(source.cleanup_thinking);
+    destination.preferences.cleanup_context_tokens = source.cleanup_context_tokens;
     destination.preferences.insert_current_target = source.insert_current_target != 0;
     destination.preferences.paste_at_current_focus = source.paste_at_current_focus != 0;
     if (!copy_slice(source.endpoint.canonical_base_url, destination.endpoint.canonical_base_url)) return false;

@@ -16,18 +16,20 @@
 namespace lemonvox::win {
 
 // Bounded, content-free diagnostics: fixed events, error categories and HTTP
-// status codes only. Dictated text, audio, prompts and URLs never reach it.
+// status codes plus numeric cleanup metrics. Dictated text, audio, prompts and URLs never reach it.
 class DiagnosticsRing final : public DiagnosticsSink {
 public:
     static constexpr std::size_t kCapacity = 200;
     void record(DiagnosticEntry entry) override;
+    void record_cleanup(CleanupDiagnostic entry) override;
     std::vector<DiagnosticEntry> entries() const;
-    // One line per entry, e.g. "dictation_failed error=network http=0".
+    // Fixed event lines followed by numeric cleanup-metric lines.
     std::wstring format() const;
 
 private:
     mutable std::mutex mutex_;
     std::deque<DiagnosticEntry> entries_;
+    std::deque<CleanupDiagnostic> cleanup_entries_;
 };
 
 enum class FailureAction : std::uint8_t { none, open_settings, open_microphone_privacy };

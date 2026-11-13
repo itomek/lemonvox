@@ -189,6 +189,7 @@ import AppKit
         pane.saveUpdatePreferences={ updateSaved=($0,$1) }
         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
         precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && pane.save.isEnabled)
+        precondition(pane.cleanupBackend.indexOfSelectedItem == 0 && pane.cleanupThinking.state == .off)
         precondition(pane.categoryList.numberOfRows == 3)
         pane.cancellationTrigger.update(pane.trigger.choice)
         pane.saveSettings()
@@ -326,11 +327,14 @@ import AppKit
                         afterDiscovery(pane) {
                             MainActor.assumeIsolated {
                                 pane.prompt.string = "Saved across categories"
+                                pane.cleanupBackend.selectItem(at:1)
+                                pane.cleanupThinking.state = .on
                                 pane.categoryList.selectRowIndexes(IndexSet(integer:2), byExtendingSelection:false)
                                 pane.saveSettings()
                                 precondition(updateSaved?.0 == false && updateSaved?.1 == true)
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
                                 precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
+                                precondition(saved?.cleanupBackend == .lemonade && saved?.cleanupThinking == .serverDefault)
                                 precondition(savedPreferences?.0 == .combo(key:9,modifiers:2304))
                                 precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark)
                                 try? FileManager.default.removeItem(at:directory)

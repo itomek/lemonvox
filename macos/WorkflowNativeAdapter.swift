@@ -154,6 +154,7 @@ extension PasteTransaction: WorkflowNativePaste {}
             let adapterError: LVWorkflowAdapterError
             let status: Int
             let body: Data
+            let requestStarted = ProcessInfo.processInfo.systemUptime
             do {
                 let response = try await transport.send(nativeRequest)
                 body = response.0
@@ -179,6 +180,10 @@ extension PasteTransaction: WorkflowNativePaste {}
                 body = Data()
                 status = 0
                 adapterError = LV_WORKFLOW_ADAPTER_NETWORK
+            }
+            if url.path.hasSuffix("/chat/completions"), !Task.isCancelled {
+                let metrics = CoreProtocolBridge.withSlice(body) { lv_protocol_cleanup_metrics($0) }
+                DiagnosticLog.shared.recordCleanup(elapsed: ProcessInfo.processInfo.systemUptime - requestStarted, metrics:metrics)
             }
             self.transportTasks.removeValue(forKey: operation)
             guard !self.shuttingDown else { return }

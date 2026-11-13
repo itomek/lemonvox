@@ -187,6 +187,8 @@ private:
             error_ = false; clear_result();
             lv::WorkflowConfig config;
             config.preferences = {settings_.endpoint, settings_.asr_model, settings_.cleanup_model, settings_.cleanup_prompt, false};
+            config.preferences.cleanup_backend = settings_.cleanup_backend;
+            config.preferences.cleanup_thinking = settings_.cleanup_thinking;
             native::endpoint_facts(settings_.endpoint, config.endpoint);
             core_->start(std::move(config));
         }

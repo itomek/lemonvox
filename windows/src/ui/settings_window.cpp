@@ -54,8 +54,10 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"", Kind::combo},
     {L"C&leanup model", Kind::label},
     {L"", Kind::combo},
-    {L"The server must provide transcription, chat and discoverable compatible model metadata. It manages models, providers "
-     L"and API keys; remote cleanup sends transcribed text through it to that provider.", Kind::note},
+    {L"Cleanup e&xecution", Kind::label},
+    {L"", Kind::combo},
+    {L"The server must provide transcription, chat and discoverable compatible model metadata. Remote cleanup sends text "
+     L"through that provider. Choose Lemonade thinking off only for Lemonade; compatible server leaves vendor options unset.", Kind::note},
     {L"Cleanup &prompt", Kind::label},
     {L"", Kind::multiline},
     {L"Reset to &default", Kind::button},
@@ -280,8 +282,11 @@ private:
             SendMessageW(control(combo), CB_SETCUEBANNER, 0, reinterpret_cast<LPARAM>(L"Choose a model"));
         }
         for (const auto combo : {SettingsControl::asr_combo, SettingsControl::cleanup_combo,
-                 SettingsControl::shortcut_combo, SettingsControl::microphone_combo}) {
+                 SettingsControl::shortcut_combo, SettingsControl::microphone_combo, SettingsControl::execution_combo}) {
             SendMessageW(control(combo), CB_SETMINVISIBLE, 10, 0);
+        }
+        for (const auto *mode : {L"Compatible server (server default)", L"Lemonade (thinking off)", L"Lemonade (server default)"}) {
+            SendMessageW(control(SettingsControl::execution_combo), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(mode));
         }
         annotate_accessibility();
     }
@@ -333,6 +338,9 @@ private:
         rebuild_models(current.asr_model, current.cleanup_model);
         SetWindowTextW(control(SettingsControl::prompt_edit),
             settings::to_edit_newlines(utf8_to_wide(current.cleanup_prompt)).c_str());
+        const int execution = current.cleanup_backend == LV_CLEANUP_BACKEND_LEMONADE ?
+            (current.cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT ? 2 : 1) : 0;
+        SendMessageW(control(SettingsControl::execution_combo), CB_SETCURSEL, execution, 0);
         rebuild_trigger();
         rebuild_devices(current.capture_device_id);
         populating_ = false;
@@ -501,6 +509,9 @@ private:
         preferences.asr_model = selected_model(ModelRole::transcription);
         preferences.cleanup_model = selected_model(ModelRole::cleanup);
         preferences.cleanup_prompt = wide_to_utf8(prompt);
+        const int execution = combo_selection(control(SettingsControl::execution_combo));
+        preferences.cleanup_backend = execution == 1 || execution == 2 ? LV_CLEANUP_BACKEND_LEMONADE : LV_CLEANUP_BACKEND_GENERIC;
+        preferences.cleanup_thinking = execution == 2 ? LV_CLEANUP_THINKING_SERVER_DEFAULT : LV_CLEANUP_THINKING_DISABLED;
         preferences.trigger = trigger_;
         preferences.capture_device_id = selected_device();
 
