@@ -16,6 +16,43 @@ Cleanup execution and its shared preservation policy are described in [cleanup s
 
 ## Install
 
+### Windows
+
+Download the [Windows x64 ZIP](https://github.com/itomek/lemonvox/releases/download/v0.7.0/LemonVox-0.7.0-windows-x64.zip)
+from the [v0.7.0 release](https://github.com/itomek/lemonvox/releases/tag/v0.7.0)
+and extract it. Windows 11 is required. The x64 build has also passed bounded
+native tests under Windows 11 ARM64 emulation; there is no native ARM64 package.
+
+Open PowerShell in the extracted folder containing `install.ps1` and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+This installs for your current user into `%LOCALAPPDATA%\Programs\LemonVox`,
+adds a Start menu shortcut, and launches the app. No administrator rights are
+needed. Add `-StartAtSignIn` to start LemonVox when you sign in. The release is
+unsigned, so Windows SmartScreen may display a warning.
+
+For portable use, download the [standalone Windows x64 EXE](https://github.com/itomek/lemonvox/releases/download/v0.7.0/LemonVox-0.7.0-windows-x64.exe)
+and run it directly instead.
+
+Install and start [Lemonade](https://lemonade-server.ai/) separately, or use a
+compatible server on another computer. Open Settings from the LemonVox tray
+icon, enter the server endpoint ending in `/v1` (for example,
+`http://127.0.0.1:13305/v1`), refresh models, and select transcription and cleanup
+models. Confirm any missing-model downloads explicitly. LemonVox includes
+neither the server nor models. Allow microphone access for desktop apps in
+**Settings > Privacy & security > Microphone**.
+
+The default shortcut is **Alt twice** to start and again to stop; you can change
+it in Settings. To update, extract a newer ZIP and rerun its `install.ps1`;
+your settings are retained. To uninstall, use **Settings > Apps > Installed apps >
+LemonVox > Uninstall**. Settings are retained unless you run the installed
+`uninstall.ps1` with `-RemoveSettings`.
+
+See [Windows setup and validation](windows/README.md) for details and limitations.
+
 ### Ubuntu
 
 Supports Ubuntu 24.04 LTS with GNOME Wayland on **amd64** and **arm64**.
