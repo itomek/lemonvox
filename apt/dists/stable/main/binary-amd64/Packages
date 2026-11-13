@@ -1,0 +1,23 @@
+Package: lemonvox
+Architecture: amd64
+Version: 0.2.3
+Priority: optional
+Section: utils
+Maintainer: LemonVox contributors <noreply@invalid>
+Depends: libc6 (>= 2.38), libstdc++6 (>= 13), libgcc-s1 (>= 12), libglib2.0-0t64 (>= 2.80), libadwaita-1-0 (>= 1.5), libgtk-4-1 (>= 4.14), libsoup-3.0-0 (>= 3.4), libgstreamer1.0-0 (>= 1.24), libgstreamer-plugins-base1.0-0 (>= 1.24), gstreamer1.0-pulseaudio, gstreamer1.0-plugins-good, pipewire-pulse, gnome-shell (>= 46), gsettings-desktop-schemas
+Filename: pool/main/l/lemonvox/lemonvox_0.2.3_amd64.deb
+Size: 331946
+MD5sum: adccfdaf0ddc710d4829a94231f8cd03
+SHA1: bfcc09d6404d1a3b4601886428da2f37f952355a
+SHA256: d5342ac473ea83c4afd1aa1fb6687f9badb36d6827c7826c1e5ded1daf06feaf
+SHA512: e214dee44905e0c5dd1349a13f325ceded09ca3282c217f5ca36b3f0c27fc2a8e363fbdf9c025cf8cc0474cc022a582b9416bf4b13ff43a896f1c5fdff4035ee
+Homepage: https://github.com/itomek/lemonvox
+Description: Local-first desktop dictation for Ubuntu GNOME Wayland
+ Requires Lemonade or another OpenAI-compatible server installed
+ and running separately on this computer, with audio transcription, chat
+ completions and model-discovery metadata supported by LemonVox. Generic API
+ compatibility alone is insufficient. Local and remote HTTP/HTTPS endpoints are accepted.
+ Lemonade 2026.44.1 is the tested baseline; other servers are unverified.
+ The GNOME extension pastes completed dictation at current focus without
+ sending Enter. Copy is available if paste cannot be dispatched.
+
