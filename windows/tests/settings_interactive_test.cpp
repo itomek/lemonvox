@@ -403,14 +403,21 @@ int main() {
         }));
         CHECK(combo_items(item(window, SettingsControl::asr_combo)).front() == L"fresh-asr (installed)");
 
-        // Tab order follows the visual order and wraps.
+        // Tab order follows native child creation order and wraps. All three
+        // visible, enabled setup actions sit between model selection and the
+        // cleanup prompt, including Cancel setup (an idle no-op).
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
-            SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::prompt_edit,
+            SettingsControl::asr_combo, SettingsControl::cleanup_combo,
+            SettingsControl::install_asr_button, SettingsControl::install_cleanup_button,
+            SettingsControl::cancel_install_button, SettingsControl::prompt_edit,
             SettingsControl::reset_prompt_button, SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
             SettingsControl::microphone_combo, SettingsControl::privacy_button,
             SettingsControl::save_button, SettingsControl::cancel_button, SettingsControl::endpoint_edit};
         for (size_t i = 0; i + 1 < order.size(); ++i) {
+            CHECK(IsWindowVisible(item(window, order[i])));
+            CHECK(IsWindowEnabled(item(window, order[i])));
             CHECK(GetNextDlgTabItem(window.hwnd(), item(window, order[i]), FALSE) == item(window, order[i + 1]));
+            CHECK(GetNextDlgTabItem(window.hwnd(), item(window, order[i + 1]), TRUE) == item(window, order[i]));
         }
 
         const auto failures = check_automation(window);
