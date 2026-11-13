@@ -34,22 +34,53 @@ the architectures supplied. GnuPG signs the repository metadata and exports
 the corresponding public key as `lemonvox-archive-keyring.gpg`. The script
 writes a local directory and leaves it ready for static HTTPS hosting.
 
-To configure APT for a hosted repository, verify the key fingerprint through
-a trusted channel, install the public key as
-`/etc/apt/keyrings/lemonvox-archive-keyring.gpg`, and give APT read access.
-Save a source file under `/etc/apt/sources.list.d/lemonvox.sources` with the
-actual repository URL in the `URIs` field.
+The signed repository URL is `https://itomek.github.io/lemonvox/apt/`.
+The dedicated archive signing key fingerprint is:
 
 ```text
+D873B423E88EA3EFF8D769E47EE4BCB0334EC5FE
+```
+
+Verify this fingerprint against this reviewed GitHub repository through a trusted
+channel independent of the hosted key download. Download the public key, check
+its complete fingerprint, and install a source restricted to that key:
+
+```sh
+sudo apt install ca-certificates curl gnupg
+key=$(mktemp)
+trap 'rm -f "$key"' EXIT
+curl --fail --silent --show-error --location \
+  https://itomek.github.io/lemonvox/apt/lemonvox-archive-keyring.gpg --output "$key"
+fingerprints=$(gpg --batch --show-keys --with-colons "$key" 2>/dev/null | \
+  awk -F: '$1 == "pub" { primary=1; next } primary && $1 == "fpr" { print $10; primary=0 }')
+if test "$fingerprints" != D873B423E88EA3EFF8D769E47EE4BCB0334EC5FE; then
+  echo 'Archive signing key fingerprint mismatch.' >&2
+  exit 1
+fi
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo install -m 0644 "$key" /etc/apt/keyrings/lemonvox-archive-keyring.gpg
+sudo tee /etc/apt/sources.list.d/lemonvox.sources > /dev/null <<'SOURCE'
 Types: deb
-URIs: https://example.invalid/lemonvox-apt/
+URIs: https://itomek.github.io/lemonvox/apt/
 Suites: stable
 Components: main
 Signed-By: /etc/apt/keyrings/lemonvox-archive-keyring.gpg
+SOURCE
+sudo apt update
+sudo apt install lemonvox
 ```
 
-Run `sudo apt update` and `sudo apt install lemonvox`. APT offers upgrades when
-the repository contains a newer version for your architecture.
+Stop if the fingerprint check fails. APT verifies signed metadata and offers
+upgrades when a newer package for the machine's architecture is published.
+The package still requires a separately configured inference server and compatible
+transcription and cleanup models. Enable the GNOME extension and log out and back
+in after first installation or an extension upgrade as described above.
+
+The protected `Prepare signed Ubuntu APT repository` workflow accepts an existing
+public Ubuntu release tag and its exact reviewed source commit. It verifies both
+architectures and their provenance, then produces a signed public-tree artifact.
+It does not publish or replace the GitHub Pages site; that artifact is reviewed
+before publication.
 
 Run `bash ubuntu/tests/apt_repository_test.sh` to exercise signature
 verification, package download, and install and upgrade resolution with
