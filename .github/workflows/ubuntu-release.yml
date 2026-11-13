@@ -3,69 +3,181 @@ on:
   pull_request:
     paths:
       - .github/workflows/ubuntu-release.yml
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/ubuntu-release.yml
+      - tests/ubuntu_release_workflow_test.py
   workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full SHA of the reviewed source commit already merged into main
+        required: true
+        type: string
+      version:
+        description: New Ubuntu package version (X.Y.Z)
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
   group: ubuntu-release
   cancel-in-progress: false
 jobs:
+  prepare:
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    outputs:
+      source_commit: ${{ steps.source.outputs.source_commit }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test release dispatch boundaries
+        run: python3 tests/ubuntu_release_workflow_test.py
+      - name: Validate pinned source and unused release version
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+          CHECK_COMMIT: ${{ github.sha }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            SOURCE_COMMIT="$CHECK_COMMIT"
+            RELEASE_VERSION=0.0.0
+          else
+            test "$EVENT_NAME" = workflow_dispatch
+            test "$DISPATCH_REF" = refs/heads/main
+            [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+            test "$RELEASE_VERSION" != 0.0.0
+            test "$(git rev-parse "$SOURCE_COMMIT^{commit}")" = "$SOURCE_COMMIT"
+            git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
+            RELEASE_TAG="ubuntu-v$RELEASE_VERSION"
+            refs=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$RELEASE_TAG")
+            test "$(jq --arg ref "refs/tags/$RELEASE_TAG" '[.[] | select(.ref == $ref)] | length' <<< "$refs")" = 0
+            releases=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[] | .tag_name')
+            if grep -Fxq "$RELEASE_TAG" <<< "$releases"; then
+              echo 'Release version is already used.' >&2
+              exit 1
+            fi
+          fi
+          printf 'source_commit=%s\nversion=%s\n' "$SOURCE_COMMIT" "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
   package:
+    timeout-minutes: 30
+    needs: prepare
     strategy:
+      fail-fast: false
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ needs.prepare.outputs.source_commit }}
           persist-credentials: false
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --yes cmake ninja-build g++ pkg-config libgtk-4-dev libadwaita-1-dev libsoup-3.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-pulseaudio gjs libglib2.0-bin desktop-file-utils
-      - name: Build and test package
-        run: bash scripts/build-ubuntu.sh --output "$RUNNER_TEMP/packages" --version 0.2.2
+      - name: Build and test pinned source package
+        env:
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test -z "$(git status --porcelain)"
+          bash scripts/build-ubuntu.sh --output "$RUNNER_TEMP/packages" --version "$RELEASE_VERSION" --build-dir "$RUNNER_TEMP/ubuntu-build"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ubuntu-${{ runner.arch }}
-          path: ${{ runner.temp }}/packages/*
+          path: |
+            ${{ runner.temp }}/packages/*.deb
+            ${{ runner.temp }}/packages/SHA256SUMS-ubuntu-*.txt
+            ${{ runner.temp }}/packages/VERSION-ubuntu-*.txt
           if-no-files-found: error
   publish:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: package
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: [prepare, package]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: ubuntu-*
           merge-multiple: true
           path: packages
-      - name: Verify and publish Ubuntu release
+      - name: Verify packages, provenance and unused release target
+        working-directory: packages
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_COMMIT: ${{ github.sha }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          cd packages
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$RELEASE_VERSION" != 0.0.0
+          git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 6
           for arch in amd64 arm64; do
-            test "$(dpkg-deb -f "lemonvox_0.2.2_${arch}.deb" Package)" = lemonvox
-            test "$(dpkg-deb -f "lemonvox_0.2.2_${arch}.deb" Architecture)" = "$arch"
-            test "$(dpkg-deb -f "lemonvox_0.2.2_${arch}.deb" Version)" = 0.2.2
-            expected=$(awk '{print $1}' "SHA256SUMS-ubuntu-${arch}.txt")
-            actual=$(sha256sum "lemonvox_0.2.2_${arch}.deb" | awk '{print $1}')
+            package="lemonvox_${RELEASE_VERSION}_${arch}.deb"
+            test "$(dpkg-deb -f "$package" Package)" = lemonvox
+            test "$(dpkg-deb -f "$package" Architecture)" = "$arch"
+            test "$(dpkg-deb -f "$package" Version)" = "$RELEASE_VERSION"
+            test "$(wc -l < "SHA256SUMS-ubuntu-$arch.txt")" -eq 1
+            read -r expected recorded < "SHA256SUMS-ubuntu-$arch.txt"
+            [[ "$expected" =~ ^[0-9a-f]{64}$ ]]
+            [[ "$recorded" == */"$package" || "$recorded" == "$package" ]]
+            actual=$(sha256sum "$package" | awk '{print $1}')
             test "$actual" = "$expected"
+            grep -Fx "$RELEASE_VERSION" "VERSION-ubuntu-$arch.txt"
+            grep -Fx "architecture: $arch" "VERSION-ubuntu-$arch.txt"
+            grep -Fx "source: $SOURCE_COMMIT" "VERSION-ubuntu-$arch.txt"
+            grep -Fx 'source_dirty: false' "VERSION-ubuntu-$arch.txt"
+            grep -Fx "artifact: $package" "VERSION-ubuntu-$arch.txt"
+            dpkg-deb --fsys-tarfile "$package" | tar -xOf - ./usr/share/doc/lemonvox/build-info.txt > "$RUNNER_TEMP/build-info-$arch.txt"
+            grep -Fx "version: $RELEASE_VERSION" "$RUNNER_TEMP/build-info-$arch.txt"
+            grep -Fx "architecture: $arch" "$RUNNER_TEMP/build-info-$arch.txt"
+            grep -Fx "source_revision: $SOURCE_COMMIT" "$RUNNER_TEMP/build-info-$arch.txt"
+            grep -Fx 'source_dirty: false' "$RUNNER_TEMP/build-info-$arch.txt"
           done
-          cat > notes.md <<'NOTES'
-          Ubuntu 24.04 GNOME 46 Wayland packages with automatic paste into the current focus after Stop and transcription/cleanup. Includes native Settings, configurable global shortcuts and a nonactivating dictation bar.
+          RELEASE_TAG="ubuntu-v$RELEASE_VERSION"
+          refs=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$RELEASE_TAG")
+          test "$(jq --arg ref "refs/tags/$RELEASE_TAG" '[.[] | select(.ref == $ref)] | length' <<< "$refs")" = 0
+          releases=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[] | .tag_name')
+          if grep -Fxq "$RELEASE_TAG" <<< "$releases"; then
+            echo 'Release version is already used.' >&2
+            exit 1
+          fi
+      - name: Publish verified Ubuntu packages
+        working-directory: packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ubuntu-release-notes.md" <<NOTES
+          Ubuntu 24.04+ GNOME Wayland packages, built and tested for amd64 and arm64 from reviewed source $SOURCE_COMMIT.
 
-          Download the .deb matching your architecture and run sudo apt install ./lemonvox_0.2.2_ARCH.deb. Requires Lemonade or another compatible OpenAI API server running separately, with a local or remote HTTP/HTTPS endpoint, audio transcription, chat completion and compatible model-discovery metadata. Enable the LemonVox GNOME extension, then log out and back in after first install or an extension upgrade. Paste replaces clipboard contents and sends Ctrl+V without Enter.
+          Download the .deb matching the machine architecture and run sudo apt install ./lemonvox_${RELEASE_VERSION}_ARCH.deb. Requires a separately configured Lemonade or compatible inference server. Enable the LemonVox GNOME extension, then log out and back in after first install or an extension upgrade.
 
-          Live microphone dictation and automatic paste were owner-verified on Ubuntu arm64. Packages for both architectures pass their build and CTest checks. These are downloadable Debian packages. Public APT repository hosting remains pending.
+          Package build and CTest checks passed on both architectures. These checks do not establish physical microphone, desktop paste, or model fidelity on every machine. These are downloadable Debian packages; this release does not change APT hosting.
           NOTES
-          gh release create ubuntu-v0.2.2 --target "$RELEASE_COMMIT" --title "LemonVox 0.2.2 for Ubuntu" --notes-file notes.md --latest=false ./*.deb ./SHA256SUMS-* ./VERSION-*
+          # Claim the unused tag atomically. Never publish against a tag that
+          # appeared between validation and publication; never update a tag.
+          gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/tags/ubuntu-v$RELEASE_VERSION" -f "sha=$SOURCE_COMMIT" > /dev/null
+          gh release create "ubuntu-v$RELEASE_VERSION" --verify-tag --target "$SOURCE_COMMIT" --title "LemonVox $RELEASE_VERSION for Ubuntu" --notes-file "$RUNNER_TEMP/ubuntu-release-notes.md" --latest=false ./*.deb ./SHA256SUMS-* ./VERSION-*
