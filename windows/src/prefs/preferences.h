@@ -20,13 +20,14 @@ struct WinPreferences {
     std::string asr_model;
     std::string cleanup_model;
     std::string cleanup_prompt = lv_cleanup_default_prompt();
+    TriggerBinding trigger = default_trigger();
+    // WASAPI endpoint ID; empty means the system default capture device.
+    std::wstring capture_device_id;
+
     // New settings explicitly target the factory Lemonade server. Legacy files
     // without a backend marker are loaded as generic for compatibility.
     LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_LEMONADE;
     LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
-    TriggerBinding trigger = default_trigger();
-    // WASAPI endpoint ID; empty means the system default capture device.
-    std::wstring capture_device_id;
 
     PreferencesSnapshot snapshot() const;
 };

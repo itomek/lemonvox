@@ -10,14 +10,14 @@ struct Settings {
     std::string asr_model;
     std::string cleanup_model;
     std::string cleanup_prompt = lv_cleanup_default_prompt();
-    // New settings explicitly target the factory Lemonade server. Legacy files
-    // without a backend marker are loaded as generic for compatibility.
-    LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_LEMONADE;
-    LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
     std::string appearance = "auto";
     std::string toggle_shortcut = "<Control><Alt>space";
     std::string cancel_shortcut = "<Control><Super>Escape";
     bool debug = false;
+    // New settings explicitly target the factory Lemonade server. Legacy files
+    // without a backend marker are loaded as generic for compatibility.
+    LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_LEMONADE;
+    LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
 };
 class SettingsStore {
 public:
