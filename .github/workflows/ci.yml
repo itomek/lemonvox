@@ -30,6 +30,7 @@ jobs:
       - name: Build, test and package without release credentials
         run: |
           python3 tests/release_name_test.py
+          python3 tests/cleanup_evaluation_test.py
           bash tests/core_target_test.sh
           bash scripts/package-macos.sh --ad-hoc --output "$RUNNER_TEMP/lemonvox-check" --version 0.0.0 --build-number "$GITHUB_RUN_NUMBER"
           bash tests/packaging_test.sh "$RUNNER_TEMP/lemonvox-check/LemonVox-0.0.0-$GITHUB_RUN_NUMBER-arm64-ad-hoc.zip"

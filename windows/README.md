@@ -101,7 +101,7 @@ Closing and reopening Settings shows the latest application-owned status.
 
 Settings persist in `HKCU\Software\LemonVox`. Audio and transcripts stay in memory; the clipboard
 is used briefly with history/cloud exclusion formats and restored only if nothing else changed it;
-diagnostics (tray > Open diagnostics) contain fixed events, error categories and HTTP status codes
+diagnostics (tray > Open diagnostics) contain fixed events, error categories, HTTP status codes and numeric cleanup metrics
 only.
 
 ## Packaging
@@ -212,3 +212,34 @@ GUI executables call `lemonvox_win_app_resources(<target>)` (defined in `src/ui/
 to embed the manifest (PerMonitorV2 DPI awareness, common controls v6, `asInvoker`) and the
 build-time-rendered app icon (resource ID 1); `lemonvox_win_manifest(<target>)` embeds only the
 manifest.
+
+## Cleanup execution
+
+New settings target the factory Lemonade server with **Lemonade (thinking off)**
+execution: the shared request policy sends `enable_thinking: false`, temperature
+zero and a generation budget that grows with transcript length. Select
+**Compatible server (server default)** for another OpenAI-compatible server;
+that mode omits Lemonade-specific thinking parameters. **Lemonade (server default)**
+leaves thinking behavior to Lemonade as an explicit override. Existing saved
+settings without a backend marker retain compatible-server execution until a
+mode is chosen. Changing an endpoint does not detect its backend; choose the
+matching execution mode before saving.
+
+The shared default prompt requests minimal punctuation and filler corrections
+while preserving every clause, language, name, number, negation and closing.
+Selected models and custom prompts are preserved. The exact previous built-in
+prompt migrates to the shared default; reset a custom prompt in Settings to
+adopt that default. Empty or truncated cleanup is rejected rather
+than pasted. Model behavior can still change words, so review the result.
+
+Gemma-4-E2B-it-GGUF remains a fast candidate awaiting broader fidelity and native
+performance qualification. It is not selected automatically. An already installed
+Gemma-4-E4B-it-GGUF with thinking off is a quality-oriented alternative, also
+requiring review. Choose a compatible installed model explicitly; LemonVox does
+not download models or change server residency. First-load latency can exceed
+warm generation time.
+
+The bounded diagnostic ring retains request duration, available token/reasoning
+counts and a fixed finish-reason category. Duration includes loading, queueing
+and transport; residency and fidelity remain marked unknown/unverified. No
+dictated content, prompts or endpoint URLs are recorded.

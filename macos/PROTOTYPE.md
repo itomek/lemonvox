@@ -29,6 +29,14 @@ The nonactivating Liquid Glass overlay and Settings follow the selected app appe
 
 Audio uses a private temporary WAV file removed after completion, failure or cancellation. Transcripts and request data remain in memory during processing. An abnormal process termination can leave temporary audio behind. Settings persist locally; diagnostics contain fixed event names/categories and HTTP codes, without audio, transcripts or credentials. **Open Log** in Settings opens the conventional per-user log at `~/Library/Logs/LemonVox/lemonvox.log`; rotation retains one backup. Server/provider retention depends on Lemonade configuration.
 
+## Cleanup behavior
+
+Settings → Models & Providers includes **Cleanup API**. The factory Lemonade configuration disables thinking explicitly. Existing saved endpoints without a backend setting use OpenAI-compatible mode until Lemonade is selected; this avoids sending vendor parameters to an unknown server. **Use server thinking default** omits the Lemonade override. A server or remote provider can still have its own capabilities and restrictions.
+
+The shared default prompt asks for capitalization, punctuation and removal of obvious filler or immediate repetition while preserving every substantive clause, spoken number, name, negation, language, literal instruction and closing. The former built-in prompt upgrades automatically; custom prompts and chosen models remain intact. Generation limits scale with transcript length; empty and truncated responses are rejected. Gemma E2B remains an unqualified fast candidate, while E4B with thinking disabled is a quality-oriented alternative. No cleanup model is silently chosen or downloaded.
+
+Debug diagnostics include total cleanup request milliseconds, fixed finish categories and reported token/reasoning counts. Missing counts remain unknown. Total time includes loading and queueing; runtime logs cannot establish cold/warm residency or fidelity. Diagnostics retain no prompts, dictated text, reasoning text, endpoint URLs or credentials. Synthetic model evaluation is separate from the native adapter checks.
+
 ## Targeting and clipboard
 
 When processing finishes, LemonVox sends one Command-V pair to current keyboard focus. Moving the cursor or switching applications while recording or processing changes the paste destination. A recognized Accessibility field is not required, and starting dictation is not blocked by the focused field type. If no field is selected, the destination handles the normal paste attempt. LemonVox never reactivates an earlier app or sends Return. The former target-field setting is removed; old saved values have no effect.

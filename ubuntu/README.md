@@ -161,3 +161,34 @@ Runtime libraries GTK/libadwaita, GLib/GIO, libsoup and GStreamer are dynamicall
 linked system packages, generally LGPL; GNOME Shell/GJS provides the extension
 runtime. Vendored yyjson is MIT and ships its license. No Qt, X11 input adapter,
 privileged keyboard hook, provider SDK or second dictation engine is added.
+
+## Cleanup execution
+
+New settings target the factory Lemonade server with **Lemonade · thinking off**
+execution: the shared request policy sends `enable_thinking: false`, temperature
+zero and a generation budget that grows with transcript length. Select
+**Compatible server · server default** for another OpenAI-compatible server;
+that mode omits Lemonade-specific thinking parameters. **Lemonade · server default**
+leaves thinking behavior to Lemonade as an explicit override. Existing saved
+settings without a backend marker retain compatible-server execution until a
+mode is chosen. Changing an endpoint does not detect its backend; choose the
+matching execution mode before saving.
+
+The shared default prompt requests minimal punctuation and filler corrections
+while preserving every clause, language, name, number, negation and closing.
+Selected models and custom prompts are preserved. The exact previous built-in
+prompt migrates to the shared default; reset a custom prompt in Settings to
+adopt that default. Empty or truncated cleanup is rejected rather
+than pasted. Model behavior can still change words, so review the result.
+
+Gemma-4-E2B-it-GGUF remains a fast candidate awaiting broader fidelity and native
+performance qualification. It is not selected automatically. An already installed
+Gemma-4-E4B-it-GGUF with thinking off is a quality-oriented alternative, also
+requiring review. Choose a compatible installed model explicitly; LemonVox does
+not download models or change server residency. First-load latency can exceed
+warm generation time.
+
+Cleanup diagnostics contain request duration, available token/reasoning counts
+and a fixed finish-reason category. Duration includes loading, queueing and
+transport; residency and fidelity remain marked unknown/unverified. These cleanup metrics are written only with Debug traces enabled. No dictated content, prompts or endpoint URLs are
+recorded.

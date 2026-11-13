@@ -1,6 +1,7 @@
 #pragma once
 
 #include "adapters.h"
+#include "protocol.h"
 #include "common/trigger_binding.h"
 
 #include <string>
@@ -8,8 +9,8 @@
 
 namespace lemonvox::win {
 
-// Matches the Mac default prompt so cleanup semantics are identical.
-extern const char kDefaultCleanupPrompt[];
+// Shared core policy owns the default prompt for every native shell.
+extern const char *const kDefaultCleanupPrompt;
 extern const char kDefaultEndpoint[]; // "http://127.0.0.1:13305/v1"
 
 // Every persisted Windows setting. Strings are UTF-8. Lemonade owns providers
@@ -18,10 +19,15 @@ struct WinPreferences {
     std::string endpoint = kDefaultEndpoint;
     std::string asr_model;
     std::string cleanup_model;
-    std::string cleanup_prompt = kDefaultCleanupPrompt;
+    std::string cleanup_prompt = lv_cleanup_default_prompt();
     TriggerBinding trigger = default_trigger();
     // WASAPI endpoint ID; empty means the system default capture device.
     std::wstring capture_device_id;
+
+    // New settings explicitly target the factory Lemonade server. Legacy files
+    // without a backend marker are loaded as generic for compatibility.
+    LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_LEMONADE;
+    LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
 
     PreferencesSnapshot snapshot() const;
 };

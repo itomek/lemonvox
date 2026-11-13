@@ -67,7 +67,8 @@ import Foundation
         WorkflowBridgeConfig(endpoint: WorkflowBridgeEndpointFacts(canonicalBaseURL: "http://127.0.0.1:13305/v1",
             schemeAllowed: true, hostLoopback: true, noUserinfo: true, noQueryFragment: true, pathEndsV1: true),
             preferenceEndpoint: "http://127.0.0.1:13305/v1", asrModel: "asr", cleanupModel: "cleanup",
-            cleanupPrompt: "prompt", insertCurrentTarget: false, pasteAtCurrentFocus: true)
+            cleanupPrompt: "prompt", insertCurrentTarget: false, pasteAtCurrentFocus: true,
+            cleanupBackend:LV_CLEANUP_BACKEND_LEMONADE, cleanupThinking:LV_CLEANUP_THINKING_DISABLED, cleanupContextTokens:32768)
     }
     private static func exercise(destination: String, dispatchAvailable: Bool = true, cancel: Bool = false) async {
         let capture = CaptureFake()
@@ -105,6 +106,10 @@ import Foundation
             await waitUntil { outcomes.count == 1 }
             precondition(failures.isEmpty && clipboard.text == "Synthetic transcript.")
             precondition(capture.starts == 1 && transport.requests.count == 4)
+            let cleanup = transport.requests.first { $0.url?.path.hasSuffix("/chat/completions") == true }!
+            let cleanupBody = try! JSONSerialization.jsonObject(with:cleanup.httpBody!) as! [String:Any]
+            precondition(cleanupBody["enable_thinking"] as? Bool == false)
+            precondition((cleanupBody["max_tokens"] as? Int ?? 0) > 0)
             if dispatchAvailable {
                 precondition(outcomes[0].kind == LV_WORKFLOW_OUTCOME_INSERTED)
                 precondition(posting.destinations == [destination] && texts.isEmpty)

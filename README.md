@@ -10,6 +10,8 @@ The server must provide audio transcription, chat completion for cleanup, and co
 
 Settings on macOS, Windows and Ubuntu show a live server connection indicator. The app checks the saved endpoint in the background every ten seconds (three-second timeout), including while Settings is closed. Green means the models API is reachable, not that the selected models are ready; red shows the connection failure and server prerequisite.
 
+Cleanup execution and its shared preservation policy are described in [cleanup settings and qualification](docs/cleanup.md). New configurations use Lemonade thinking-off mode; existing saved server configurations keep compatible-server behavior until an execution mode is selected.
+
 ## Start here
 
 - [Product specification](docs/spec.md): workflow, technical proposal, and milestones.

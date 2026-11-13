@@ -721,7 +721,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             pathEndsV1: components?.path.split(separator: "/").last == "v1")
         return WorkflowBridgeConfig(endpoint: endpoint, preferenceEndpoint: config.endpoint,
             asrModel: config.asrModel, cleanupModel: config.cleanupModel,
-            cleanupPrompt: config.cleanupPrompt, insertCurrentTarget: true, pasteAtCurrentFocus: true)
+            cleanupPrompt: config.cleanupPrompt, insertCurrentTarget: true, pasteAtCurrentFocus: true,
+            cleanupBackend: config.cleanupBackend.core, cleanupThinking: config.cleanupThinking.core,
+            cleanupContextTokens: config.cleanupContextTokens)
     }
 
     private func beginWorkflow() {

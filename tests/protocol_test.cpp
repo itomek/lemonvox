@@ -90,6 +90,7 @@ void expectCleanupPayload(const LVProtocolBytes &bytes, const std::string &model
     const auto *temperature = yyjson_obj_get(root, "temperature");
     assert(temperature && yyjson_is_int(temperature) && yyjson_get_sint(temperature) == 0);
     assert(!yyjson_obj_get(root, "tools"));
+    assert(yyjson_get_uint(yyjson_obj_get(root, "max_tokens")) >= transcript.size() + 128);
 
     const auto *messages = yyjson_obj_get(root, "messages");
     assert(messages && yyjson_is_arr(messages) && yyjson_arr_size(messages) == 2);
@@ -204,6 +205,56 @@ int main() {
     expectBytes(cleanup.content_type, "application/json");
     expectCleanupPayload(cleanup.body, "cleanup", "prompt", "um send Łukasz 14 invoices");
     lv_protocol_request_free(&cleanup);
+
+    // Generic OpenAI-compatible servers never receive Lemonade vendor options.
+    auto genericRequest = lv_protocol_make_cleanup_request(&config, transcript);
+    assert(stringFrom(genericRequest.body).find("enable_thinking") == std::string::npos);
+    lv_protocol_request_free(&genericRequest);
+    config.cleanup_backend = LV_CLEANUP_BACKEND_LEMONADE;
+    auto nonThinking = lv_protocol_make_cleanup_request(&config, transcript);
+    assert(stringFrom(nonThinking.body).find("\"enable_thinking\":false") != std::string::npos);
+    lv_protocol_request_free(&nonThinking);
+    config.cleanup_thinking = LV_CLEANUP_THINKING_SERVER_DEFAULT;
+    auto serverDefault = lv_protocol_make_cleanup_request(&config, transcript);
+    assert(stringFrom(serverDefault.body).find("enable_thinking") == std::string::npos);
+    lv_protocol_request_free(&serverDefault);
+    config = validConfig();
+    // Long multilingual dictation gets proportional headroom, never a 512 cap.
+    std::string longDictation;
+    for (int i = 0; i < 400; ++i) longDictation += "Łukasz 明天 1234,50 zł nie zmieniaj thanks. ";
+    auto longRequest = lv_protocol_make_cleanup_request(&config, slice(longDictation));
+    assert(longRequest.status == LV_PROTOCOL_OK);
+    expectCleanupPayload(longRequest.body, "cleanup", "prompt", longDictation);
+    lv_protocol_request_free(&longRequest);
+    config.cleanup_context_tokens = 4096;
+    auto contextOverflow = lv_protocol_make_cleanup_request(&config, slice(longDictation));
+    assert(contextOverflow.status == LV_PROTOCOL_CONFIGURATION && !contextOverflow.body.data);
+    lv_protocol_request_free(&contextOverflow);
+    config.cleanup_context_tokens = 200000;
+    auto contextFits = lv_protocol_make_cleanup_request(&config, slice(longDictation));
+    assert(contextFits.status == LV_PROTOCOL_OK);
+    lv_protocol_request_free(&contextFits);
+    config.cleanup_backend = static_cast<LVCleanupBackend>(99);
+    assert(lv_protocol_validate_config(&config) == LV_PROTOCOL_CONFIGURATION);
+    auto unknownBackend = lv_protocol_make_cleanup_request(&config, transcript);
+    assert(unknownBackend.status == LV_PROTOCOL_CONFIGURATION);
+    lv_protocol_request_free(&unknownBackend);
+    config = validConfig();
+    const std::string sharedPrompt = lv_cleanup_default_prompt();
+    assert(sharedPrompt.find("closings, thanks, and politeness") != std::string::npos);
+    assert(sharedPrompt.find("Punctuate all sentences") != std::string::npos);
+    assert(sharedPrompt.find("AM/PM") != std::string::npos);
+    const auto metrics = lv_protocol_cleanup_metrics(slice(R"({"choices":[{"finish_reason":"length","message":{"content":"partial","reasoning_content":"a明"}}],"usage":{"prompt_tokens":100,"completion_tokens":42,"completion_tokens_details":{"reasoning_tokens":7}}})"));
+    assert(metrics.status == LV_PROTOCOL_OK && metrics.finish_reason == LV_CLEANUP_FINISH_LENGTH);
+    assert(metrics.has_prompt_tokens && metrics.prompt_tokens == 100);
+    assert(metrics.has_completion_tokens && metrics.completion_tokens == 42);
+    assert(metrics.has_reasoning_tokens && metrics.reasoning_tokens == 7);
+    assert(metrics.has_reasoning_characters && metrics.reasoning_characters == 2);
+    const auto unknownMetrics = lv_protocol_cleanup_metrics(slice(R"({"choices":[{"finish_reason":"arbitrary secret text","message":{"content":"ok"}}],"usage":{"prompt_tokens":-1,"completion_tokens":"42"}})"));
+    assert(unknownMetrics.finish_reason == LV_CLEANUP_FINISH_OTHER);
+    assert(!unknownMetrics.has_prompt_tokens && !unknownMetrics.has_completion_tokens);
+    assert(!unknownMetrics.has_reasoning_tokens && !unknownMetrics.has_reasoning_characters);
+    assert(lv_protocol_cleanup_metrics(slice("{}")).status == LV_PROTOCOL_RESPONSE);
 
     const std::string embeddedNulModel("clean\0up", 8);
     auto nulConfig = validConfig();

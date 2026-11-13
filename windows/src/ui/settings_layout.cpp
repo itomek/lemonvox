@@ -303,9 +303,12 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     y += line_height + label_gap;
     at(layout, SettingsControl::asr_combo, margin, y, inner, row);
     y += row + group_gap;
-    at(layout, SettingsControl::cleanup_label, margin, y, inner, line_height);
+    const int model_half = (inner - column_gap) / 2;
+    at(layout, SettingsControl::cleanup_label, margin, y, model_half, line_height);
+    at(layout, SettingsControl::execution_label, margin + model_half + column_gap, y, inner - model_half - column_gap, line_height);
     y += line_height + label_gap;
-    at(layout, SettingsControl::cleanup_combo, margin, y, inner, row);
+    at(layout, SettingsControl::cleanup_combo, margin, y, model_half, row);
+    at(layout, SettingsControl::execution_combo, margin + model_half + column_gap, y, inner - model_half - column_gap, row);
     y += row + small_gap;
     const int routing_h = std::max(line_height, measure(SettingsControl::routing_note, inner));
     at(layout, SettingsControl::routing_note, margin, y, inner, routing_h);

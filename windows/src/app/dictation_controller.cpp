@@ -67,6 +67,12 @@ void DiagnosticsRing::record(DiagnosticEntry entry) {
     entries_.push_back(entry);
 }
 
+void DiagnosticsRing::record_cleanup(CleanupDiagnostic entry) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cleanup_entries_.size() == kCapacity) cleanup_entries_.pop_front();
+    cleanup_entries_.push_back(entry);
+}
+
 std::vector<DiagnosticEntry> DiagnosticsRing::entries() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return {entries_.begin(), entries_.end()};
@@ -79,6 +85,18 @@ std::wstring DiagnosticsRing::format() const {
         text += L" error=";
         text += error_name(entry.error);
         text += L" http=" + std::to_wstring(entry.http_status) + L"\r\n";
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto count = [](bool present, std::uint64_t value) { return present ? std::to_wstring(value) : L"unknown"; };
+    for (const auto &entry : cleanup_entries_) {
+        text += L"cleanup total_ms=" + std::to_wstring(entry.elapsed_ms) +
+            L" error=" + error_name(entry.error) + L" http=" + std::to_wstring(entry.http_status) +
+            L" response_valid=" + std::to_wstring(entry.response_valid) + L" finish=" + std::to_wstring(entry.finish_reason) +
+            L" prompt_tokens=" + count(entry.has_prompt_tokens, entry.prompt_tokens) +
+            L" completion_tokens=" + count(entry.has_completion_tokens, entry.completion_tokens) +
+            L" reasoning_tokens=" + count(entry.has_reasoning_tokens, entry.reasoning_tokens) +
+            L" reasoning_characters=" + count(entry.has_reasoning_characters, entry.reasoning_characters) +
+            L" residency=unknown fidelity=unverified\r\n";
     }
     return text;
 }

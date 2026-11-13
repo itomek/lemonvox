@@ -27,7 +27,7 @@ enum DiagnosticEvent: String {
     case canceled, insertionSucceeded = "insertion_succeeded", insertionFallback = "insertion_fallback", dictationFailed = "dictation_failed"
 }
 
-/// Only fixed event names, error categories and HTTP codes reach disk. Never accepts free-form log text.
+/// Only fixed event names, categories, HTTP codes and numeric cleanup metrics reach disk.
 final class DiagnosticLog {
     static let debugEnabledPreferenceKey = "diagnosticDebugEnabled"
     static let shared = DiagnosticLog(debugEnabled: UserDefaults.standard.bool(forKey: DiagnosticLog.debugEnabledPreferenceKey))
@@ -76,6 +76,26 @@ final class DiagnosticLog {
             }
         }
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(event.rawValue)\(category)\n"
+        append(line)
+    }
+
+    /// Numeric metadata only. End-to-end request time includes loading and queueing;
+    /// residency and fidelity cannot be established from an HTTP response.
+    func recordCleanup(elapsed: TimeInterval, metrics: LVCleanupMetrics) {
+        lock.lock(); defer { lock.unlock() }
+        guard debugEnabledStorage, elapsed.isFinite, elapsed >= 0 else { return }
+        let finish: String
+        switch metrics.finish_reason {
+        case LV_CLEANUP_FINISH_STOP: finish = "stop"
+        case LV_CLEANUP_FINISH_LENGTH: finish = "length"
+        case LV_CLEANUP_FINISH_OTHER: finish = "other"
+        default: finish = "unknown"
+        }
+        func count(_ value: UInt64, _ known: UInt8) -> String { known != 0 ? String(value) : "unknown" }
+        let line = "\(ISO8601DateFormatter().string(from: Date())) cleanup_metrics total_ms=\(Int(min(elapsed * 1000, Double(Int.max / 2)))) residency=unknown fidelity=unverified finish=\(finish) prompt_tokens=\(count(metrics.prompt_tokens,metrics.has_prompt_tokens)) completion_tokens=\(count(metrics.completion_tokens,metrics.has_completion_tokens)) reasoning_tokens=\(count(metrics.reasoning_tokens,metrics.has_reasoning_tokens)) reasoning_characters=\(count(metrics.reasoning_characters,metrics.has_reasoning_characters))\n"
+        append(line)
+    }
+    private func append(_ line: String) {
         guard line.utf8.count <= limit else {
             problemStorage = "Diagnostic log could not be written"
             return

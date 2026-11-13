@@ -88,6 +88,10 @@ struct PreferencesSnapshot {
     bool insert_current_target = false;
     // Dispatch ordinary paste at current keyboard focus without inspecting a field.
     bool paste_at_current_focus = false;
+    // Values of LVCleanupBackend and LVCleanupThinking (protocol.h).
+    std::uint8_t cleanup_backend = 0;
+    std::uint8_t cleanup_thinking = 0;
+    std::uint32_t cleanup_context_tokens = 0;
 };
 
 using VoidCompletion = std::function<void(OperationId, Completion)>;
@@ -159,10 +163,29 @@ struct DiagnosticEntry {
     int http_status = 0;
 };
 
+// Fixed-shape cleanup telemetry; elapsed includes server loading, queueing and
+// transport. It is not a claim of warm generation or model residency.
+struct CleanupDiagnostic {
+    double elapsed_ms = 0;
+    AdapterError error = AdapterError::none;
+    int http_status = 0;
+    bool response_valid = false;
+    std::uint8_t finish_reason = 0; // LVCleanupFinish values from protocol.h.
+    std::uint64_t prompt_tokens = 0;
+    std::uint64_t completion_tokens = 0;
+    std::uint64_t reasoning_tokens = 0;
+    std::uint64_t reasoning_characters = 0;
+    bool has_prompt_tokens = false;
+    bool has_completion_tokens = false;
+    bool has_reasoning_tokens = false;
+    bool has_reasoning_characters = false;
+};
+
 class DiagnosticsSink {
 public:
     virtual ~DiagnosticsSink() = default;
     virtual void record(DiagnosticEntry entry) = 0;
+    virtual void record_cleanup(CleanupDiagnostic) {}
 };
 
 enum class WorkflowPhase : std::uint8_t {
