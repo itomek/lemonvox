@@ -1,0 +1,174 @@
+name: Prepare signed Ubuntu APT repository
+on:
+  pull_request:
+    paths:
+      - .github/workflows/apt-release.yml
+      - tests/apt_release_workflow_test.py
+      - scripts/build-ubuntu-apt-repository.sh
+      - ubuntu/tests/apt_repository_test.sh
+  workflow_dispatch:
+    inputs:
+      ubuntu_release_tag:
+        description: Existing public Ubuntu release tag (ubuntu-vX.Y.Z)
+        required: true
+        type: string
+      source_commit:
+        description: Full reviewed source SHA matching the release tag on main
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: apt-release
+  cancel-in-progress: false
+jobs:
+  checks:
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install repository test dependencies
+        run: sudo apt-get update && sudo apt-get install --yes apt-utils gnupg
+      - name: Test workflow boundaries and repository builder
+        run: |
+          python3 tests/apt_release_workflow_test.py
+          bash ubuntu/tests/apt_repository_test.sh
+  sign:
+    timeout-minutes: 20
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: checks
+    environment: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify public release, exact tag source and main ancestry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.ubuntu_release_tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^ubuntu-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$RELEASE_TAG" != ubuntu-v0.0.0
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_COMMIT"
+          git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
+          release=$(gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG")
+          jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .draft == false and .prerelease == false' <<< "$release" > /dev/null
+          git checkout --detach "$SOURCE_COMMIT"
+          test -z "$(git status --porcelain)"
+      - name: Download and verify only the two release packages and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.ubuntu_release_tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#ubuntu-v}
+          packages="$RUNNER_TEMP/apt-input"
+          mkdir "$packages"
+          for arch in amd64 arm64; do
+            package="lemonvox_${version}_${arch}.deb"
+            for file in "$package" "SHA256SUMS-ubuntu-$arch.txt" "VERSION-ubuntu-$arch.txt"; do
+              gh release download "$RELEASE_TAG" --pattern "$file" --dir "$packages"
+            done
+            test "$(dpkg-deb -f "$packages/$package" Package)" = lemonvox
+            test "$(dpkg-deb -f "$packages/$package" Version)" = "$version"
+            test "$(dpkg-deb -f "$packages/$package" Architecture)" = "$arch"
+            test "$(wc -l < "$packages/SHA256SUMS-ubuntu-$arch.txt")" -eq 1
+            read -r expected recorded < "$packages/SHA256SUMS-ubuntu-$arch.txt"
+            [[ "$expected" =~ ^[0-9a-f]{64}$ ]]
+            [[ "$recorded" == */"$package" || "$recorded" == "$package" ]]
+            test "$(sha256sum "$packages/$package" | awk '{print $1}')" = "$expected"
+            grep -Fx "$version" "$packages/VERSION-ubuntu-$arch.txt"
+            grep -Fx "architecture: $arch" "$packages/VERSION-ubuntu-$arch.txt"
+            grep -Fx "source: $SOURCE_COMMIT" "$packages/VERSION-ubuntu-$arch.txt"
+            grep -Fx 'source_dirty: false' "$packages/VERSION-ubuntu-$arch.txt"
+            grep -Fx "artifact: $package" "$packages/VERSION-ubuntu-$arch.txt"
+            dpkg-deb --fsys-tarfile "$packages/$package" | tar -xOf - ./usr/share/doc/lemonvox/build-info.txt > "$RUNNER_TEMP/apt-build-info-$arch.txt"
+            grep -Fx "version: $version" "$RUNNER_TEMP/apt-build-info-$arch.txt"
+            grep -Fx "architecture: $arch" "$RUNNER_TEMP/apt-build-info-$arch.txt"
+            grep -Fx "source_revision: $SOURCE_COMMIT" "$RUNNER_TEMP/apt-build-info-$arch.txt"
+            grep -Fx 'source_dirty: false' "$RUNNER_TEMP/apt-build-info-$arch.txt"
+          done
+          test "$(find "$packages" -maxdepth 1 -type f | wc -l)" -eq 6
+      - name: Install signing tools
+        run: sudo apt-get update && sudo apt-get install --yes apt-utils gnupg
+      - name: Sign repository with the dedicated environment key
+        env:
+          APT_SIGNING_KEY_ASC: ${{ secrets.APT_SIGNING_KEY_ASC }}
+          APT_SIGNING_FINGERPRINT: ${{ vars.APT_SIGNING_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$APT_SIGNING_FINGERPRINT" =~ ^([0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$ ]]
+          test -n "$APT_SIGNING_KEY_ASC"
+          export GNUPGHOME="$RUNNER_TEMP/apt-private-gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          cleanup() { gpgconf --kill gpg-agent 2>/dev/null || true; rm -rf "$GNUPGHOME"; }
+          trap cleanup EXIT
+          printf '%s' "$APT_SIGNING_KEY_ASC" | gpg --batch --quiet --import > /dev/null 2>&1
+          unset APT_SIGNING_KEY_ASC
+          expected=$(printf '%s' "$APT_SIGNING_FINGERPRINT" | tr '[:lower:]' '[:upper:]')
+          fingerprints=$(gpg --batch --with-colons --list-secret-keys 2>/dev/null | awk -F: '$1 == "sec" { primary=1; next } primary && $1 == "fpr" { print $10; primary=0 }')
+          test "$fingerprints" = "$expected"
+          bash scripts/build-ubuntu-apt-repository.sh "$RUNNER_TEMP/apt-public" "$expected" "$RUNNER_TEMP/apt-input/"*.deb
+          gpgv --keyring "$RUNNER_TEMP/apt-public/lemonvox-archive-keyring.gpg" "$RUNNER_TEMP/apt-public/dists/stable/InRelease"
+      - name: Verify signed package resolution with isolated APT state
+        run: |
+          set -euo pipefail
+          repository="$RUNNER_TEMP/apt-public"
+          state="$RUNNER_TEMP/apt-verify"
+          mkdir -p "$state/lists/partial" "$state/cache/archives/partial" "$state/empty" "$state/downloads"
+          touch "$state/status"
+          for arch in amd64 arm64; do
+            cat > "$state/lemonvox.sources" <<SOURCE
+          Types: deb
+          URIs: file:$repository
+          Suites: stable
+          Components: main
+          Architectures: $arch
+          Signed-By: $repository/lemonvox-archive-keyring.gpg
+          SOURCE
+            cat > "$state/apt.conf" <<CONFIG
+          Dir::Etc::main "/dev/null";
+          Dir::Etc::parts "$state/empty";
+          Dir::Etc::sourcelist "$state/lemonvox.sources";
+          Dir::Etc::sourceparts "$state/empty";
+          Dir::Etc::preferences "/dev/null";
+          Dir::Etc::preferencesparts "$state/empty";
+          Dir::State::lists "$state/lists";
+          Dir::State::status "$state/status";
+          Dir::Cache "$state/cache";
+          APT::Architecture "$arch";
+          APT::Architectures { "$arch"; };
+          APT::Get::List-Cleanup "true";
+          APT::Update::Error-Mode "any";
+          CONFIG
+            APT_CONFIG="$state/apt.conf" apt-get update
+            (cd "$state/downloads" && APT_CONFIG="$state/apt.conf" apt-get download "lemonvox:$arch")
+            for package in "$RUNNER_TEMP/apt-input/"*"_${arch}.deb"; do
+              cmp "$package" "$state/downloads/$(basename "$package")"
+            done
+          done
+      - name: Remove private signing state
+        if: always()
+        run: |
+          if [[ -d "$RUNNER_TEMP/apt-private-gnupg" ]]; then
+            GNUPGHOME="$RUNNER_TEMP/apt-private-gnupg" gpgconf --kill gpg-agent 2>/dev/null || true
+            rm -rf "$RUNNER_TEMP/apt-private-gnupg"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-apt-${{ inputs.ubuntu_release_tag }}
+          path: ${{ runner.temp }}/apt-public/
+          if-no-files-found: error
