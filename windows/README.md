@@ -212,3 +212,27 @@ GUI executables call `lemonvox_win_app_resources(<target>)` (defined in `src/ui/
 to embed the manifest (PerMonitorV2 DPI awareness, common controls v6, `asInvoker`) and the
 build-time-rendered app icon (resource ID 1); `lemonvox_win_manifest(<target>)` embeds only the
 manifest.
+
+## Model setup
+
+Installing the inference server, downloading model files, and loading an installed
+model into memory are separate steps. Install and start the server separately.
+Settings → Refresh models checks its catalog without starting downloads. Choose
+transcription and cleanup models independently. Use Set up transcription / Set up
+cleanup and confirm the named model before allowing the server to download it;
+files may occupy several GB on the server machine. The server owns storage,
+network access, disk space and filesystem permissions. An installed but unloaded
+model can load at first inference and is not a missing download.
+
+Setup shows an activity state while the server works. Cancel setup requests cancellation on the server and waits until its worker
+stops; the server may retain partial or completed files. If cancellation cannot
+be confirmed after network loss, check the server model manager and Refresh
+models before retrying. Failed setup preserves saved settings. After successful setup the chosen
+compatible model is selected in Settings; Save settings applies it to later sessions.
+For servers or versions without verified model-management support, open that
+server’s model manager, install a compatible transcription or chat model, and
+return to Refresh models. LemonVox never constructs shell commands from model IDs.
+
+Model installation requires verified Lemonade 2026.46.2+ management support and
+a compatible downloads API probe. See [shared model setup](../docs/model-setup.md)
+for the API contract and verification limits.

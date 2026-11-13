@@ -10,6 +10,8 @@ The server must provide audio transcription, chat completion for cleanup, and co
 
 Settings on macOS, Windows and Ubuntu show a live server connection indicator. The app checks the saved endpoint in the background every ten seconds (three-second timeout), including while Settings is closed. Green means the models API is reachable, not that the selected models are ready; red shows the connection failure and server prerequisite.
 
+Server installation, model download and model loading are separate steps. Install and start the inference server first, then open Settings to choose transcription and cleanup models. Missing models require an explicit download action; starting LemonVox, checking server health and dictating do not authorize downloads. An installed model can remain unloaded until its first inference request. See [model setup](docs/model-setup.md) for supported server management, cancellation and recovery.
+
 ## Start here
 
 - [Product specification](docs/spec.md): workflow, technical proposal, and milestones.

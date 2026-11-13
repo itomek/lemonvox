@@ -1,5 +1,6 @@
 #include "adapters.h"
 #include "settings.h"
+#include "model_setup_client.h"
 #include "diagnostics.h"
 #include "workflow.h"
 #include <gst/gst.h>
@@ -253,7 +254,14 @@ private:
                     auto *uri = g_file_get_uri(file);
                     g_app_info_launch_default_for_uri_async(uri, nullptr, nullptr, nullptr, nullptr);
                     g_free(uri); g_object_unref(file);
-                }, [this](const std::string &name) { action(name); });
+                }, [this](const std::string &name) { action(name); },
+                [this](const std::string &endpoint, const std::string &id, bool asr) {
+                    lv::ProtocolEndpointFacts facts;
+                    if (!setup_ || !native::endpoint_facts(endpoint, facts) || facts.canonical_base_url != setup_->snapshot().endpoint) {
+                        window_->setup_status("Server endpoint changed. Refresh models before setup.", false); return;
+                    }
+                    if (setup_) setup_->install(id, asr ? LV_MODEL_ASR : LV_MODEL_CLEANUP, true);
+                }, [this] { if (setup_) setup_->cancel(); });
             refresh(settings_.endpoint);
         }
         window_->health(health_.status);
@@ -286,21 +294,20 @@ private:
         });
     }
     void refresh(const std::string &endpoint) {
-        discovery_.cancel(discovery_operation_);
-        const auto operation = ++discovery_operation_;
-        lv::ProtocolConfiguration config; native::endpoint_facts(endpoint, config.endpoint);
-        lv::TransportRequest request;
-        if (lv::Protocol::make_models_request(config, request) != LV_PROTOCOL_OK) {
-            window_->models({}, "Use a local endpoint ending in /v1."); return;
+        if (!setup_) {
+            setup_ = std::make_unique<lv::ModelSetupClient>(discovery_, [](unsigned delay, std::function<void()> done) {
+                auto *callback = new std::function<void()>(std::move(done));
+                g_timeout_add_full(G_PRIORITY_DEFAULT, delay, +[](gpointer value) -> gboolean {
+                    (*static_cast<std::function<void()> *>(value))(); return G_SOURCE_REMOVE;
+                }, callback, +[](gpointer value) { delete static_cast<std::function<void()> *>(value); });
+            }, [this](lv::ModelSetupClient::Snapshot view) {
+                if (!window_ || shutdown_) return;
+                window_->models(std::move(view.catalog.models), view.message, view.management_supported, view.endpoint, view.available);
+                window_->setup_status(view.message, view.active, view.installed_id, view.installed_purpose == LV_MODEL_ASR);
+            });
         }
-        discovery_.send(operation, std::move(request), [this, operation](lv::OperationId id, lv::TransportResponse response) {
-            if (id != operation || id != discovery_operation_ || !window_) return;
-            lv::ProtocolInventory inventory;
-            if (response.error != lv::AdapterError::none || response.status != 200 || lv::Protocol::parse_inventory(response.bytes, inventory) != LV_PROTOCOL_OK) {
-                window_->models({}, "Could not load models. Check Lemonade, then Refresh."); return;
-            }
-            window_->models(std::move(inventory.models), "Models refreshed. Save settings to use your selections.");
-        });
+        lv::ProtocolConfiguration config; native::endpoint_facts(endpoint, config.endpoint);
+        setup_->refresh(std::move(config));
     }
     void shutdown() {
         if (shutdown_) return;
@@ -308,7 +315,7 @@ private:
         if (core_) core_->shutdown();
         if (health_source_) { g_source_remove(health_source_); health_source_ = 0; }
         health_transport_.shutdown(); lv_server_health_reset(&health_);
-        discovery_.shutdown(); clear_result();
+        setup_.reset(); discovery_.shutdown(); clear_result();
         if (capture_limit_) { g_source_remove(capture_limit_); capture_limit_ = 0; }
         if (palette_source_) { g_source_remove(palette_source_); palette_source_ = 0; }
         if (style_signal_) { g_signal_handler_disconnect(adw_style_manager_get_default(), style_signal_); style_signal_ = 0; }
@@ -331,11 +338,11 @@ private:
     native::SettingsStore store_;
     native::Settings settings_;
     std::unique_ptr<lv::WorkflowCore> core_;
+    std::unique_ptr<lv::ModelSetupClient> setup_;
     std::unique_ptr<native::SettingsWindow> window_;
     GDBusNodeInfo *node_ = nullptr;
     guint registration_ = 0, result_expiry_ = 0, palette_source_ = 0, capture_limit_ = 0;
     gulong style_signal_ = 0;
-    lv::OperationId discovery_operation_ = 0;
     bool shutdown_ = false, error_ = false;
     std::string state_ = "idle", message_ = "Ready. Start dictation with the Shell extension or Settings.", result_, palette_;
 };

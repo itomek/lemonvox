@@ -37,9 +37,20 @@ static void model_choices_filter_sort_and_label() {
     const auto cleanup = build_model_choices(sample_models(), ModelRole::cleanup, "", true);
     CHECK((cleanup.ids == std::vector<std::string>{"both", "gpt-x", "llama"}));
     CHECK(cleanup.labels[1] == L"gpt-x (remote via server)");
-    CHECK(cleanup.labels[2] == L"llama");
+    CHECK(cleanup.labels[2] == L"llama (installed)");
     CHECK(cleanup.selected == -1);
     CHECK(model_label({"m\xC3\xA9", false, true, true}) == L"m\u00E9 (remote via server)");
+}
+
+static void model_setup_labels() {
+    SettingsModelOption absent{"Whisper-Base", true, false, false, false, false};
+    CHECK(model_label(absent) == L"Whisper-Base (not installed)");
+    absent.installed = true;
+    CHECK(model_label(absent) == L"Whisper-Base (installed)");
+    absent.loaded_known = true;
+    CHECK(model_label(absent) == L"Whisper-Base (installed; not loaded)");
+    absent.loaded = true;
+    CHECK(model_label(absent) == L"Whisper-Base (loaded)");
 }
 
 static void model_choices_preserve_selection() {
@@ -226,6 +237,7 @@ static void layout_scales_without_overlap() {
 int main() {
     model_choices_filter_sort_and_label();
     model_choices_preserve_selection();
+    model_setup_labels();
     device_choices();
     trigger_choices();
     recorder_logic();

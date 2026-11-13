@@ -370,11 +370,11 @@ int main() {
             return text_of(item(window, SettingsControl::status)) != L"Loading models from server\u2026";
         }));
         CHECK(combo_items(item(window, SettingsControl::asr_combo))
-            == (std::vector<std::wstring>{L"whisper-a", L"whisper-b", L"(unavailable) whisper-old"}));
+            == (std::vector<std::wstring>{L"whisper-a (installed)", L"whisper-b (installed)", L"(unavailable) whisper-old"}));
         CHECK(combo_selected(item(window, SettingsControl::asr_combo)) == L"(unavailable) whisper-old");
         CHECK(combo_items(item(window, SettingsControl::cleanup_combo))
-            == (std::vector<std::wstring>{L"gpt-x (remote via server)", L"llama"}));
-        CHECK(combo_selected(item(window, SettingsControl::cleanup_combo)) == L"llama");
+            == (std::vector<std::wstring>{L"gpt-x (remote via server)", L"llama (installed)"}));
+        CHECK(combo_selected(item(window, SettingsControl::cleanup_combo)) == L"llama (installed)");
         CHECK(text_of(item(window, SettingsControl::status)) == L"2 transcription models and 2 cleanup models available.");
 
         // Single instance.
@@ -391,8 +391,8 @@ int main() {
         click(window, SettingsControl::refresh_button);
         pump_for(800);
         CHECK(combo_items(item(window, SettingsControl::asr_combo))
-            == (std::vector<std::wstring>{L"fresh-asr", L"(unavailable) whisper-old"}));
-        CHECK(combo_items(item(window, SettingsControl::cleanup_combo)) == std::vector<std::wstring>{L"llama"});
+            == (std::vector<std::wstring>{L"fresh-asr (installed)", L"(unavailable) whisper-old"}));
+        CHECK(combo_items(item(window, SettingsControl::cleanup_combo)) == std::vector<std::wstring>{L"llama (installed)"});
 
         // Error state keeps the last inventory.
         fake.plan.push_back({20, SettingsCatalogResult{SettingsCatalogResult::Status::network, {}, L""}});
@@ -401,7 +401,7 @@ int main() {
             return text_of(item(window, SettingsControl::status)).find(L"Server unavailable at http://127.0.0.1:13305/v1")
                 == 0;
         }));
-        CHECK(combo_items(item(window, SettingsControl::asr_combo)).front() == L"fresh-asr");
+        CHECK(combo_items(item(window, SettingsControl::asr_combo)).front() == L"fresh-asr (installed)");
 
         // Tab order follows the visual order and wraps.
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
@@ -475,7 +475,7 @@ int main() {
         focus(window, SettingsControl::endpoint_edit);
         CHECK(!fake.suspended);
 
-        select_combo(item(window, SettingsControl::asr_combo), L"fresh-asr");
+        select_combo(item(window, SettingsControl::asr_combo), L"fresh-asr (installed)");
         select_combo(item(window, SettingsControl::microphone_combo), L"Headset");
 
         // Enter = Save. A shortcut the app cannot register aborts the save.

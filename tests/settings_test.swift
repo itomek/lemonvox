@@ -12,8 +12,79 @@ actor DiscoveryHTTP: HTTPTransport {
         return (Data(body.utf8), 200)
     }
 }
+actor SetupHTTP: HTTPTransport {
+    var requests: [URLRequest] = []
+    var installed = false
+    var fail = false
+    var cancelOnPull = false
+    func configure(fail: Bool = false, cancel: Bool = false) { self.fail=fail; self.cancelOnPull=cancel }
+    func send(_ request: URLRequest) async throws -> (Data, Int) {
+        requests.append(request)
+        let path=request.url!.path
+        if path.hasSuffix("health") { return (Data(#"{"version":"2026.46.2","all_models_loaded":[]}"#.utf8),200) }
+        if path.hasSuffix("models") {
+            return (Data("{\"data\":[{\"id\":\"setup-asr\",\"recipe\":\"whispercpp\",\"labels\":[\"transcription\"],\"downloaded\":\(installed)}]}".utf8),200)
+        }
+        if path.hasSuffix("pull") {
+            if cancelOnPull { throw CancellationError() }
+            return (Data(#"{"id":"model:setup-asr","status":"downloading","running":true}"#.utf8),200)
+        }
+        if path.hasSuffix("control") {
+            precondition(request.httpMethod == "POST")
+            return (Data(#"{"id":"model:setup-asr","status":"cancelled","running":false}"#.utf8),200)
+        }
+        if path.hasSuffix("downloads") {
+            if !requests.contains(where: { $0.url?.path.hasSuffix("pull") == true }) { return (Data("[]".utf8),200) }
+            if fail { return (Data(#"[{"id":"model:setup-asr","status":"error","running":false}]"#.utf8),200) }
+            installed=true
+            return (Data(#"[{"id":"model:setup-asr","status":"completed","running":false,"percent":100}]"#.utf8),200)
+        }
+        return (Data(),404)
+    }
+}
+private func modelSetupTransportTests() async throws {
+    for endpoint in ["http://127.0.0.1:13305/v1", "http://127.0.0.1:13305/api/v1"] {
+        let fake=SetupHTTP()
+        let client=ModelDiscovery(transport:fake)
+        let before=try await client.load(endpoint:endpoint)
+        precondition(before.transcription.map(\.id) == ["setup-asr"])
+        let catalog=before.setupCatalog!
+        precondition(catalog.managementSupported && catalog.info(modelID:"setup-asr",purpose:LV_MODEL_ASR).canInstall)
+        let reads=await fake.requests
+        precondition(reads.allSatisfy { $0.httpMethod == "GET" })
+        precondition(reads.contains { $0.url?.absoluteString == endpoint + "/health" })
+        try await client.install(endpoint:endpoint,modelID:"setup-asr",purpose:LV_MODEL_ASR,catalog:catalog,progress:{ _ in })
+        let after=try await client.load(endpoint:endpoint)
+        precondition(after.setupCatalog!.info(modelID:"setup-asr",purpose:LV_MODEL_ASR).state == LV_SETUP_INSTALLED_NOT_LOADED)
+    }
+    let fake=SetupHTTP()
+    let discovery=ModelDiscovery(transport:fake), endpoint="http://127.0.0.1:13305/v1"
+    let models=try await discovery.load(endpoint:endpoint), catalog=models.setupCatalog!
+    await fake.configure(fail:true)
+    do { try await discovery.install(endpoint:endpoint,modelID:"setup-asr",purpose:LV_MODEL_ASR,catalog:catalog,progress:{ _ in }); fatalError("Failed install succeeded") }
+    catch is ModelSetupFailure { }
+    await fake.configure(cancel:true)
+    do { try await discovery.install(endpoint:endpoint,modelID:"setup-asr",purpose:LV_MODEL_ASR,catalog:catalog,progress:{ _ in }); fatalError("Canceled install succeeded") }
+    catch is CancellationError { }
+    let requests=await fake.requests
+    precondition(requests.contains { $0.url?.path.hasSuffix("downloads/control") == true })
+    await fake.configure()
+    try await discovery.install(endpoint:endpoint,modelID:"setup-asr",purpose:LV_MODEL_ASR,catalog:catalog,progress:{ _ in })
+    print("PASS: setup uses only read-only discovery, preserves endpoint prefixes, verifies installs, reports failure, cancels on the server and retries")
+}
 @main struct SettingsTests {
     static func main() async throws {
+        if CommandLine.arguments.contains("--live-discovery") {
+            let http=LocalHTTP(); defer { http.close() }
+            let models=try await ModelDiscovery(transport:http).load(endpoint:"http://127.0.0.1:13305/v1")
+            guard let catalog=models.setupCatalog else { fatalError("Live server supplied no catalog") }
+            precondition(catalog.managementSupported,"Live server management API did not pass the read-only probes")
+            precondition(catalog.info(modelID:"Whisper-Base",purpose:LV_MODEL_ASR).state == LV_SETUP_READY)
+            precondition(catalog.info(modelID:"Gemma-4-E4B-it-GGUF",purpose:LV_MODEL_CLEANUP).state == LV_SETUP_READY)
+            print("PASS: GET-only live Lemonade 2026.46.2 discovery verifies management support and installed, loaded ASR/cleanup states")
+            return
+        }
+        try await modelSetupTransportTests()
         let localAsr = LocalModel(id: "asr", downloaded: true, recipe: "whispercpp", labels: ["transcription"], cloud_provider: nil)
         let localCleanup = LocalModel(id: "cleanup", downloaded: true, recipe: "llamacpp", labels: ["chat"], cloud_provider: nil)
         let remoteCleanup = LocalModel(id: "remote", downloaded: nil, recipe: "cloud", labels: ["chat"], cloud_provider: "provider")
@@ -37,6 +108,13 @@ actor DiscoveryHTTP: HTTPTransport {
         precondition(result.cleanup.map(\.id) == ["gemma", "remote.chat"])
         let discoveryRequests = await fake.requests
         precondition(discoveryRequests.first?.cachePolicy == .useProtocolCachePolicy && discoveryRequests.first?.httpMethod == "GET")
+        let catalogJSON = Data(#"{"data":[{"id":"missing-asr","downloaded":false,"recipe":"whispercpp","labels":["transcription"],"size":1.25},{"id":"ready-chat","downloaded":true,"loaded":false,"recipe":"llamacpp","labels":["chat"]}]}"#.utf8)
+        let catalog = ModelSetupCatalog(json: catalogJSON, managementSupported: true)
+        precondition(catalog.info(modelID: "missing-asr", purpose: LV_MODEL_ASR).canInstall)
+        precondition(catalog.info(modelID: "ready-chat", purpose: LV_MODEL_CLEANUP).state == LV_SETUP_INSTALLED_NOT_LOADED)
+        precondition(!catalog.info(modelID: "missing-asr", purpose: LV_MODEL_CLEANUP).canInstall)
+        precondition(catalog.info(modelID: "", purpose: LV_MODEL_ASR).state == LV_SETUP_NO_SELECTION)
+        precondition(discoveryRequests.allSatisfy { $0.httpMethod == "GET" }, "Discovery must never install or load a model")
         let empty = try await ModelDiscovery(transport: DiscoveryHTTP(#"{"data":[],"reason":"No models available"}"#)).load(endpoint:"http://127.0.0.1:13305/v1")
         precondition(empty.reason == "No models available")
         do {

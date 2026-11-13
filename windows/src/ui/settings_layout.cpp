@@ -55,6 +55,10 @@ const wchar_t kRecorderPrompt[] = L"Press a shortcut (Esc to cancel)";
 std::wstring model_label(const SettingsModelOption &option) {
     std::wstring label = utf8_to_wide(option.id);
     if (option.remote) label += kRemoteSuffix;
+    else if (!option.installed) label += L" (not installed)";
+    else if (option.loaded) label += L" (loaded)";
+    else if (option.loaded_known) label += L" (installed; not loaded)";
+    else label += L" (installed)";
     return label;
 }
 
@@ -310,6 +314,12 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     const int routing_h = std::max(line_height, measure(SettingsControl::routing_note, inner));
     at(layout, SettingsControl::routing_note, margin, y, inner, routing_h);
     y += routing_h + group_gap;
+
+    const int setup_w = (inner - 2 * small_gap) / 3;
+    at(layout, SettingsControl::install_asr_button, margin, y, setup_w, row);
+    at(layout, SettingsControl::install_cleanup_button, margin + setup_w + small_gap, y, setup_w, row);
+    at(layout, SettingsControl::cancel_install_button, margin + 2 * (setup_w + small_gap), y, setup_w, row);
+    y += row + group_gap;
 
     const int reset_w = button_width(SettingsControl::reset_prompt_button, 120);
     at(layout, SettingsControl::prompt_label, margin, y + (row - line_height) / 2, inner - reset_w - column_gap,

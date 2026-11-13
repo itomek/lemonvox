@@ -29,17 +29,20 @@ void apply_extension_shortcuts(const Settings &);
 class SettingsWindow {
 public:
     using Save = std::function<bool(const Settings &, std::string &)>;
+    using Install = std::function<void(const std::string &, const std::string &, bool)>;
     using Refresh = std::function<void(const std::string &)>;
-    SettingsWindow(GtkApplication *, Settings, Save, Refresh, std::function<void()> open_log, std::function<void(const std::string &)> control);
+    SettingsWindow(GtkApplication *, Settings, Save, Refresh, std::function<void()> open_log, std::function<void(const std::string &)> control, Install install = {}, std::function<void()> cancel_install = {});
     ~SettingsWindow();
     void present();
     void health(LVServerHealthStatus);
     void notice(const std::string &text) { status(text); }
     void state(const std::string &, bool recording, bool active, bool has_result);
-    void models(std::vector<ProtocolModel>, const std::string &status);
+    void models(std::vector<ProtocolModel>, const std::string &status, bool installation_supported = false, const std::string &catalog_endpoint = {}, bool server_available = true);
+    void setup_status(const std::string &, bool active, const std::string &installed = {}, bool asr = false);
 private:
     static void save_clicked(GtkButton *, gpointer);
     static void refresh_clicked(GtkButton *, gpointer);
+    void install(bool asr);
     Settings read() const;
     void status(const std::string &);
     GtkWindow *window_ = nullptr;
@@ -55,6 +58,12 @@ private:
     Settings settings_;
     Save save_;
     Refresh refresh_;
+    Install install_;
+    std::function<void()> cancel_install_;
+    GtkButton *install_asr_ = nullptr, *install_cleanup_ = nullptr, *cancel_install_button_ = nullptr;
+    bool setup_active_ = false, installation_supported_ = false, server_available_ = false;
+    std::vector<ProtocolModel> inventory_;
+    std::string catalog_endpoint_;
     std::vector<std::string> asr_ids_, cleanup_ids_;
 };
 }

@@ -5,6 +5,53 @@ struct DiscoveredModels {
     let cleanup: [LocalModel]
     let reason: String?
     let version: String?
+    var setupCatalog: ModelSetupCatalog? = nil
+}
+
+struct ModelSetupInfo {
+    let state: LVModelSetupState
+    let canInstall: Bool
+    let message: String
+}
+struct ModelSetupCatalog {
+    let json: Data
+    let managementSupported: Bool
+    var healthJSON = Data()
+    func withInventory<Result>(_ body: (inout LVProtocolInventory) throws -> Result) rethrows -> Result {
+        var inventory = CoreProtocolBridge.withSlice(json) { lv_protocol_parse_catalog($0) }
+        defer { lv_protocol_inventory_free(&inventory) }
+        if !healthJSON.isEmpty {
+            _ = CoreProtocolBridge.withSlice(healthJSON) { lv_protocol_catalog_apply_health(&inventory, $0) }
+        }
+        return try body(&inventory)
+    }
+    func info(modelID: String, purpose: LVModelPurpose, serverAvailable: Bool = true) -> ModelSetupInfo {
+        withInventory { inventory in
+            var result = CoreProtocolBridge.withSlice(modelID) {
+                lv_protocol_model_setup(&inventory, $0, purpose, serverAvailable ? 1 : 0, managementSupported ? 1 : 0)
+            }
+            defer { lv_protocol_model_setup_free(&result) }
+            return ModelSetupInfo(state: result.state, canInstall: result.can_install != 0,
+                message: SafeDisplay.message(CoreProtocolBridge.text(result.message) ?? "Model setup unavailable."))
+        }
+    }
+    func sizeGB(modelID: String) -> Double? {
+        withInventory { inventory in
+            guard let models = inventory.models else { return nil }
+            for index in 0..<inventory.count where CoreProtocolBridge.text(models[index].id) == modelID {
+                return models[index].size_gb > 0 ? models[index].size_gb : nil
+            }
+            return nil
+        }
+    }
+}
+struct ModelInstallUpdate {
+    let percent: Double
+    let message: String
+}
+struct ModelSetupFailure: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
 }
 struct ModelDiscovery {
     let transport: HTTPTransport
@@ -16,42 +63,144 @@ struct ModelDiscovery {
             return try CoreProtocolBridge.request(&raw, cachePolicy: .useProtocolCachePolicy)
         }
     }
-    func load(endpoint: String) async throws -> DiscoveredModels {
-        let (data, status) = try await transport.send(modelsRequest(endpoint: endpoint))
+    private func managementRequest(endpoint: String, make: (UnsafePointer<LVProtocolConfig>) -> LVProtocolRequest) throws -> URLRequest {
+        try CoreProtocolBridge.endpointFacts(endpoint) { _, facts in
+            var config = LVProtocolConfig(); config.endpoint = facts
+            var raw = make(&config)
+            return try CoreProtocolBridge.request(&raw)
+        }
+    }
+    private func healthRequest(endpoint: String) throws -> URLRequest {
+        var url = try DictationConfig.endpointURL(endpoint)
+        url.appendPathComponent("health")
+        var request = URLRequest(url: url); request.timeoutInterval = 5
+        return request
+    }
+    private func checked(_ request: URLRequest) async throws -> Data {
+        let (data, status) = try await transport.send(request)
         try Task.checkCancellation()
         guard (200..<300).contains(status) else { throw DictationError.fromHTTP(status, data: data) }
-        var inventory = CoreProtocolBridge.withSlice(data) { lv_protocol_parse_inventory($0) }
-        defer { lv_protocol_inventory_free(&inventory) }
-        guard inventory.status == LV_PROTOCOL_OK else { throw CoreProtocolBridge.error(status: inventory.status, httpStatus: 0, detail: nil) }
-        let reason = inventory.has_reason != 0 ? CoreProtocolBridge.text(inventory.reason).map(SafeDisplay.message) : nil
-        var transcription: [LocalModel] = []
-        var cleanup: [LocalModel] = []
-        if inventory.count != 0 {
-            guard let models = inventory.models else { throw DictationError.response }
-            for index in 0..<inventory.count {
-                let raw = models[index]
-                guard let id = CoreProtocolBridge.text(raw.id) else { throw DictationError.response }
-                let model = LocalModel(id: id, downloaded: nil, recipe: nil, labels: nil,
-                    cloud_provider: raw.remote != 0 ? "remote" : nil, coreASR: raw.asr != 0,
-                    coreCleanup: raw.cleanup != 0)
-                if raw.asr != 0 { transcription.append(model) }
-                if raw.cleanup != 0 { cleanup.append(model) }
+        return data
+    }
+    func load(endpoint: String) async throws -> DiscoveredModels {
+        let installedJSON = try await checked(modelsRequest(endpoint: endpoint))
+        var catalogJSON = installedJSON
+        var managementSupported = false
+        var healthJSON = Data()
+        // All discovery requests are read-only; a newer API is enabled only after
+        // its version, catalog and job-status response have been checked.
+        do {
+            healthJSON = try await checked(healthRequest(endpoint: endpoint))
+            if CoreProtocolBridge.withSlice(healthJSON, { lv_protocol_supports_model_management($0) }) != 0 {
+                let candidate = try await checked(managementRequest(endpoint: endpoint, make: lv_protocol_make_catalog_request))
+                let jobs = try await checked(managementRequest(endpoint: endpoint, make: lv_protocol_make_downloads_request))
+                var progress = CoreProtocolBridge.withSlice(jobs) { bytes in
+                    CoreProtocolBridge.withSlice("") { lv_protocol_parse_install_progress_for_model(bytes, $0) }
+                }
+                defer { lv_protocol_install_progress_free(&progress) }
+                var catalog = CoreProtocolBridge.withSlice(candidate) { lv_protocol_parse_catalog($0) }
+                defer { lv_protocol_inventory_free(&catalog) }
+                if catalog.status == LV_PROTOCOL_OK && progress.status == LV_PROTOCOL_OK {
+                    catalogJSON = candidate; managementSupported = true
+                }
             }
+        } catch is CancellationError { throw CancellationError() }
+        catch { /* Generic servers retain ordinary installed inventory and help. */ }
+        let setup = ModelSetupCatalog(json: catalogJSON, managementSupported: managementSupported, healthJSON: healthJSON)
+        return try setup.withInventory { inventory in
+            guard inventory.status == LV_PROTOCOL_OK else { throw DictationError.response }
+            let reason = inventory.has_reason != 0 ? CoreProtocolBridge.text(inventory.reason).map(SafeDisplay.message) : nil
+            var transcription: [LocalModel] = [], cleanup: [LocalModel] = []
+            if let models = inventory.models {
+                for index in 0..<inventory.count {
+                    let raw = models[index]
+                    guard let id = CoreProtocolBridge.text(raw.id) else { throw DictationError.response }
+                    let model = LocalModel(id: id, downloaded: raw.downloaded != 0, recipe: nil, labels: nil,
+                        cloud_provider: raw.remote != 0 ? "remote" : nil, coreASR: raw.asr != 0, coreCleanup: raw.cleanup != 0)
+                    if raw.asr != 0 { transcription.append(model) }
+                    if raw.cleanup != 0 { cleanup.append(model) }
+                }
+            }
+            return DiscoveredModels(transcription: transcription.sorted { $0.id < $1.id },
+                cleanup: cleanup.sorted { $0.id < $1.id }, reason: reason, version: nil, setupCatalog: setup)
         }
-        return DiscoveredModels(transcription: transcription.sorted { $0.id < $1.id },
-            cleanup: cleanup.sorted { $0.id < $1.id }, reason: reason, version: nil)
     }
     func version(endpoint: String) async -> String? {
-        guard var url = try? DictationConfig.endpointURL(endpoint) else { return nil }
-        url.deleteLastPathComponent()
-        if url.path != "/api" { url.appendPathComponent("api") }
-        url.appendPathComponent("v1/health")
-        var request = URLRequest(url: url); request.timeoutInterval = 5
-        guard let (data, code) = try? await transport.send(request), (200..<300).contains(code) else { return nil }
+        guard let request = try? healthRequest(endpoint: endpoint), let data = try? await checked(request) else { return nil }
         var result = CoreProtocolBridge.withSlice(data) { lv_protocol_parse_version($0) }
         defer { lv_protocol_result_free(&result) }
         guard result.status == LV_PROTOCOL_OK, let version = CoreProtocolBridge.text(result.value) else { return nil }
         return SafeDisplay.message(version)
+    }
+    func install(endpoint: String, modelID: String, purpose: LVModelPurpose, catalog: ModelSetupCatalog,
+                 progress: @escaping (ModelInstallUpdate) async -> Void) async throws {
+        let request = try catalog.withInventory { inventory in
+            try CoreProtocolBridge.endpointFacts(endpoint) { _, facts in
+                var config = LVProtocolConfig(); config.endpoint = facts
+                return try CoreProtocolBridge.withSlice(modelID) {
+                    var raw = lv_protocol_make_install_request(&config, &inventory, $0, purpose,
+                        catalog.managementSupported ? 1 : 0, 1)
+                    return try CoreProtocolBridge.request(&raw)
+                }
+            }
+        }
+        do {
+            var data = try await checked(request)
+            var missingPolls = 0
+            while true {
+                try Task.checkCancellation()
+                var raw = CoreProtocolBridge.withSlice(data) { bytes in
+                    CoreProtocolBridge.withSlice(modelID) { lv_protocol_parse_install_progress_for_model(bytes, $0) }
+                }
+                let update = ModelInstallUpdate(percent: raw.percent,
+                    message: SafeDisplay.message(CoreProtocolBridge.text(raw.message) ?? "Downloading model through the inference server…"))
+                let failed = raw.failed != 0, canceled = raw.canceled != 0, complete = raw.complete != 0
+                let status = raw.status, running = raw.running != 0
+                lv_protocol_install_progress_free(&raw)
+                guard status == LV_PROTOCOL_OK else { throw DictationError.response }
+                await progress(update)
+                if canceled { throw CancellationError() }
+                if failed { throw ModelSetupFailure(message: update.message) }
+                if complete { return }
+                missingPolls = running ? 0 : missingPolls + 1
+                guard missingPolls <= 60 else {
+                    throw ModelSetupFailure(message:"The server no longer reports this download. Refresh the catalog and retry when the server is available.")
+                }
+                try await Task.sleep(nanoseconds: 500_000_000)
+                data = try await checked(managementRequest(endpoint:endpoint,make:lv_protocol_make_downloads_request))
+            }
+        } catch is CancellationError {
+            // Cancellation of the local task also asks the server to stop its job.
+            let cancellation = Task { try await cancelInstall(endpoint: endpoint, modelID: modelID, purpose: purpose, catalog: catalog) }
+            do { try await cancellation.value }
+            catch { throw ModelSetupFailure(message:"Local monitoring stopped, but server cancellation is unconfirmed. Check the server’s Downloads page before retrying.") }
+            throw CancellationError()
+        }
+    }
+    func cancelInstall(endpoint: String, modelID: String, purpose: LVModelPurpose, catalog: ModelSetupCatalog) async throws {
+        let request = try catalog.withInventory { inventory in
+            try CoreProtocolBridge.endpointFacts(endpoint) { _, facts in
+                var config = LVProtocolConfig(); config.endpoint = facts
+                return try CoreProtocolBridge.withSlice(modelID) {
+                    var raw = lv_protocol_make_cancel_install_request(&config, &inventory, $0, purpose, catalog.managementSupported ? 1 : 0)
+                    return try CoreProtocolBridge.request(&raw)
+                }
+            }
+        }
+        var data = try await checked(request)
+        for _ in 0..<60 {
+            var raw = CoreProtocolBridge.withSlice(data) { bytes in
+                CoreProtocolBridge.withSlice(modelID) { lv_protocol_parse_install_progress_for_model(bytes,$0) }
+            }
+            let valid=raw.status == LV_PROTOCOL_OK
+            let stopped=raw.running == 0 && (raw.canceled != 0 || raw.complete != 0 || raw.failed != 0)
+            lv_protocol_install_progress_free(&raw)
+            guard valid else { throw DictationError.response }
+            if stopped { return }
+            try await Task.sleep(nanoseconds:500_000_000)
+            data = try await checked(managementRequest(endpoint:endpoint,make:lv_protocol_make_downloads_request))
+        }
+        throw ModelSetupFailure(message:"The server is still stopping the download. Check its Downloads page before retrying.")
     }
 
 }

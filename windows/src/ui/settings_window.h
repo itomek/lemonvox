@@ -19,6 +19,10 @@ struct SettingsModelOption {
     bool asr = false;
     bool cleanup = false;
     bool remote = false; // served by a remote provider routed through Lemonade
+    bool installed = true;
+    bool loaded = false;
+    bool loaded_known = false;
+    double size_gb = 0;
 };
 
 struct SettingsCatalogResult {
@@ -28,6 +32,8 @@ struct SettingsCatalogResult {
     // Optional, already display-safe detail (Lemonade's reason or an HTTP
     // summary). Never contains credentials or dictated text.
     std::wstring message;
+    bool installation_supported = false;
+    bool setup_active = false;
 };
 
 struct SettingsDevice {
@@ -44,6 +50,10 @@ struct SettingsServices {
     // ones: the window ignores stale completions, and the service may cancel them.
     std::function<void(const std::string &endpoint, std::function<void(SettingsCatalogResult)> done)>
         refresh_models;
+    // Explicit Settings action only. Progress/completion are delivered on the UI thread.
+    std::function<void(const std::string &, const std::string &, bool,
+        std::function<void(std::wstring, bool, bool)>)> install_model;
+    std::function<void()> cancel_install;
     // Capture devices, excluding the system default (the window adds it).
     std::function<std::vector<SettingsDevice>()> list_devices;
     // Called on Save before `save` when the shortcut changed. Returning false
@@ -72,6 +82,9 @@ enum class SettingsControl : int {
     cleanup_label,
     cleanup_combo,
     routing_note,
+    install_asr_button,
+    install_cleanup_button,
+    cancel_install_button,
     prompt_label,
     prompt_edit,
     reset_prompt_button,

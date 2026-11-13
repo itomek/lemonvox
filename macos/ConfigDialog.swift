@@ -58,6 +58,18 @@ enum RunningAppVersion {
     let prompt = NSTextView()
     let status = NSTextField(wrappingLabelWithString: "")
     let version = NSTextField(labelWithString: "Tested with Lemonade 2026.44.1")
+    let setupTranscription = NSButton(title: "Set up transcription…", target: nil, action: nil)
+    let setupCleanup = NSButton(title: "Set up cleanup…", target: nil, action: nil)
+    let cancelSetup = NSButton(title: "Cancel download", target: nil, action: nil)
+    let setupProgress = NSProgressIndicator()
+    let setupStatus = NSTextField(wrappingLabelWithString: "Choose a model, then use Set up if a download is needed. The inference server downloads model files; loading an installed model into memory is separate.")
+    typealias Installer = (String, String, LVModelPurpose, ModelSetupCatalog, @escaping (ModelInstallUpdate) async -> Void) async throws -> Void
+    private let installModel: Installer?
+    var confirmModelDownload: ((String, Double?) async -> Bool)?
+    private var modelCatalog: ModelSetupCatalog?
+    private var setupTask: Task<Void, Never>?
+    private(set) var installing = false
+    private var setupGeneration = 0
     let retry = NSButton(title: "Refresh", target: nil, action: nil)
     let save = NSButton(title: "Save", target: nil, action: nil)
     let accessibilityOpen=NSButton(title:"Accessibility…",target:nil,action:nil)
@@ -83,8 +95,9 @@ enum RunningAppVersion {
     var loading = false
 
     init(log: DiagnosticLog = .shared, discover: @escaping (String) async throws -> DiscoveredModels,
-         readVersion: @escaping (String) async -> String? = { _ in nil }) {
-        self.log = log; self.discover = discover; self.readVersion = readVersion
+         readVersion: @escaping (String) async -> String? = { _ in nil },
+         install: Installer? = nil) {
+        self.log = log; self.discover = discover; self.readVersion = readVersion; self.installModel = install
         window = NSWindow(contentRect: NSRect(x:0,y:0,width:820,height:690),
             styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
         super.init()
@@ -92,6 +105,8 @@ enum RunningAppVersion {
         window.minSize=NSSize(width:820,height:480)
         trigger.onChange = { [weak self] in self?.shortcutStatus.stringValue="" }
         cancellationTrigger.onChange = { [weak self] in self?.shortcutStatus.stringValue="" }
+        transcription.onChange = { [weak self] in self?.updateSetupStatus() }
+        cleanup.onChange = { [weak self] in self?.updateSetupStatus() }
         guard let root = window.contentView else { return }
         scroll.frame=NSRect(x:180,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
         scroll.hasVerticalScroller=true; scroll.drawsBackground=false
@@ -168,6 +183,21 @@ enum RunningAppVersion {
             if control === retry { control.autoresizingMask = [.minXMargin] }
             else { control.autoresizingMask = [.width] }
             destination.addSubview(control)
+        }
+        // Use the space beneath the cleanup prompt for model setup.
+        setupTranscription.frame=NSRect(x:24,y:156,width:196,height:30)
+        setupCleanup.frame=NSRect(x:228,y:156,width:178,height:30)
+        cancelSetup.frame=NSRect(x:414,y:156,width:202,height:30)
+        setupTranscription.target=self; setupTranscription.action=#selector(setUpTranscription)
+        setupCleanup.target=self; setupCleanup.action=#selector(setUpCleanup)
+        cancelSetup.target=self; cancelSetup.action=#selector(cancelModelSetup); cancelSetup.isHidden=true
+        setupProgress.frame=NSRect(x:24,y:132,width:592,height:14)
+        setupProgress.style = .bar; setupProgress.isIndeterminate=true; setupProgress.isHidden=true
+        setupStatus.frame=NSRect(x:24,y:16,width:592,height:104)
+        setupStatus.font = .systemFont(ofSize:11); setupStatus.isSelectable=true
+        setupStatus.setAccessibilityLabel("Model setup status")
+        for control in [setupTranscription, setupCleanup, cancelSetup, setupProgress, setupStatus] {
+            modelsView.addSubview(control)
         }
         scroll.removeFromSuperview()
         for document in [generalView, modelsView, diagnosticsView] {
@@ -265,15 +295,18 @@ enum RunningAppVersion {
     }
     private func selected(_ picker:ModelPicker) -> String { picker.selectedID }
     private func populate(_ picker:ModelPicker, models:[LocalModel], selected:String) {
-        picker.update(choices:models.map { ModelChoice(id:$0.id,title:$0.id + ($0.cloud_provider == nil ? " · local" : " · remote")) },selected:selected)
+        picker.update(choices:models.map { ModelChoice(id:$0.id,title:$0.id + ($0.cloud_provider != nil ? " · remote" : ($0.downloaded == false ? " · download required" : " · installed"))) },selected:selected)
     }
     func controlTextDidChange(_ notification: Notification) {
         guard notification.object as? NSTextField === endpoint else { return }
+        invalidateModelSetup(); modelCatalog=nil
         generation += 1; refreshTask?.cancel(); versionTask?.cancel(); loading=false
         status.stringValue="Endpoint changed. Refresh models to discover available choices."
+        updateSetupStatus()
         version.stringValue="Tested with Lemonade 2026.44.1 · server version not checked"
     }
     @objc func refresh() {
+        guard !installing else { return }
         refreshTask?.cancel(); versionTask?.cancel(); generation += 1
         let current=generation; let base=endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines)
         loading=true; status.stringValue="Loading models from server…"; retry.title="Refresh"
@@ -284,18 +317,19 @@ enum RunningAppVersion {
             do {
                 let models=try await self.discover(base)
                 guard !Task.isCancelled, self.generation == current, self.window.isVisible else { return }
-                self.loading=false
+                self.loading=false; self.modelCatalog=models.setupCatalog
                 let asr=self.selected(self.transcription), chat=self.selected(self.cleanup)
                 self.populate(self.transcription,models:models.transcription,selected:asr)
                 self.populate(self.cleanup,models:models.cleanup,selected:chat)
                 self.status.stringValue=models.transcription.isEmpty || models.cleanup.isEmpty
                     ? (models.reason ?? "No compatible models for one or both tasks. The server supplied no reason; existing choices are preserved.")
                     : "Models available. Choose transcription and cleanup independently."
-                self.status.toolTip=self.status.stringValue
+                self.status.toolTip=self.status.stringValue; self.updateSetupStatus()
                 self.log.record(.discoverySucceeded); self.refreshLogs()
             } catch {
                 guard !Task.isCancelled, self.generation == current, self.window.isVisible else { return }
-                self.loading=false; self.status.stringValue=SafeDisplay.error(error); self.status.toolTip=self.status.stringValue
+                self.loading=false; self.modelCatalog=nil; self.updateSetupStatus(serverAvailable:false)
+                self.status.stringValue=SafeDisplay.error(error); self.status.toolTip=self.status.stringValue
                 self.log.record(.discoveryFailed,error:error); self.refreshLogs()
             }
         }
@@ -305,6 +339,110 @@ enum RunningAppVersion {
             guard !Task.isCancelled, self.generation == current, self.window.isVisible else { return }
             self.version.stringValue="Tested with Lemonade 2026.44.1 · server version: " + (actual ?? "unavailable")
         }
+    }
+    func updateSetupStatus(serverAvailable: Bool = true) {
+        guard !installing else { return }
+        guard let catalog=modelCatalog else {
+            setupStatus.stringValue=serverAvailable
+                ? "Models are installed in the inference server. Choose a model and refresh to check setup. For other OpenAI-compatible servers, open that server’s model manager, install/configure a transcription and chat model, then refresh here."
+                : "Server unavailable. Start or reconnect to the configured inference server, then refresh. Existing model choices are preserved."
+            return
+        }
+        let asr=catalog.info(modelID:transcription.selectedID,purpose:LV_MODEL_ASR)
+        let chat=catalog.info(modelID:cleanup.selectedID,purpose:LV_MODEL_CLEANUP)
+        setupStatus.stringValue="Transcription: " + asr.message + "\nCleanup: " + chat.message
+        setupStatus.toolTip=setupStatus.stringValue
+    }
+    @objc func setUpTranscription() { beginModelSetup(purpose:LV_MODEL_ASR) }
+    @objc func setUpCleanup() { beginModelSetup(purpose:LV_MODEL_CLEANUP) }
+    func beginModelSetup(purpose: LVModelPurpose) {
+        guard !installing, !loading else { return }
+        setupStatus.scrollToVisible(setupStatus.bounds)
+        let picker = purpose == LV_MODEL_ASR ? transcription : cleanup
+        let modelID=picker.selectedID
+        guard !modelID.isEmpty else {
+            setupStatus.stringValue="No model selected. Choose a model first; entries marked ‘download required’ can be installed after confirmation."
+            picker.openPicker(); return
+        }
+        guard let catalog=modelCatalog else { updateSetupStatus(); return }
+        let info=catalog.info(modelID:modelID,purpose:purpose)
+        guard info.canInstall, let installModel else { setupStatus.stringValue=info.message; return }
+        let base=endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines)
+        let current=generation
+        setupGeneration += 1; let setupToken=setupGeneration
+        installing=true; retry.isEnabled=false; setupTranscription.isEnabled=false; setupCleanup.isEnabled=false
+        setupTask=Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.setupGeneration == setupToken { self.resetSetupControls() }
+            }
+            let consent: Bool
+            if let confirm=self.confirmModelDownload { consent=await confirm(modelID,catalog.sizeGB(modelID:modelID)) }
+            else { consent=await self.confirmDownload(modelID:modelID,sizeGB:catalog.sizeGB(modelID:modelID)) }
+            guard consent, !Task.isCancelled, self.generation == current, self.window.isVisible else { return }
+            self.cancelSetup.isHidden=false; self.setupProgress.isHidden=false; self.setupProgress.isIndeterminate=true; self.setupProgress.startAnimation(nil)
+            self.setupStatus.stringValue="Starting download of \(modelID) in the inference server…"
+            do {
+                try await installModel(base,modelID,purpose,catalog) { [weak self] update in
+                    await MainActor.run {
+                        guard let self, self.generation == current, self.setupGeneration == setupToken, self.installing, !Task.isCancelled else { return }
+                        self.setupProgress.isIndeterminate=update.percent < 0
+                        if update.percent >= 0 { self.setupProgress.doubleValue=update.percent }
+                        self.setupStatus.stringValue=update.message
+                    }
+                }
+                try Task.checkCancellation()
+                let models=try await self.discover(base)
+                try Task.checkCancellation()
+                guard self.generation == current, self.window.isVisible,
+                    self.endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines) == base else { return }
+                guard let fresh=models.setupCatalog else { throw ModelSetupFailure(message:"Could not verify installation. Refresh the server catalog and retry; existing settings are preserved.") }
+                let ready=fresh.info(modelID:modelID,purpose:purpose)
+                guard ready.state == LV_SETUP_READY || ready.state == LV_SETUP_INSTALLED_NOT_LOADED else {
+                    throw ModelSetupFailure(message:"The server has not confirmed an installed, compatible model. Refresh and retry; existing settings are preserved.")
+                }
+                let asr=self.transcription.selectedID, chat=self.cleanup.selectedID
+                self.modelCatalog=fresh
+                self.populate(self.transcription,models:models.transcription,selected:asr)
+                self.populate(self.cleanup,models:models.cleanup,selected:chat)
+                // A newer explicit draft choice wins over this setup completion.
+                if picker.selectedID == modelID, let choice=picker.choices.first(where: { $0.id == modelID }) { picker.commit(choice) }
+                self.setupStatus.stringValue="Installation verified. " + ready.message + " Save to keep the selected model."
+            } catch is CancellationError {
+                if self.generation == current { self.setupStatus.stringValue="Download canceled. The server was asked to stop; refresh to check its current state, then use Set up to retry. Existing settings are preserved." }
+            } catch {
+                guard self.generation == current else { return }
+                self.setupStatus.stringValue=SafeDisplay.error(error) + " Check the server’s network connection, free disk space and model-directory permissions, then use Set up to retry. Existing settings are preserved."
+            }
+        }
+    }
+    func downloadConfirmation(modelID: String, sizeGB: Double?) -> NSAlert {
+        // The caller has already validated the exact ID against the core catalog.
+        // Plain native text needs no markup escaping or credential redaction.
+        let alert=NSAlert(); alert.messageText="Download model through the inference server?"
+        let size=sizeGB.map { String(format:" Estimated model size: %.2f GB.",$0) } ?? " The server has not supplied a size; this may be a large download."
+        alert.informativeText="The configured inference server will download \(modelID) to its model storage. This uses that server’s network connection and disk space." + size + " Loading installed files into memory happens separately when dictation needs them."
+        alert.addButton(withTitle:"Download model"); alert.addButton(withTitle:"Cancel")
+        return alert
+    }
+    private func confirmDownload(modelID: String, sizeGB: Double?) async -> Bool {
+        let alert=downloadConfirmation(modelID:modelID,sizeGB:sizeGB)
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for:window) { response in continuation.resume(returning:response == .alertFirstButtonReturn) }
+        }
+    }
+    private func resetSetupControls() {
+        installing=false; setupTask=nil; retry.isEnabled=true
+        setupTranscription.isEnabled=true; setupCleanup.isEnabled=true
+        cancelSetup.isHidden=true; setupProgress.stopAnimation(nil); setupProgress.isHidden=true
+    }
+    private func invalidateModelSetup() {
+        setupTask?.cancel(); setupGeneration += 1; resetSetupControls()
+        if let sheet=window.attachedSheet { window.endSheet(sheet,returnCode:.alertSecondButtonReturn) }
+    }
+    @objc func cancelModelSetup() {
+        setupTask?.cancel()
+        if installing { setupStatus.stringValue="Canceling download through the inference server…" }
     }
     private var selectedAppearance: AppearanceChoice {
         switch appearance.indexOfSelectedItem {
@@ -390,6 +528,7 @@ enum RunningAppVersion {
         trigger.cancelRecording(); cancellationTrigger.cancelRecording()
         saveGeneralPreferences=nil
         transcription.popover.close(); cleanup.popover.close()
+        invalidateModelSetup(); modelCatalog=nil
         generation += 1; refreshTask?.cancel(); versionTask?.cancel(); loading=false
         NSApp.mainMenu=previousMenu; NSApp.setActivationPolicy(.prohibited)
         didClose?(); didClose=nil; saveConfig=nil

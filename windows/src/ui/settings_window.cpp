@@ -55,7 +55,11 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"C&leanup model", Kind::label},
     {L"", Kind::combo},
     {L"The server must provide transcription, chat and discoverable compatible model metadata. It manages models, providers "
-     L"and API keys; remote cleanup sends transcribed text through it to that provider.", Kind::note},
+     L"and API keys; remote cleanup sends transcribed text through it to that provider. Installing downloads model files; "
+     L"loading an installed model uses memory and can happen at first inference. Downloads require Set up and confirmation.", Kind::note},
+    {L"Set up transcription…", Kind::button},
+    {L"Set up cleanup…", Kind::button},
+    {L"Cancel setup", Kind::button},
     {L"Cleanup &prompt", Kind::label},
     {L"", Kind::multiline},
     {L"Reset to &default", Kind::button},
@@ -190,6 +194,9 @@ public:
     }
 
     void destroy() {
+        if (installing_ && services_.cancel_install) services_.cancel_install();
+        installing_ = false;
+        ++setup_generation_;
         if (hwnd_) DestroyWindow(hwnd_);
     }
 
@@ -400,6 +407,7 @@ private:
         }
         const std::uint64_t generation = ++generation_;
         last_endpoint_ = endpoint;
+        installation_supported_ = false; models_loaded_ = false;
         set_status(settings::loading_status());
         if (!services_.refresh_models) return;
         std::weak_ptr<Impl> weak = weak_from_this();
@@ -410,14 +418,66 @@ private:
 
     void on_models(std::uint64_t generation, SettingsCatalogResult result) {
         if (generation != generation_ || !hwnd_) return;
+        installing_ = result.setup_active;
+        for (const auto control_id : {SettingsControl::endpoint_edit, SettingsControl::refresh_button, SettingsControl::asr_combo, SettingsControl::cleanup_combo})
+            EnableWindow(control(control_id), !installing_);
         if (result.status == SettingsCatalogResult::Status::ok) {
             const std::string asr = selected_model(ModelRole::transcription);
             const std::string cleanup = selected_model(ModelRole::cleanup);
+            installation_supported_ = result.installation_supported;
             models_ = result.models;
             models_loaded_ = true;
             rebuild_models(asr, cleanup);
         }
         set_status(settings::catalog_status(result, last_endpoint_));
+    }
+
+    void install_model(ModelRole role) {
+        if (installing_) return;
+        if (settings::trim(window_text(control(SettingsControl::endpoint_edit))) != last_endpoint_) {
+            set_status({L"Server endpoint changed. Refresh models before setup.", true}); return;
+        }
+        if (!installation_supported_ || !services_.install_model) {
+            set_status({L"Automatic installation is unavailable for this server/version. Open its model manager, download a compatible transcription or chat model, then return and Refresh models. Settings are preserved.", true}); return;
+        }
+        std::string id = selected_model(role);
+        ProtocolInventory catalog;
+        for (const auto &m : models_) catalog.models.push_back({m.id, m.asr, m.cleanup, m.remote, m.installed, m.loaded, m.loaded_known, m.size_gb});
+        const auto info = Protocol::model_setup(catalog, id, role == ModelRole::transcription ? LV_MODEL_ASR : LV_MODEL_CLEANUP, models_loaded_, installation_supported_);
+        if (!info.can_install) { set_status({utf8_to_wide(info.message), false}); return; }
+        const auto question = L"The inference server at " + last_endpoint_ + L" will download and store “" + utf8_to_wide(id)
+            + L"”. Model files may be several GB and need network access, disk space and write permission on the server. Continue?";
+        if (MessageBoxW(hwnd_, question.c_str(), L"Download model through the server?", MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+        const auto endpoint = wide_to_utf8(settings::trim(window_text(control(SettingsControl::endpoint_edit))));
+        if (endpoint != wide_to_utf8(last_endpoint_) || selected_model(role) != id) {
+            set_status({L"Selection or server changed. Refresh models and request setup again.", true}); return;
+        }
+        const auto generation = ++setup_generation_;
+        installing_ = true;
+        set_status({L"Installing through the inference server… Cancel setup asks its download worker to stop.", false});
+        EnableWindow(control(SettingsControl::asr_combo), FALSE);
+        EnableWindow(control(SettingsControl::cleanup_combo), FALSE);
+        EnableWindow(control(SettingsControl::endpoint_edit), FALSE);
+        EnableWindow(control(SettingsControl::refresh_button), FALSE);
+        std::weak_ptr<Impl> weak = weak_from_this();
+        services_.install_model(endpoint, id, role == ModelRole::transcription,
+            [weak, generation, id, role](std::wstring message, bool finished, bool success) {
+                const auto self = weak.lock();
+                if (!self || !self->hwnd_ || self->setup_generation_ != generation) return;
+                self->set_status({std::move(message), false});
+                if (!finished) return;
+                self->installing_ = false;
+                EnableWindow(self->control(SettingsControl::asr_combo), TRUE);
+                EnableWindow(self->control(SettingsControl::cleanup_combo), TRUE);
+                EnableWindow(self->control(SettingsControl::endpoint_edit), TRUE);
+                EnableWindow(self->control(SettingsControl::refresh_button), TRUE);
+                if (success) {
+                    const auto asr = role == ModelRole::transcription ? id : self->selected_model(ModelRole::transcription);
+                    const auto cleanup = role == ModelRole::cleanup ? id : self->selected_model(ModelRole::cleanup);
+                    self->rebuild_models(asr, cleanup);
+                    self->refresh();
+                }
+            });
     }
 
     void set_suspended(bool suspended) {
@@ -657,6 +717,18 @@ private:
         if (id == IDOK) { save(); return; }
         if (id == IDCANCEL) { destroy(); return; }
         switch (static_cast<SettingsControl>(id - 1000)) {
+        case SettingsControl::install_asr_button:
+            if (code == BN_CLICKED) install_model(ModelRole::transcription);
+            break;
+        case SettingsControl::install_cleanup_button:
+            if (code == BN_CLICKED) install_model(ModelRole::cleanup);
+            break;
+        case SettingsControl::cancel_install_button:
+            if (code == BN_CLICKED && installing_) {
+                if (services_.cancel_install) services_.cancel_install();
+                set_status({L"Canceling on the server; waiting for the download worker to stop…", false});
+            }
+            break;
         case SettingsControl::refresh_button:
             if (code == BN_CLICKED) refresh();
             break;
@@ -674,6 +746,15 @@ private:
                 && settings::trim(window_text(control(SettingsControl::endpoint_edit))) != last_endpoint_) {
                 ++generation_;
                 set_status(settings::endpoint_changed_status());
+            }
+            break;
+        case SettingsControl::asr_combo:
+        case SettingsControl::cleanup_combo:
+            if (code == CBN_SELCHANGE && !installing_) {
+                const auto role = static_cast<SettingsControl>(id - 1000) == SettingsControl::asr_combo ? ModelRole::transcription : ModelRole::cleanup;
+                ProtocolInventory catalog;
+                for (const auto &m : models_) catalog.models.push_back({m.id, m.asr, m.cleanup, m.remote, m.installed, m.loaded, m.loaded_known, m.size_gb});
+                set_status({utf8_to_wide(Protocol::model_setup(catalog, selected_model(role), role == ModelRole::transcription ? LV_MODEL_ASR : LV_MODEL_CLEANUP, models_loaded_, installation_supported_).message), false});
             }
             break;
         case SettingsControl::shortcut_combo:
@@ -837,6 +918,8 @@ private:
     std::optional<WinPreferences> original_;
     std::vector<SettingsModelOption> models_;
     bool models_loaded_ = false;
+    bool installation_supported_ = false, installing_ = false;
+    std::uint64_t setup_generation_ = 0;
     ModelChoices asr_choices_;
     ModelChoices cleanup_choices_;
     DeviceChoices device_choices_;
