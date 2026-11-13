@@ -17,6 +17,9 @@ struct WorkflowBridgeConfig {
     let cleanupPrompt: String
     let insertCurrentTarget: Bool
     var pasteAtCurrentFocus: Bool = false
+    var cleanupBackend: LVCleanupBackend = LV_CLEANUP_BACKEND_GENERIC
+    var cleanupThinking: LVCleanupThinking = LV_CLEANUP_THINKING_DISABLED
+    var cleanupContextTokens: UInt32 = 0
 }
 
 struct WorkflowBridgeTarget {
@@ -545,6 +548,9 @@ private final class WorkflowBridgeLifetime: @unchecked Sendable {
                         raw.asr_model = asrModel
                         raw.cleanup_model = cleanupModel
                         raw.cleanup_prompt = cleanupPrompt
+                        raw.cleanup_backend = config.cleanupBackend
+                        raw.cleanup_thinking = config.cleanupThinking
+                        raw.cleanup_context_tokens = config.cleanupContextTokens
                         raw.insert_current_target = config.insertCurrentTarget ? 1 : 0
                         raw.paste_at_current_focus = config.pasteAtCurrentFocus ? 1 : 0
                         return body(raw)

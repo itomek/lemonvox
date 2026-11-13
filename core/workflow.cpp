@@ -1,5 +1,7 @@
 #include "workflow.h"
 
+#include <chrono>
+
 #include <utility>
 
 namespace lemonvox {
@@ -17,6 +19,9 @@ ProtocolConfiguration protocol_config_from(const WorkflowConfig &config) {
     result.asr_model = config.preferences.asr_model;
     result.cleanup_model = config.preferences.cleanup_model;
     result.cleanup_prompt = config.preferences.cleanup_prompt;
+    result.cleanup_backend = static_cast<LVCleanupBackend>(config.preferences.cleanup_backend);
+    result.cleanup_thinking = static_cast<LVCleanupThinking>(config.preferences.cleanup_thinking);
+    result.cleanup_context_tokens = config.preferences.cleanup_context_tokens;
     return result;
 }
 
@@ -284,8 +289,29 @@ void WorkflowCore::request_cleanup(OperationId operation, TransportRequest reque
     if (active_operation_ != operation || shutting_down_) return;
 
     const auto step = begin_step(Step::cleanup);
-    transport_.send(operation, std::move(request), [this, step](OperationId completed, TransportResponse response) {
+    const auto started = std::chrono::steady_clock::now();
+    transport_.send(operation, std::move(request), [this, step, started](OperationId completed, TransportResponse response) {
         if (!consume(completed, step, Step::cleanup)) return;
+        CleanupDiagnostic diagnostic;
+        diagnostic.elapsed_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - started).count();
+        diagnostic.error = response.error;
+        diagnostic.http_status = response.status;
+        if (response.error == AdapterError::none && response.status >= 200 && response.status < 300) {
+            const auto metrics = lv_protocol_cleanup_metrics({response.bytes.data(), response.bytes.size()});
+            diagnostic.response_valid = metrics.status == LV_PROTOCOL_OK;
+            diagnostic.finish_reason = static_cast<uint8_t>(metrics.finish_reason);
+            diagnostic.prompt_tokens = metrics.prompt_tokens;
+            diagnostic.completion_tokens = metrics.completion_tokens;
+            diagnostic.reasoning_tokens = metrics.reasoning_tokens;
+            diagnostic.reasoning_characters = metrics.reasoning_characters;
+            diagnostic.has_prompt_tokens = metrics.has_prompt_tokens != 0;
+            diagnostic.has_completion_tokens = metrics.has_completion_tokens != 0;
+            diagnostic.has_reasoning_tokens = metrics.has_reasoning_tokens != 0;
+            diagnostic.has_reasoning_characters = metrics.has_reasoning_characters != 0;
+        }
+        diagnostics_.record_cleanup(diagnostic);
+        if (active_operation_ != completed || shutting_down_) return;
         if (response.error == AdapterError::canceled) {
             finish_canceled(completed, true);
             return;

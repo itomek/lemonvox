@@ -266,6 +266,9 @@ void diagnostics_stay_content_free() {
     pump_until(h.inserted);
     const std::wstring log = h.controller.diagnostics().format();
     assert(log.find(L"insertion_succeeded") != std::wstring::npos);
+    assert(log.find(L"cleanup total_ms=") != std::wstring::npos);
+    assert(log.find(L"residency=unknown fidelity=unverified") != std::wstring::npos);
+    assert(log.find(L"completion_tokens=unknown") != std::wstring::npos);
     assert(log.find(L"Hello") == std::wstring::npos && log.find(L"127.0.0.1") == std::wstring::npos);
 }
 

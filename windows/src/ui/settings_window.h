@@ -81,6 +81,8 @@ enum class SettingsControl : int {
     asr_combo,
     cleanup_label,
     cleanup_combo,
+    execution_label,
+    execution_combo,
     routing_note,
     install_asr_button,
     install_cleanup_button,

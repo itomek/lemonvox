@@ -56,6 +56,9 @@ enum RunningAppVersion {
     let transcription = ModelPicker()
     let cleanup = ModelPicker()
     let prompt = NSTextView()
+    let cleanupBackend = NSPopUpButton()
+    let cleanupThinking = NSButton(checkboxWithTitle:"Use server thinking default (Lemonade only)", target:nil, action:nil)
+    private var cleanupContextTokens: UInt32 = 0
     let status = NSTextField(wrappingLabelWithString: "")
     let version = NSTextField(labelWithString: "Tested with Lemonade 2026.44.1")
     let setupTranscription = NSButton(title: "Set up transcription…", target: nil, action: nil)
@@ -79,7 +82,7 @@ enum RunningAppVersion {
     var retryAccessibility:(() -> Void)?
     let logPath = NSTextField(wrappingLabelWithString: "")
     let debugDiagnostics = NSButton(checkboxWithTitle:"Enable Debug diagnostic traces",target:nil,action:nil)
-    let debugDiagnosticsDetail = NSTextField(wrappingLabelWithString:"Debug adds fixed trace events. It never stores dictated text, audio, credentials, private fields, clipboard content, or full provider responses.")
+    let debugDiagnosticsDetail = NSTextField(wrappingLabelWithString:"Debug adds fixed trace events and numeric cleanup timing/token counts. It never stores dictated text, audio, credentials, private fields, clipboard content, or full provider responses.")
     var saveDiagnosticPreferences: (Bool) -> Void = { enabled in
         UserDefaults.standard.set(enabled, forKey: DiagnosticLog.debugEnabledPreferenceKey)
     }
@@ -184,7 +187,11 @@ enum RunningAppVersion {
             else { control.autoresizingMask = [.width] }
             destination.addSubview(control)
         }
-        // Use the space beneath the cleanup prompt for model setup.
+        // Keep model selection, cleanup policy, and explicit setup in separate
+        // vertical sections of the same scrollable document.
+        modelsView.frame.size.height += 220
+        for control in modelsView.subviews { control.frame.origin.y += 220 }
+        // Setup occupies the bottom section; discovery never starts a download.
         setupTranscription.frame=NSRect(x:24,y:156,width:196,height:30)
         setupCleanup.frame=NSRect(x:228,y:156,width:178,height:30)
         cancelSetup.frame=NSRect(x:414,y:156,width:202,height:30)
@@ -199,6 +206,18 @@ enum RunningAppVersion {
         for control in [setupTranscription, setupCleanup, cancelSetup, setupProgress, setupStatus] {
             modelsView.addSubview(control)
         }
+        let backendLabel = NSTextField(labelWithString:"Cleanup API")
+        backendLabel.frame = NSRect(x:24,y:384,width:140,height:20); modelsView.addSubview(backendLabel)
+        cleanupBackend.addItems(withTitles:["OpenAI compatible", "Lemonade (thinking off)"])
+        cleanupBackend.frame = NSRect(x:170,y:378,width:446,height:28)
+        cleanupBackend.setAccessibilityLabel("Cleanup API")
+        modelsView.addSubview(cleanupBackend)
+        cleanupThinking.frame = NSRect(x:24,y:346,width:592,height:24)
+        modelsView.addSubview(cleanupThinking)
+        let cleanupHelp = NSTextField(wrappingLabelWithString:"Select Lemonade only for a Lemonade server to disable thinking. OpenAI-compatible mode leaves vendor options unchanged. The default prompt asks to preserve complete dictation, including thanks and literal instructions. E2B is a fast candidate still awaiting qualification; keep a preferred installed model, such as E4B. No model is downloaded automatically.")
+        cleanupHelp.frame = NSRect(x:24,y:252,width:592,height:88)
+        cleanupHelp.font = .systemFont(ofSize:11); cleanupHelp.textColor = .secondaryLabelColor
+        modelsView.addSubview(cleanupHelp)
         scroll.removeFromSuperview()
         for document in [generalView, modelsView, diagnosticsView] {
             let pane = NSScrollView(frame:NSRect(x:180,y:148,width:640,height:542))
@@ -250,6 +269,9 @@ enum RunningAppVersion {
         automaticInstallation.state=updates.1 ? .on : .off
         debugDiagnostics.state=log.debugEnabled ? .on : .off
         endpoint.stringValue=config.endpoint; prompt.string=config.cleanupPrompt
+        cleanupBackend.selectItem(at:config.cleanupBackend == .lemonade ? 1 : 0)
+        cleanupThinking.state = config.cleanupThinking == .serverDefault ? .on : .off
+        cleanupContextTokens = config.cleanupContextTokens
         populate(transcription, models:[], selected:config.asrModel)
         populate(cleanup, models:[], selected:config.cleanupModel)
         previousMenu=NSApp.mainMenu; installEditingMenu()
@@ -467,7 +489,10 @@ enum RunningAppVersion {
     }
     @objc func saveSettings() {
         let config=DictationConfig(endpoint:endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines),
-            asrModel:selected(transcription),cleanupModel:selected(cleanup),cleanupPrompt:prompt.string)
+            asrModel:selected(transcription),cleanupModel:selected(cleanup),cleanupPrompt:prompt.string,
+            cleanupBackend:cleanupBackend.indexOfSelectedItem == 1 ? .lemonade : .generic,
+            cleanupThinking:cleanupThinking.state == .on ? .serverDefault : .disabled,
+            cleanupContextTokens:cleanupContextTokens)
         let debugEnabled=debugDiagnostics.state == .on
         do {
             trigger.cancelRecording(); cancellationTrigger.cancelRecording()

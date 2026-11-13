@@ -12,6 +12,8 @@ Settings on macOS, Windows and Ubuntu show a live server connection indicator. T
 
 Server installation, model download and model loading are separate steps. Install and start the inference server first, then open Settings to choose transcription and cleanup models. Missing models require an explicit download action; starting LemonVox, checking server health and dictating do not authorize downloads. An installed model can remain unloaded until its first inference request. See [model setup](docs/model-setup.md) for supported server management, cancellation and recovery.
 
+Cleanup execution and its shared preservation policy are described in [cleanup settings and qualification](docs/cleanup.md). New configurations use Lemonade thinking-off mode; existing saved server configurations keep compatible-server behavior until an execution mode is selected.
+
 ## Start here
 
 - [Product specification](docs/spec.md): workflow, technical proposal, and milestones.

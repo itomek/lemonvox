@@ -163,6 +163,12 @@ struct FakeInsertion final : InsertionAdapter {
 
 struct FakeDiagnostics final : DiagnosticsSink {
     void record(DiagnosticEntry entry) override { entries.push_back(entry); }
+    void record_cleanup(CleanupDiagnostic entry) override {
+        cleanup.push_back(entry);
+        if (on_cleanup) on_cleanup();
+    }
+    std::vector<CleanupDiagnostic> cleanup;
+    std::function<void()> on_cleanup;
     std::vector<DiagnosticEntry> entries;
 };
 
@@ -1277,7 +1283,46 @@ void test_paste_at_current_focus() {
     assert(insertion.inserted.empty());
 }
 
+void cleanup_telemetry_is_numeric_once_and_ignores_stale_results() {
+    for (const bool cancel_before_completion : {false, true}) {
+        FakeCapture capture;
+        FakeTransport transport;
+        FakeInsertion insertion;
+        FakeDiagnostics diagnostics;
+        WorkflowCore workflow(capture, transport, insertion, diagnostics);
+        start_recording(workflow, capture, transport);
+        assert(workflow.stop("fixture"));
+        capture.complete_stop(0, wav_bytes());
+        transport.complete_next(successful_inventory());
+        transport.complete_next(successful_response(R"({"text":"private transcript"})"));
+        if (cancel_before_completion) workflow.cancel();
+        const auto response = successful_response(R"({"choices":[{"message":{"content":"private cleaned text","reasoning_content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":15,"completion_tokens":12,"completion_tokens_details":{"reasoning_tokens":0}}})");
+        transport.complete(3, response);
+        transport.complete(3, response);
+        assert(diagnostics.cleanup.size() == (cancel_before_completion ? 0 : 1));
+        if (!cancel_before_completion) {
+            const auto &metric = diagnostics.cleanup[0];
+            assert(metric.elapsed_ms >= 0 && metric.response_valid && metric.http_status == 200);
+            assert(metric.finish_reason == LV_CLEANUP_FINISH_STOP);
+            assert(metric.has_prompt_tokens && metric.prompt_tokens == 15);
+            assert(metric.has_completion_tokens && metric.completion_tokens == 12);
+            assert(metric.has_reasoning_tokens && metric.reasoning_tokens == 0);
+            assert(metric.has_reasoning_characters && metric.reasoning_characters == 0);
+        }
+    }
+    FakeCapture capture;
+    FakeTransport transport;
+    FakeInsertion insertion;
+    FakeDiagnostics diagnostics;
+    WorkflowCore workflow(capture, transport, insertion, diagnostics);
+    start_recording(workflow, capture, transport);
+    diagnostics.on_cleanup = [&workflow] { workflow.cancel(); };
+    finish_with_cleanup(workflow, capture, transport);
+    assert(diagnostics.cleanup.size() == 1 && insertion.inserted.empty());
+}
+
 int main() {
+    cleanup_telemetry_is_numeric_once_and_ignores_stale_results();
     test_paste_at_current_focus();
     start_validates_models_before_starting_capture();
     invalid_configuration_completes_before_return_and_rejects_reentrant_restart();

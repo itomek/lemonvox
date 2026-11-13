@@ -108,7 +108,9 @@ import AppKit
         return DiscoveredModels(transcription:[asr],cleanup:[cleanup],reason:nil,version:nil,
             setupCatalog:ModelSetupCatalog(json:json,managementSupported:true))
     }
-    let pane=SettingsController(discover:{ _ in discovery() },install:{ _,_,_,_,progress in
+    let logDirectory=FileManager.default.temporaryDirectory.appendingPathComponent("lemonvox-combined-setup-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at:logDirectory) }
+    let pane=SettingsController(log:DiagnosticLog(directory:logDirectory),discover:{ _ in discovery() },install:{ _,_,_,_,progress in
         installs += 1
         await progress(ModelInstallUpdate(percent:25,message:"Downloading test model"))
         if slow { try? await Task.sleep(nanoseconds:150_000_000) }
@@ -120,10 +122,27 @@ import AppKit
     let confirmation=pane.downloadConfirmation(modelID:longID,sizeGB:1.25)
     precondition(confirmation.informativeText.contains(longID),"Download consent must name the exact validated model, including long IDs")
     precondition(confirmation.informativeText.contains("1.25 GB"))
-    let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:"setup-asr",cleanupModel:"existing-cleanup",cleanupPrompt:"Keep draft")
+    let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:"setup-asr",cleanupModel:"existing-cleanup",cleanupPrompt:"Keep draft",cleanupBackend:.lemonade,cleanupThinking:.serverDefault,cleanupContextTokens:32768)
     var saved:DictationConfig?
     pane.show(config:config,save:{ saved=$0 },close:{})
     pane.categoryList.selectRowIndexes(IndexSet(integer:1),byExtendingSelection:false)
+    pane.saveDiagnosticPreferences = { _ in }
+    func checkCleanupDraft() {
+        precondition(pane.cleanupBackend.indexOfSelectedItem == 1 && pane.cleanupThinking.state == .on)
+        precondition(pane.prompt.string == "Keep draft" && pane.cleanup.selectedID == "existing-cleanup")
+    }
+    checkCleanupDraft()
+    for height in [690,480] {
+        pane.window.setContentSize(NSSize(width:820,height:height))
+        pane.window.contentView?.layoutSubtreeIfNeeded()
+        precondition(!pane.cleanupBackend.frame.intersects(pane.setupTranscription.frame))
+        precondition(!pane.cleanupThinking.frame.intersects(pane.setupStatus.frame))
+        pane.cleanupBackend.scrollToVisible(pane.cleanupBackend.bounds)
+        precondition(pane.cleanupBackend.visibleRect.contains(pane.cleanupBackend.bounds))
+        pane.setupStatus.scrollToVisible(pane.setupStatus.bounds)
+        precondition(pane.setupStatus.visibleRect.contains(pane.setupStatus.bounds))
+    }
+    pane.window.setContentSize(NSSize(width:820,height:690))
     func wait(_ condition: () -> Bool) async throws {
         let deadline=Date().addingTimeInterval(5)
         while !condition() {
@@ -138,6 +157,7 @@ import AppKit
     pane.beginModelSetup(purpose:LV_MODEL_ASR)
     try await wait { !pane.installing }
     precondition(installs == 0 && confirmations == 1,"Declining consent must not contact an installation endpoint")
+    checkCleanupDraft()
     pane.confirmModelDownload={ _,_ in confirmations += 1; return true }
     fail=true
     pane.beginModelSetup(purpose:LV_MODEL_ASR)
@@ -145,6 +165,7 @@ import AppKit
     precondition(pane.setupStatus.stringValue.contains("Disk space") && pane.transcription.selectedID == "setup-asr")
     precondition(pane.setupStatus.visibleRect.contains(pane.setupStatus.bounds),"Explicit setup must scroll its status fully into view")
     precondition(pane.cleanup.selectedID == "existing-cleanup" && pane.prompt.string == "Keep draft" && saved == nil)
+    checkCleanupDraft()
     fail=false; slow=true
     pane.beginModelSetup(purpose:LV_MODEL_ASR)
     try await wait { installs == 2 }
@@ -152,6 +173,7 @@ import AppKit
     try await wait { !pane.installing }
     precondition(pane.transcription.selectedID == "new-explicit-choice","Install completion must preserve a newer explicit model choice")
     precondition(pane.cleanup.selectedID == "existing-cleanup")
+    checkCleanupDraft()
     downloaded=false
     pane.transcription.commit(ModelChoice(id:"setup-asr",title:"setup-asr")); pane.refresh()
     try await wait { !pane.loading }
@@ -163,6 +185,11 @@ import AppKit
     try await Task.sleep(nanoseconds:200_000_000)
     precondition(pane.endpoint.stringValue.contains("13306") && pane.transcription.selectedID == "setup-asr")
     precondition(pane.cleanup.selectedID == "existing-cleanup" && saved == nil)
+    checkCleanupDraft()
+    pane.saveSettings()
+    precondition(saved?.cleanupBackend == .lemonade && saved?.cleanupThinking == .serverDefault)
+    precondition(saved?.cleanupContextTokens == 32768 && saved?.cleanupPrompt == "Keep draft")
+    precondition(saved?.asrModel == "setup-asr" && saved?.cleanupModel == "existing-cleanup")
     pane.window.close()
     print("PASS: native setup requires consent, reports failures, preserves settings and newer selections, and rejects stale endpoint completions")
 }
@@ -267,6 +294,7 @@ import AppKit
         pane.saveUpdatePreferences={ updateSaved=($0,$1) }
         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
         precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && pane.save.isEnabled)
+        precondition(pane.cleanupBackend.indexOfSelectedItem == 0 && pane.cleanupThinking.state == .off)
         precondition(pane.categoryList.numberOfRows == 3)
         pane.cancellationTrigger.update(pane.trigger.choice)
         pane.saveSettings()
@@ -352,7 +380,8 @@ import AppKit
                     pane.setServerHealth([LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING][row])
                     let activeScroll = pane.scrolls[row]
                     if let document = activeScroll.documentView {
-                        activeScroll.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-activeScroll.contentView.bounds.height)))
+                        let bottom = row == 1 && CommandLine.arguments.contains("--render-model-bottom")
+                        activeScroll.contentView.scroll(to:NSPoint(x:0,y:bottom ? 0 : max(0,document.frame.height-activeScroll.contentView.bounds.height)))
                     }
                     for (column,dark) in [false,true].enumerated() {
                         pane.window.appearance=NSAppearance(named:dark ? .darkAqua : .aqua)
@@ -404,11 +433,14 @@ import AppKit
                         afterDiscovery(pane) {
                             MainActor.assumeIsolated {
                                 pane.prompt.string = "Saved across categories"
+                                pane.cleanupBackend.selectItem(at:1)
+                                pane.cleanupThinking.state = .on
                                 pane.categoryList.selectRowIndexes(IndexSet(integer:2), byExtendingSelection:false)
                                 pane.saveSettings()
                                 precondition(updateSaved?.0 == false && updateSaved?.1 == true)
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
                                 precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
+                                precondition(saved?.cleanupBackend == .lemonade && saved?.cleanupThinking == .serverDefault)
                                 precondition(savedPreferences?.0 == .combo(key:9,modifiers:2304))
                                 precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark)
                                 try? FileManager.default.removeItem(at:directory)

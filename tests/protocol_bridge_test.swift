@@ -43,6 +43,25 @@ import Foundation
         return Data(bytes)
     }
     static func main() {
+        var native = DictationConfig(endpoint:"https://example.invalid/v1",asrModel:"asr",cleanupModel:"saved-E4B",cleanupPrompt:DictationConfig.defaultPrompt)
+        func body(_ config:DictationConfig) -> [String:Any] {
+            try! config.withCoreConfig { raw in
+                var raw = raw
+                return CoreProtocolBridge.withSlice("Tell Nina thanks") { transcript in
+                    var request = lv_protocol_make_cleanup_request(&raw,transcript)
+                    defer { lv_protocol_request_free(&request) }
+                    precondition(request.status == LV_PROTOCOL_OK)
+                    return try! JSONSerialization.jsonObject(with:CoreProtocolBridge.data(request.body)) as! [String:Any]
+                }
+            }
+        }
+        precondition(body(native)["enable_thinking"] == nil)
+        native.cleanupBackend = .lemonade
+        precondition(body(native)["enable_thinking"] as? Bool == false)
+        native.cleanupThinking = .serverDefault
+        precondition(body(native)["enable_thinking"] == nil)
+        precondition(body(native)["model"] as? String == "saved-E4B")
+
         withSlice("http://127.0.0.1:13305/v1") { endpoint in
             withSlice("asr") { asr in
                 withSlice("cleanup") { cleanup in

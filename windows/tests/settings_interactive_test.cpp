@@ -243,6 +243,7 @@ std::vector<std::string> check_automation(const SettingsWindow &window) {
         {item(window, SettingsControl::endpoint_edit), L"Server endpoint"},
         {item(window, SettingsControl::asr_combo), L"Transcription model"},
         {item(window, SettingsControl::cleanup_combo), L"Cleanup model"},
+        {item(window, SettingsControl::execution_combo), L"Cleanup execution"},
         {item(window, SettingsControl::prompt_edit), L"Cleanup prompt"},
         {item(window, SettingsControl::shortcut_combo), L"Shortcut"},
         {item(window, SettingsControl::recorder_edit), L"Custom shortcut"},
@@ -364,6 +365,8 @@ int main() {
         CHECK(combo_items(item(window, SettingsControl::microphone_combo))
             == (std::vector<std::wstring>{L"System default", L"Desk mic", L"Headset"}));
         CHECK(combo_selected(item(window, SettingsControl::microphone_combo)) == L"System default");
+        CHECK(combo_items(item(window, SettingsControl::execution_combo)).size() == 3);
+        CHECK(combo_selected(item(window, SettingsControl::execution_combo)) == L"Lemonade (thinking off)");
 
         // Models arrive; the missing saved selection is preserved and flagged.
         CHECK(pump_until([&] {
@@ -404,10 +407,10 @@ int main() {
         CHECK(combo_items(item(window, SettingsControl::asr_combo)).front() == L"fresh-asr (installed)");
 
         // Tab order follows native child creation order and wraps. All three
-        // visible, enabled setup actions sit between model selection and the
+        // visible, enabled setup actions sit between cleanup execution and the
         // cleanup prompt, including Cancel setup (an idle no-op).
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
-            SettingsControl::asr_combo, SettingsControl::cleanup_combo,
+            SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::execution_combo,
             SettingsControl::install_asr_button, SettingsControl::install_cleanup_button,
             SettingsControl::cancel_install_button, SettingsControl::prompt_edit,
             SettingsControl::reset_prompt_button, SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
@@ -484,6 +487,7 @@ int main() {
 
         select_combo(item(window, SettingsControl::asr_combo), L"fresh-asr (installed)");
         select_combo(item(window, SettingsControl::microphone_combo), L"Headset");
+        select_combo(item(window, SettingsControl::execution_combo), L"Lemonade (server default)");
 
         // Enter = Save. A shortcut the app cannot register aborts the save.
         fake.apply_fails = true;
@@ -504,6 +508,8 @@ int main() {
         CHECK(saved.asr_model == "fresh-asr");
         CHECK(saved.cleanup_model == "llama");
         CHECK(saved.cleanup_prompt == kDefaultPrompt);
+        CHECK(saved.cleanup_backend == LV_CLEANUP_BACKEND_LEMONADE);
+        CHECK(saved.cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT);
         CHECK(saved.trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
         CHECK(saved.capture_device_id == L"{dev2}");
         CHECK(!fake.suspended);

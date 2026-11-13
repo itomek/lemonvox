@@ -45,11 +45,26 @@ typedef struct {
     uint8_t path_ends_v1;
 } LVEndpointFacts;
 
-typedef struct {
+typedef enum { LV_CLEANUP_BACKEND_GENERIC = 0, LV_CLEANUP_BACKEND_LEMONADE = 1 } LVCleanupBackend;
+typedef enum { LV_CLEANUP_THINKING_DISABLED = 0, LV_CLEANUP_THINKING_SERVER_DEFAULT = 1 } LVCleanupThinking;
+
+/* Static storage; native defaults use the same preservation requirements. */
+const char *lv_cleanup_default_prompt(void);
+
+typedef struct LVProtocolConfig {
     LVEndpointFacts endpoint;
     LVProtocolSlice asr_model;
     LVProtocolSlice cleanup_model;
     LVProtocolSlice cleanup_prompt;
+#ifdef __cplusplus
+    LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_GENERIC;
+    LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
+    uint32_t cleanup_context_tokens = 0; /* 0: backend context unknown. */
+#else
+    LVCleanupBackend cleanup_backend;
+    LVCleanupThinking cleanup_thinking;
+    uint32_t cleanup_context_tokens;
+#endif
 } LVProtocolConfig;
 
 typedef struct {
@@ -176,6 +191,26 @@ LVProtocolInventory lv_protocol_parse_inventory(LVProtocolSlice json);
 LVProtocolStatus lv_protocol_validate_models(LVProtocolSlice json, const LVProtocolConfig *config);
 LVProtocolResult lv_protocol_parse_transcription(LVProtocolSlice json);
 LVProtocolResult lv_protocol_parse_cleanup(LVProtocolSlice json);
+
+/* Privacy-safe, fixed-shape telemetry. Unknown values are marked absent;
+ * finish_reason never contains arbitrary upstream text. No returned storage. */
+typedef enum {
+    LV_CLEANUP_FINISH_UNKNOWN, LV_CLEANUP_FINISH_STOP, LV_CLEANUP_FINISH_LENGTH,
+    LV_CLEANUP_FINISH_OTHER,
+} LVCleanupFinish;
+typedef struct {
+    LVProtocolStatus status;
+    LVCleanupFinish finish_reason;
+    uint64_t prompt_tokens;
+    uint64_t completion_tokens;
+    uint64_t reasoning_tokens;
+    uint64_t reasoning_characters;
+    uint8_t has_prompt_tokens;
+    uint8_t has_completion_tokens;
+    uint8_t has_reasoning_tokens;
+    uint8_t has_reasoning_characters;
+} LVCleanupMetrics;
+LVCleanupMetrics lv_protocol_cleanup_metrics(LVProtocolSlice json);
 LVProtocolResult lv_protocol_parse_version(LVProtocolSlice json);
 LVProtocolResult lv_protocol_classify_http(int status, LVProtocolSlice body);
 int lv_protocol_json_valid(LVProtocolSlice json);
@@ -214,6 +249,9 @@ struct ProtocolConfiguration {
     std::string asr_model;
     std::string cleanup_model;
     std::string cleanup_prompt;
+    LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_GENERIC;
+    LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
+    uint32_t cleanup_context_tokens = 0;
 };
 
 struct ProtocolModel {

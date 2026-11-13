@@ -78,7 +78,7 @@ typedef enum {
     LV_WORKFLOW_DIAGNOSTIC_DICTATION_FAILED,
 } LVWorkflowDiagnosticEvent;
 
-typedef struct {
+typedef struct LVWorkflowConfig {
     LVEndpointFacts endpoint;
     LVProtocolSlice preference_endpoint;
     LVProtocolSlice asr_model;
@@ -86,6 +86,15 @@ typedef struct {
     LVProtocolSlice cleanup_prompt;
     uint8_t insert_current_target;
     uint8_t paste_at_current_focus;
+#ifdef __cplusplus
+    LVCleanupBackend cleanup_backend = LV_CLEANUP_BACKEND_GENERIC;
+    LVCleanupThinking cleanup_thinking = LV_CLEANUP_THINKING_DISABLED;
+    uint32_t cleanup_context_tokens = 0;
+#else
+    LVCleanupBackend cleanup_backend;
+    LVCleanupThinking cleanup_thinking;
+    uint32_t cleanup_context_tokens;
+#endif
 } LVWorkflowConfig;
 
 typedef struct {
