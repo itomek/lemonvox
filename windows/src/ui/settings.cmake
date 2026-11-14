@@ -19,3 +19,10 @@ target_link_libraries(settings_interactive_test PRIVATE lv_settings ole32 oleaut
 target_include_directories(settings_interactive_test PRIVATE "${PROJECT_SOURCE_DIR}/tests")
 lemonvox_win_test(settings_interactive_test)
 set_tests_properties(settings_interactive_test PROPERTIES LABELS interactive)
+
+# Manual evidence tool; deliberately not a ctest (captures desktop pixels).
+add_executable(screenshot_capture "${PROJECT_SOURCE_DIR}/tests/screenshot_capture.cpp")
+target_link_libraries(screenshot_capture PRIVATE lv_settings lv_prefs lv_ui)
+target_include_directories(screenshot_capture PRIVATE "${PROJECT_SOURCE_DIR}/tests")
+lemonvox_win_target(screenshot_capture)
+lemonvox_win_manifest(screenshot_capture)

@@ -1,0 +1,39 @@
+{
+  "captured_date": "2026-11-14",
+  "source_commit": "020e0bf20d0deed1acc5044248b7fbb7ab6a79ac",
+  "source_qualifier": "Baseline product source plus the three test-only screenshot harness changes included with this evidence. No product UI modifications.",
+  "application_version": "0.2.0 CMake default; native fixtures, not a packaged application release",
+  "os": "Ubuntu 24.04.5 LTS x86_64",
+  "desktop": "GNOME Shell 46.0",
+  "gtk": "4.14.5",
+  "libadwaita": "1.5.0",
+  "settings": {
+    "files": "ubuntu-{general,models,diagnostics}-{light,dark}.png",
+    "surface": "Production SettingsWindow instantiated by lemonvox_settings_ui_test; Xvfb, Cairo renderer, private D-Bus session, synthetic callbacks and model inventory",
+    "viewport": "680x680 logical and physical pixels; GDK_SCALE=1 (100%)",
+    "themes": ["forced light", "forced dark"],
+    "sample_endpoint": "http://127.0.0.1:13305/v1 (not contacted)",
+    "sample_models": ["Whisper-Base", "Gemma-4-E4B-it-GGUF"],
+    "health": "Synthetic connected status; no server health or downloaded model claim",
+    "command": "GDK_SCALE=1 GSK_RENDERER=cairo xvfb-run -a dbus-run-session -- .build/ubuntu/lemonvox_settings_ui_test OUTPUT.png light|dark General|Models|Diagnostics connected"
+  },
+  "bar": {
+    "files": "ubuntu-{recording,processing,error}-system.png",
+    "surface": "Production extension in isolated native headless GNOME Wayland compositor; synthetic D-Bus backend and disposable synthetic target field",
+    "viewport": "1280x800 compositor pixels, default private compositor scale 1 (100%)",
+    "theme": "System Shell appearance, dark bar surface; no forced light/dark bar comparison",
+    "palette": "LEMONVOX_TEST_PALETTE='' disables the fixture's artificial low-contrast test palette so production fallback uses native Shell colors",
+    "command": "LEMONVOX_TEST_PALETTE='' LEMONVOX_EVIDENCE_DIR=/absolute/existing/output LIBGL_ALWAYS_SOFTWARE=1 bash ubuntu/tests/extension_native_shell_test.sh"
+  },
+  "verification": {
+    "ctest": "11/11 passed",
+    "native_shell": "PASS: isolated GNOME Shell extension enable/disable test, including requested recording/processing/error capture",
+    "visual_review": "All nine PNGs inspected; default-size Settings content scrolls below viewport, Models selection labels ellipsize using native controls"
+  },
+  "limitations": [
+    "These are native current-source fixture captures, not screenshots of a shipped package or end-to-end audio/inference.",
+    "General and Models show only the initial scroll viewport; lower controls and prompt are not included.",
+    "System-following Settings appearance, light/dark bar variants, fractional/high scaling, minimum sizes, screen reader and complete keyboard navigation remain unverified.",
+    "Connected status and installed model choices are synthetic and do not attest to live server availability."
+  ]
+}

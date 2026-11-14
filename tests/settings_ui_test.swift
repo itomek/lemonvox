@@ -238,6 +238,9 @@ import AppKit
             if endpoint.contains("13306") { throw DictationError.upstream(401,"api_key=private-secret denied") }
             return DiscoveredModels(transcription:[asr],cleanup:[gemma,remote],reason:nil,version:nil)
         })
+        if CommandLine.arguments.contains("--render") {
+            pane.saveDiagnosticPreferences = { _ in }
+        }
         precondition(pane.appVersion.superview === pane.scrolls[0].documentView,
                      "Settings must show the running LemonVox version in General")
         precondition(pane.appVersion.isSelectable)
@@ -384,7 +387,9 @@ import AppKit
                         activeScroll.contentView.scroll(to:NSPoint(x:0,y:bottom ? 0 : max(0,document.frame.height-activeScroll.contentView.bounds.height)))
                     }
                     for (column,dark) in [false,true].enumerated() {
+                        pane.appearance.selectItem(at:dark ? 2 : 1)
                         pane.window.appearance=NSAppearance(named:dark ? .darkAqua : .aqua)
+                        pane.logPath.stringValue="/Users/example/Library/Logs/LemonVox/lemonvox.log"
                         view.layoutSubtreeIfNeeded()
                         pane.window.displayIfNeeded()
                         RunLoop.main.run(until:Date().addingTimeInterval(0.15))
@@ -403,7 +408,13 @@ import AppKit
                     if let data=output.tiffRepresentation, let bitmap=NSBitmapImageRep(data:data) {
                         let prefix="--render-output="
                         let path=CommandLine.arguments.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) } ?? ".build/settings-light-dark.png"
-                        try? bitmap.representation(using:.png,properties:[:])?.write(to:URL(fileURLWithPath:path))
+                        guard let png=bitmap.representation(using:.png,properties:[:]) else {
+                            preconditionFailure("Could not encode Settings screenshot")
+                        }
+                        do { try png.write(to:URL(fileURLWithPath:path)) }
+                        catch { preconditionFailure("Could not write Settings screenshot: \(error)") }
+                    } else {
+                        preconditionFailure("Could not render Settings screenshot")
                     }
                 }
                 pane.cleanup.commit(ModelChoice(id:remote.id,title:remote.id + " · remote"))

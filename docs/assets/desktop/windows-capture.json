@@ -1,0 +1,37 @@
+{
+  "captured_date": "2026-11-14",
+  "base_commit": "bed3cdb3fae5c7c45620b2bf6dde6e3204b24fa7",
+  "source_changes": "Test-only capture backdrop correction in the same commit as this metadata",
+  "os": "Windows 11 Enterprise 26H2, 26300.9974, x64",
+  "compiler": "MSVC 19.44.35230",
+  "configuration": "Release",
+  "cmake_project_version": "0.0.0",
+  "application_version": "Unavailable: unbundled synthetic fixture, not a release package",
+  "appearance": "system-dark",
+  "dpi": 192,
+  "scale_percent": 200,
+  "logical_window_dimensions": "Not independently measured; default native fixture sizes",
+  "capture_command": ".build/pr104-native-20261114/src/ui/screenshot_capture.exe docs/assets/desktop",
+  "build_command": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/scripts/build.ps1 -Output C:\\Users\\tomasz\\src\\itomek\\lemonvox\\.build\\pr104-native-20261114 -ExcludeLabels \"interactive|lemonade|audio-device\"",
+  "capture_exit_code": 0,
+  "capture_result": "PASS: screenshot capture",
+  "images": [
+    "windows-settings.png",
+    "windows-recording.png",
+    "windows-processing.png"
+  ],
+  "visually_inspected": true,
+  "initial_failure": "Original STATIC backdrop was skipped by WindowFromPoint at layered-bar transparent corners; exit 1. Replaced with opaque custom window, added gated hit-test preflight and extended backdrop to Settings rounded corners.",
+  "content": "Production native views, synthetic models, microphone and health. No microphone capture, network, registry preference writes or global shortcuts in capture tool.",
+  "limitations": [
+    "Combined Settings form, not separate General/Models pages",
+    "Light appearance and system appearance transitions while open unverified",
+    "Other display scales and practical minimum sizes unverified",
+    "Screen-reader use and full accessibility acceptance unverified",
+    "Packaged app and real live dictation unverified",
+    "Finish/Cancel and late-result behavior have synthetic test evidence only",
+    "Final parity still depends on issues 53, 96, 97 and 98"
+  ],
+  "test_command": "ctest --test-dir .build/pr104-native-20261114 --output-on-failure -LE \"lemonade|audio-device\"",
+  "test_result": "23/23 passed, including six interactive tests; 47.30 seconds. Lemonade and audio-device tests excluded."
+}

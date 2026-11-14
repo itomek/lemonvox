@@ -58,6 +58,23 @@ The installed activation service can be tested by adding `--activate` after
 
 The native desktop proof and browser/Electron matrix are also reproducible:
 
+### Native test requirements
+
+The Shell harness requires `dbus-run-session`, `gdbus`, `gjs`, `gsettings`,
+`glib-compile-schemas`, `gnome-shell`, `rg` and `fusermount3`. On Ubuntu,
+install the additional test packages with:
+
+```sh
+sudo apt install dbus-daemon libglib2.0-bin gjs gnome-shell ripgrep fuse3 xvfb
+```
+
+`xvfb-run` is required for the documented headless Settings capture command.
+The browser matrix additionally requires `node`, `npm`, `unzip`, Google Chrome
+at `/usr/bin/google-chrome`, and Electron 40.10.2. The harness uses a cached
+Electron archive or attempts an npm download into its temporary directory.
+Missing command prerequisites or Chrome produce exit 77 (skipped), not a passing
+test. Electron provisioning failures fail the run.
+
 ```sh
 LIBGL_ALWAYS_SOFTWARE=1 bash ubuntu/tests/extension_native_shell_test.sh
 LIBGL_ALWAYS_SOFTWARE=1 bash ubuntu/tests/extension_native_matrix_test.sh

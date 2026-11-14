@@ -277,7 +277,10 @@ import AppKit
         }
         image.unlockFocus()
         let representation = NSBitmapImageRep(data: image.tiffRepresentation!)!
-        let output = URL(fileURLWithPath: ".build/lemonvox-light-dark.png")
+        let prefix = "--render-output="
+        let path = CommandLine.arguments.first { $0.hasPrefix(prefix) }
+            .map { String($0.dropFirst(prefix.count)) } ?? ".build/lemonvox-light-dark.png"
+        let output = URL(fileURLWithPath: path)
         try representation.representation(using: .png, properties: [:])!.write(to: output)
         print("Rendered app-only appearance comparison: \(output.path)")
     }

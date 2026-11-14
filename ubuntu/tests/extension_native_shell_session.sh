@@ -250,6 +250,7 @@ capture_private_shell() {
         --method org.gnome.Shell.Screenshot.Screenshot \
         false false "$target" 2>/dev/null || true)"
     if [[ "$result" != *true* || ! -s "$target" ]]; then
+        [[ -z "${LEMONVOX_EVIDENCE_DIR:-}" ]] || fail "requested private Shell screenshot unavailable: $name"
         printf 'NOTE: private Shell screenshot unavailable for %s\n' "$name" >&2
         return
     fi
@@ -398,6 +399,23 @@ wait_for_eval \
     recording-bar-focus-preserved
 assert_fixture_focus focused
 capture_private_shell gnome-shell-recording
+
+# Capture processing using the same production extension and disposable backend.
+# No microphone, model or inference service is involved.
+if [[ -n "${LEMONVOX_EVIDENCE_DIR:-}" ]]; then
+    gdbus call --session --dest com.itomek.LemonVox \
+        --object-path /com/itomek/LemonVox --method com.itomek.LemonVox.Stop >/dev/null
+    wait_for_backend_state transcribing
+    wait_for_extension_state transcribing true
+    capture_private_shell gnome-shell-processing
+    gdbus call --session --dest com.itomek.LemonVox \
+        --object-path /com/itomek/LemonVox --method com.itomek.LemonVox.Cancel >/dev/null
+    wait_for_backend_state idle
+    wait_for_extension_state idle false
+    send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Alt_L' 'Clutter.KEY_space'
+    wait_for_backend_state recording
+    wait_for_extension_state recording true
+fi
 
 # A bare Escape is still ordinary application input even while recording.
 send_shortcut '' 'Clutter.KEY_Escape'
