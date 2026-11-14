@@ -15,6 +15,32 @@
 using namespace lemonvox::win;
 
 namespace {
+// Unlike STATIC text controls, this opaque window participates in
+// WindowFromPoint hit testing beneath the layered window's clear corners.
+class CaptureBackdrop {
+public:
+    CaptureBackdrop() {
+        WNDCLASSW window_class{};
+        window_class.lpfnWndProc = DefWindowProcW;
+        window_class.hInstance = GetModuleHandleW(nullptr);
+        window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(GRAY_BRUSH));
+        window_class.lpszClassName = L"LemonVoxCaptureBackdrop";
+        atom_ = RegisterClassW(&window_class);
+        if (atom_) {
+            hwnd = CreateWindowExW(0, window_class.lpszClassName, L"LemonVox synthetic screenshot fixture",
+                WS_POPUP | WS_VISIBLE, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
+                nullptr, nullptr, window_class.hInstance, nullptr);
+        }
+    }
+    ~CaptureBackdrop() {
+        if (hwnd) DestroyWindow(hwnd);
+        if (atom_) UnregisterClassW(L"LemonVoxCaptureBackdrop", GetModuleHandleW(nullptr));
+    }
+    HWND hwnd = nullptr;
+private:
+    ATOM atom_ = 0;
+};
+
 void pump(DWORD duration) {
     const ULONGLONG end = GetTickCount64() + duration;
     do {
@@ -47,7 +73,10 @@ bool capture(HWND window, const std::filesystem::path &path, HWND backdrop = nul
         for (LONG x = rect.left + 1; x < rect.right; x += 8) {
             const HWND hit = WindowFromPoint(POINT{x, y});
             if (hit != window && !IsChild(window, hit) && (!backdrop || hit != backdrop)) {
-                std::fprintf(stderr, "BLOCKED: another window overlaps the capture rectangle.\n");
+                DWORD process = 0;
+                GetWindowThreadProcessId(hit, &process);
+                std::fprintf(stderr, "BLOCKED: another window overlaps the capture rectangle at %ld,%ld (pid=%lu).\n",
+                    x, y, process);
                 return false;
             }
         }
@@ -112,64 +141,73 @@ int wmain(int argc, wchar_t **argv) {
     std::filesystem::create_directories(output);
     bool ok = true;
     {
-        SettingsServices services;
-        services.refresh_models = [](const std::string &, std::function<void(SettingsCatalogResult)> done) {
-            SettingsCatalogResult result;
-            result.models = {{"Whisper-Base", true, false, false, true, false, true},
-                {"Sample-Cleanup", false, true, false, true, false, true}};
-            done(std::move(result));
-        };
-        services.list_devices = [] { return std::vector<SettingsDevice>{{L"sample-mic", L"Sample microphone"}}; };
-        WinPreferences preferences;
-        preferences.asr_model = "Whisper-Base";
-        preferences.cleanup_model = "Sample-Cleanup";
-        preferences.capture_device_id = L"sample-mic";
-        SettingsWindow settings(GetModuleHandleW(nullptr), std::move(services), lv_cleanup_default_prompt());
-        settings.show(preferences);
-        settings.set_server_health(LV_SERVER_HEALTH_CONNECTED);
-        pump(500);
-        const UINT dpi = GetDpiForWindow(settings.hwnd());
-        std::printf("Windows native synthetic fixture; theme=%s; dpi=%u; scale=%u%%; current Settings is one combined form, not separate General/Models pages.\n",
-            settings.dark_mode_active() ? "system-dark" : "system-light-or-high-contrast", dpi, dpi * 100 / 96);
-        if (GetForegroundWindow() != settings.hwnd()) {
-            std::fprintf(stderr, "BLOCKED: Settings could not become foreground; refusing unrelated desktop pixels.\n");
+        // Cover the desktop before either native window is shown, including
+        // the Settings frame's rounded corners.
+        CaptureBackdrop background;
+        const HWND backdrop = background.hwnd;
+        if (!backdrop) {
+            std::fprintf(stderr, "FAILED: could not create the synthetic backdrop.\n");
             ok = false;
         } else {
-            ok = capture(settings.hwnd(), output / L"windows-settings.png");
-        }
-        settings.close();
-        // A plain native backdrop prevents private desktop pixels around the
-        // layered bar's rounded corners from entering the screenshot.
-        HWND backdrop = CreateWindowExW(0, L"STATIC", L"LemonVox synthetic screenshot fixture", WS_POPUP | WS_VISIBLE,
-            0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-        if (backdrop) {
             SetForegroundWindow(backdrop);
             pump(100);
-            if (GetForegroundWindow() != backdrop) {
-                std::fprintf(stderr, "BLOCKED: synthetic backdrop is not foreground.\n");
-                DestroyWindow(backdrop);
-                Gdiplus::GdiplusShutdown(graphics);
-                CoUninitialize();
-                return 77;
+            // Regression preflight: STATIC backdrops were skipped here,
+            // falsely identifying clear bar corners as another application's pixels.
+            if (WindowFromPoint(POINT{1, 1}) != backdrop) {
+                std::fprintf(stderr, "BLOCKED: synthetic backdrop failed hit-test preflight.\n");
+                ok = false;
+            } else {
+                SettingsServices services;
+                services.refresh_models = [](const std::string &, std::function<void(SettingsCatalogResult)> done) {
+                    SettingsCatalogResult result;
+                    result.models = {{"Whisper-Base", true, false, false, true, false, true},
+                        {"Sample-Cleanup", false, true, false, true, false, true}};
+                    done(std::move(result));
+                };
+                services.list_devices = [] { return std::vector<SettingsDevice>{{L"sample-mic", L"Sample microphone"}}; };
+                WinPreferences preferences;
+                preferences.asr_model = "Whisper-Base";
+                preferences.cleanup_model = "Sample-Cleanup";
+                preferences.capture_device_id = L"sample-mic";
+                SettingsWindow settings(GetModuleHandleW(nullptr), std::move(services), lv_cleanup_default_prompt());
+                settings.show(preferences);
+                settings.set_server_health(LV_SERVER_HEALTH_CONNECTED);
+                pump(500);
+                const UINT dpi = GetDpiForWindow(settings.hwnd());
+                std::printf("Windows native synthetic fixture; theme=%s; dpi=%u; scale=%u%%; current Settings is one combined form, not separate General/Models pages.\n",
+                    settings.dark_mode_active() ? "system-dark" : "system-light-or-high-contrast", dpi, dpi * 100 / 96);
+                if (GetForegroundWindow() != settings.hwnd()) {
+                    std::fprintf(stderr, "BLOCKED: Settings could not become foreground; refusing unrelated desktop pixels.\n");
+                    ok = false;
+                } else {
+                    ok = capture(settings.hwnd(), output / L"windows-settings.png", backdrop) && ok;
+                }
+                settings.close();
+                SetForegroundWindow(backdrop);
+                pump(100);
+                if (GetForegroundWindow() != backdrop) {
+                    std::fprintf(stderr, "BLOCKED: synthetic backdrop is not foreground.\n");
+                    ok = false;
+                } else {
+                    ui::IndicatorWindow bar({});
+                    if (!bar.create(GetModuleHandleW(nullptr))) ok = false;
+                    else {
+                        ui::IndicatorState state;
+                        state.mode = ui::IndicatorMode::recording;
+                        state.level = 0.55;
+                        state.elapsed = std::chrono::seconds(12);
+                        bar.set_anchor(POINT{GetSystemMetrics(SM_CXSCREEN) / 2, GetSystemMetrics(SM_CYSCREEN) / 2});
+                        bar.set_state(state);
+                        pump(350);
+                        ok = GetForegroundWindow() == backdrop && capture(bar.hwnd(), output / L"windows-recording.png", backdrop) && ok;
+                        state.mode = ui::IndicatorMode::transcribing;
+                        bar.set_state(state);
+                        pump(350);
+                        ok = GetForegroundWindow() == backdrop && capture(bar.hwnd(), output / L"windows-processing.png", backdrop) && ok;
+                    }
+                }
             }
-            ui::IndicatorWindow bar({});
-            if (!bar.create(GetModuleHandleW(nullptr))) ok = false;
-            else {
-                ui::IndicatorState state;
-                state.mode = ui::IndicatorMode::recording;
-                state.level = 0.55;
-                state.elapsed = std::chrono::seconds(12);
-                bar.set_anchor(POINT{GetSystemMetrics(SM_CXSCREEN) / 2, GetSystemMetrics(SM_CYSCREEN) / 2});
-                bar.set_state(state);
-                pump(350);
-                ok = GetForegroundWindow() == backdrop && capture(bar.hwnd(), output / L"windows-recording.png", backdrop) && ok;
-                state.mode = ui::IndicatorMode::transcribing;
-                bar.set_state(state);
-                pump(350);
-                ok = GetForegroundWindow() == backdrop && capture(bar.hwnd(), output / L"windows-processing.png", backdrop) && ok;
-            }
-            DestroyWindow(backdrop);
-        } else ok = false;
+        }
     }
     Gdiplus::GdiplusShutdown(graphics);
     CoUninitialize();

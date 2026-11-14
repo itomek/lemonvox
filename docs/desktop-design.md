@@ -79,13 +79,38 @@ theme controls the bar; these captures do not prove a Light/Dark transition.
 | --- | --- | --- |
 | ![GNOME recording fixture with Stop and Cancel](assets/desktop/ubuntu-recording-system.png) | ![GNOME processing fixture with Cancel](assets/desktop/ubuntu-processing-system.png) | ![GNOME recoverable error fixture](assets/desktop/ubuntu-error-system.png) |
 
+### Windows native fixture evidence
+
+Windows evidence uses source `bed3cdb3fae5c7c45620b2bf6dde6e3204b24fa7`
+plus test-only capture corrections. The current Settings surface is one combined
+form. Capture passed with exit code 0 after correcting an initial static-backdrop
+hit-testing failure; all three screenshots were visually inspected.
+
+| Combined Settings | Recording | Processing |
+| --- | --- | --- |
+| ![Windows combined Settings fixture](assets/desktop/windows-settings.png) | ![Windows recording fixture](assets/desktop/windows-recording.png) | ![Windows processing fixture](assets/desktop/windows-processing.png) |
+
+[Windows capture metadata](assets/desktop/windows-capture.json) records the
+commands, results and limitations. At DPI 192 (200%), the default Settings window
+capture is 1146×1439 physical pixels; recording and processing captures are each
+480×88 physical pixels. These PNG dimensions are not logical window dimensions.
+
+The fresh Release build passed 17/17 hosted-safe tests and 3/3 desktop tests:
+`ui_demo_smoke`, `ui_interactive_test` and `settings_interactive_test`.
+The broader run also passed 23/23 tests (including six interactive tests), excluding
+`lemonade|audio-device`. These synthetic checks do not establish full live dictation or packaged-app
+behavior. Light appearance, system appearance transitions while open, other
+display scales, screen-reader access and real packaged/live dictation remain
+unverified. Screenshot success is native fixture evidence, separate from these
+test passes and from shipped-app verification.
+
 ### Capture environment and limits
 
 | Platform | Environment | Capture | Version/build and scale |
 | --- | --- | --- | --- |
 | macOS | macOS 27.2.1, build 26B131; Apple Swift 6.4.2; arm64 target macOS 26 | AppKit production views, synthetic callbacks; offscreen content without window chrome | Unbundled test executable: app version/build unavailable. 2× offscreen raster; actual display scale unverified. Settings cells 820×690 logical points, minimum 820×480; bar sheet 640×200 logical points |
 | Ubuntu | Ubuntu 24.04.5; GNOME Shell 46.0; GTK 4.14.5; libadwaita 1.5.0 | GTK Settings fixture under Xvfb; separate private GNOME Wayland extension fixture | CMake default version 0.2.0, not a release bundle. Settings 680×680 at GDK_SCALE=1; private Shell 1280×800 at scale 1. Other display scales unverified |
-| Windows | Windows 11 Enterprise 10.0.26300, build 26300, x64; MSVC 19.44.35229, SDK 10.0.26100 | Capture tool built; no unlocked interactive desktop available in the SSH process session | **No screenshot captured.** App version, theme, display scale and runtime layout remain unverified |
+| Windows | Windows 11 Enterprise 26H2, build 26300.9974, x64; MSVC 19.44.35230 | Unlocked native desktop; production views with synthetic services. Capture exit 0; all three PNGs visually inspected | Fresh Release build, CMake version 0.0.0; unbundled fixture, app version/build unavailable. System-dark, DPI 192 (200%); default window size, physical PNG dimensions above. Other scales and live layout coverage remain unverified |
 
 Windows currently has one combined Settings form. Until that changes, capture
 and label it as such instead of inventing separate General/Models views.
