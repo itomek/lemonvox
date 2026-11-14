@@ -452,6 +452,37 @@ wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'result-bar-still-visible' : 'result-bar-hidden')" \
     result-bar-hidden
 
+
+phase='acknowledged-shortcuts'
+set_shortcuts() {
+    gdbus call --session --dest org.gnome.Shell \
+        --object-path /com/itomek/LemonVox/Shortcuts \
+        --method com.itomek.LemonVox.Shortcuts.SetShortcuts "$1" "$2"
+}
+accepted="$(set_shortcuts '<Control><Super>F9' '<Control><Super>F12')"
+[[ "$accepted" == "(true, '')" ]] || fail 'available shortcut pair was not acknowledged'
+# Mutter addKeybinding reports success for this reserved chord; actual grab
+# availability must reject both roles and preserve the last usable pair.
+gsettings set org.gnome.desktop.wm.keybindings cycle-panels "['<Control><Alt>Escape']"
+for pair in toggle cancel; do
+    if [[ "$pair" == toggle ]]; then
+        rejected="$(set_shortcuts '<Control><Alt>Escape' '<Control><Super>F12')"
+    else
+        rejected="$(set_shortcuts '<Control><Super>F9' '<Control><Alt>Escape')"
+    fi
+    [[ "$rejected" == '(false,'* ]] || fail "reserved $pair shortcut was acknowledged"
+done
+wait_for_eval \
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const b = Main.extensionManager.lookup('$uuid').stateObj._bindings; return b._toggleInstalled && !b._cancelInstalled && b._lastGood.toggle[0] === '<Control><Super>F9' && b._lastGood.cancel[0] === '<Control><Super>F12' ? 'ack-pair-preserved' : 'ack-pair-pending'; })" \
+    ack-pair-preserved
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F9'
+wait_for_backend_state recording
+wait_for_extension_state recording true
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F12'
+wait_for_backend_state idle
+wait_for_extension_state idle false
+printf 'PASS: native shortcut acknowledgement rejects compositor conflicts and preserves working delivery\n'
+
 phase='rebind-shortcuts'
 # Settings updates rebind both compositor shortcuts without accepting the old
 # toggle. The private schema directory is the staged extension, never a host
@@ -511,6 +542,26 @@ wait_for_backend_state idle
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F10'
 sleep 0.2
 assert_backend_state idle
+
+
+phase='ack-recovery'
+if set_shortcuts '<Control><Super>F10' '<Control><Super>F11' >"$test_root/disabled-shortcut-ack.log" 2>&1; then
+    fail 'disabled extension acknowledged shortcuts'
+fi
+gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+    --method org.gnome.Shell.Extensions.EnableExtension "$uuid" >/dev/null
+wait_for_eval \
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj?._client.snapshot.available ? 'backend-ready' : 'backend-pending')" \
+    backend-ready
+accepted="$(set_shortcuts '<Control><Super>F10' '<Control><Super>F11')"
+[[ "$accepted" == "(true, '')" ]] || fail 're-enabled extension did not recover shortcut acknowledgement'
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F10'
+wait_for_backend_state recording
+wait_for_extension_state recording true
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F11'
+wait_for_backend_state idle
+wait_for_extension_state idle false
+printf 'PASS: disabled extension refuses acknowledgement and re-enable restores shortcut delivery\n'
 
 if rg -q '(JS ERROR|ERROR.*lemonvox@itomek\.com|SyntaxError)' "$shell_log"; then
     fail 'GNOME Shell logged an extension JavaScript error'

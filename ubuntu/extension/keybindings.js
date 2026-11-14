@@ -146,6 +146,7 @@ export class ShortcutBindings {
     _install(shortcuts) {
         this._remove();
         try {
+            this._probe(shortcuts.toggle);
             const action = Main.wm.addKeybinding(
                 TOGGLE_KEY,
                 this._settings,
@@ -164,6 +165,7 @@ export class ShortcutBindings {
             return true;
 
         try {
+            this._probe(shortcuts.cancel);
             const action = Main.wm.addKeybinding(
                 CANCEL_KEY,
                 this._settings,
@@ -179,6 +181,24 @@ export class ShortcutBindings {
             // GNOME cannot claim the configured cancellation accelerator.
             this._onProblem?.('The cancellation shortcut could not be registered. Use Cancel.');
             return false;
+        }
+    }
+
+    _probe(accelerators) {
+        // addKeybinding returns an action even when a compositor binding owns
+        // the accelerator. Probe actual availability after removing our old
+        // binding; release every temporary grab, including partial failures.
+        const probes = [];
+        try {
+            for (const accelerator of accelerators) {
+                const action = global.display.grab_accelerator(accelerator, 0);
+                if (!action || action === Meta.KeyBindingAction.NONE)
+                    throw new Error('GNOME accelerator is already reserved');
+                probes.push(action);
+            }
+        } finally {
+            for (const action of probes)
+                global.display.ungrab_accelerator(action);
         }
     }
 
