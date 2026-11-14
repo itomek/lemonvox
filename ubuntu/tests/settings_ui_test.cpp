@@ -96,6 +96,9 @@ int main(int argc, char **argv) {
     lemonvox::ubuntu::Settings settings;
     settings.appearance = argc > 2 ? argv[2] : "auto";
     test.appearance = settings.appearance;
+    // Use only synthetic selections; this harness never contacts an endpoint.
+    settings.asr_model = "Whisper-Base";
+    settings.cleanup_model = "Gemma-4-E4B-it-GGUF";
     test.app = GTK_APPLICATION(adw_application_new("com.itomek.LemonVox.SettingsTest", G_APPLICATION_NON_UNIQUE));
     struct Start { Test *test; lemonvox::ubuntu::Settings settings; } start{&test, settings};
     g_signal_connect(test.app, "activate", G_CALLBACK(+[](GtkApplication *app, gpointer data) {
@@ -107,6 +110,15 @@ int main(int argc, char **argv) {
                 test.saved = value; ++test.saves;
                 lemonvox::ubuntu::apply_appearance(value); return true;
             }, [](const auto &) {}, [] {}, [](const auto &) {});
+        lemonvox::ProtocolModel transcription;
+        transcription.id = start.settings.asr_model;
+        transcription.asr = true;
+        transcription.downloaded = true;
+        lemonvox::ProtocolModel cleanup;
+        cleanup.id = start.settings.cleanup_model;
+        cleanup.cleanup = true;
+        cleanup.downloaded = true;
+        test.window->models({transcription, cleanup}, "Synthetic model inventory for screenshot review.");
         test.window->health(test.health_status);
         test.window->present();
         auto *windows = gtk_application_get_windows(app);
@@ -114,6 +126,8 @@ int main(int argc, char **argv) {
         auto *widget = GTK_WIDGET(windows->data);
         assert(test.saves == 0); // Initialization and model population never write.
         test.window->models({}, "No models");
+        assert(test.saves == 0);
+        test.window->models({transcription, cleanup}, "Synthetic model inventory for screenshot review.");
         assert(test.saves == 0);
         auto *endpoint = find_row(widget, "API endpoint");
         auto *appearance = find_row(widget, "Theme");

@@ -81,6 +81,8 @@ public:
     void shutdown();
     WorkflowPhase phase() const;
     bool is_shutdown() const;
+    // Process-local recovery text; reading never consumes it. Serialized executor only.
+    const std::string &last_transcription() const;
 
 private:
     enum class Step : std::uint8_t {
@@ -129,6 +131,7 @@ private:
     std::vector<std::uint8_t> audio_;
     std::string multipart_boundary_;
     std::string result_text_;
+    std::string last_transcription_;
     WorkflowPhase phase_ = WorkflowPhase::idle;
     OperationId next_operation_ = 1;
     OperationId active_operation_ = 0;

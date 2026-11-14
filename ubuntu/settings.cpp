@@ -195,7 +195,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
         gtk_box_append(GTK_BOX(controls), GTK_WIDGET(widget)); return widget;
     };
     start_ = button("Start", "Toggle"); stop_ = button("Stop", "Stop");
-    cancel_button_ = button("Cancel", "Cancel"); copy_ = button("Copy result", "Copy");
+    cancel_button_ = button("Cancel", "Cancel"); copy_ = button("Copy Last Transcription", "CopyLastTranscription");
     button("Quit", "Quit");
     adw_preferences_group_add(interaction, controls);
     gtk_widget_set_sensitive(GTK_WIDGET(stop_), FALSE);
@@ -334,12 +334,12 @@ void SettingsWindow::health(LVServerHealthStatus status) {
             status == LV_SERVER_HEALTH_DISCONNECTED ? "error" : "dim-label");
     }
 }
-void SettingsWindow::state(const std::string &text, bool recording, bool active, bool has_result) {
+void SettingsWindow::state(const std::string &text, bool recording, bool active, bool has_result, bool has_last_transcription) {
     gtk_label_set_text(state_, text.c_str());
     gtk_widget_set_sensitive(GTK_WIDGET(start_), !active);
     gtk_widget_set_sensitive(GTK_WIDGET(stop_), recording);
     gtk_widget_set_sensitive(GTK_WIDGET(cancel_button_), active || has_result);
-    gtk_widget_set_sensitive(GTK_WIDGET(copy_), has_result);
+    gtk_widget_set_sensitive(GTK_WIDGET(copy_), has_last_transcription);
 }
 void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::string &status, bool installation_supported, const std::string &catalog_endpoint, bool server_available) {
     const bool was_populating = populating_;

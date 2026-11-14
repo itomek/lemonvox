@@ -48,7 +48,7 @@ std::vector<TrayMenuItem> tray_menu_items(const TrayStatus &status, bool diagnos
     items.push_back({TrayCommand::toggle_dictation, recording ? L"Stop dictation" : L"Start dictation",
                      recording || !active, false});
     items.push_back({TrayCommand::cancel, L"Cancel", active, false});
-    items.push_back({TrayCommand::copy_last, L"Copy last result", status.copy_available, false});
+    items.push_back({TrayCommand::copy_last, L"Copy Last Transcription", status.copy_available, false});
     items.push_back({TrayCommand::settings, L"Settings\u2026", true, true});
     if (diagnostics_available) items.push_back({TrayCommand::diagnostics, L"Open diagnostics", true, false});
     items.push_back({TrayCommand::quit, L"Quit LemonVox", true, true});
@@ -118,6 +118,7 @@ struct TrayIcon::Impl {
 };
 
 void TrayIcon::Impl::show_menu(POINT anchor) {
+    if (callbacks.menu_will_open) callbacks.menu_will_open();
     HMENU menu = CreatePopupMenu();
     if (!menu) return;
     for (const auto &item : tray_menu_items(status, static_cast<bool>(callbacks.open_diagnostics))) {

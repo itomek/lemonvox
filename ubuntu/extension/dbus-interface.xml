@@ -8,9 +8,11 @@
     <method name="Cancel"/>
     <method name="ShowSettings"/>
     <method name="ClearResult"/>
+    <method name="CopyLastTranscription"><arg name="text" type="s" direction="out"/></method>
     <method name="Quit"/>
     <property name="State" type="s" access="read"/>
     <property name="Message" type="s" access="read"/>
+    <property name="HasLastTranscription" type="b" access="read"/>
     <property name="Result" type="s" access="read"/>
     <property name="Palette" type="s" access="read"/>
     <property name="Error" type="b" access="read"/>

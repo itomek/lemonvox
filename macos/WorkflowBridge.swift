@@ -224,6 +224,12 @@ private final class WorkflowBridgeLifetime: @unchecked Sendable {
         lifetime.scheduleEmergencyTeardown()
     }
 
+    // Copy the borrowed core bytes while on the serialized main actor.
+    var lastTranscription: String {
+        guard !closed, let handle else { return "" }
+        return string(lv_workflow_last_transcription(handle))
+    }
+
     func start(_ config: WorkflowBridgeConfig) -> UInt64 {
         guard !closed, let handle else { return 0 }
         return withWorkflowConfig(config) { raw in

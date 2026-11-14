@@ -17,9 +17,9 @@ constexpr const char *bus_path = "/com/itomek/LemonVox";
 constexpr const char *bus_interface = "com.itomek.LemonVox";
 constexpr const char *bus_xml = R"XML(<node><interface name="com.itomek.LemonVox">
 <method name="Toggle"/><method name="Stop"/><method name="Cancel"/><method name="ShowSettings"/>
-<method name="ClearResult"/><method name="Quit"/>
+<method name="ClearResult"/><method name="CopyLastTranscription"><arg name="text" type="s" direction="out"/></method><method name="Quit"/>
 <property name="State" type="s" access="read"/><property name="Message" type="s" access="read"/>
-<property name="Result" type="s" access="read"/><property name="Palette" type="s" access="read"/><property name="Error" type="b" access="read"/></interface></node>)XML";
+<property name="HasLastTranscription" type="b" access="read"/><property name="Result" type="s" access="read"/><property name="Palette" type="s" access="read"/><property name="Error" type="b" access="read"/></interface></node>)XML";
 const char *phase_name(lv::WorkflowPhase phase) {
     switch (phase) {
         case lv::WorkflowPhase::idle: return "idle";
@@ -118,12 +118,19 @@ private:
                 +[](GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *method, GVariant *, GDBusMethodInvocation *invocation, gpointer data) {
                     auto &self = *static_cast<Application *>(data);
                     const std::string command = method;
+                    if (command == "CopyLastTranscription") {
+                        const auto text = self.core_ && self.core_->phase() != lv::WorkflowPhase::inserting
+                            ? self.core_->last_transcription() : std::string{};
+                        g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", text.c_str()));
+                        return;
+                    }
                     // Reply before Quit can tear down the exported object.
                     g_dbus_method_invocation_return_value(invocation, nullptr);
                     self.action(command);
                 },
                 +[](GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *name, GError **, gpointer data) -> GVariant * {
                     auto &self = *static_cast<Application *>(data);
+                    if (std::strcmp(name, "HasLastTranscription") == 0) return g_variant_new_boolean(self.core_ && !self.core_->last_transcription().empty());
                     if (std::strcmp(name, "Error") == 0) return g_variant_new_boolean(self.error_);
                     return g_variant_new_string(std::strcmp(name, "State") == 0 ? self.state_.c_str() :
                         std::strcmp(name, "Message") == 0 ? self.message_.c_str() :
@@ -171,6 +178,15 @@ private:
         if (command == "ShowSettings") { show_settings(); return; }
         if (command == "Quit") { core_->cancel(); g_application_quit(G_APPLICATION(app_)); return; }
         if (command == "ClearResult") { error_ = false; clear_result(); message_ = "Done."; changed(); return; }
+        if (command == "CopyLastTranscription") {
+            const auto &text = core_->last_transcription();
+            auto *display = gdk_display_get_default();
+            if (!text.empty() && display && core_->phase() != lv::WorkflowPhase::inserting) {
+                gdk_clipboard_set_text(gdk_display_get_clipboard(display), text.c_str());
+                message_ = "Copied. Paste into your field."; changed();
+            }
+            return;
+        }
         if (command == "Copy") {
             if (!result_.empty()) {
                 auto *display = gdk_display_get_default();
@@ -225,13 +241,14 @@ private:
             GVariantBuilder properties; g_variant_builder_init(&properties, G_VARIANT_TYPE("a{sv}"));
             g_variant_builder_add(&properties, "{sv}", "State", g_variant_new_string(state_.c_str()));
             g_variant_builder_add(&properties, "{sv}", "Message", g_variant_new_string(message_.c_str()));
+            g_variant_builder_add(&properties, "{sv}", "HasLastTranscription", g_variant_new_boolean(core_ && !core_->last_transcription().empty()));
             g_variant_builder_add(&properties, "{sv}", "Result", g_variant_new_string(result_.c_str()));
             g_variant_builder_add(&properties, "{sv}", "Palette", g_variant_new_string(palette_.c_str()));
             g_variant_builder_add(&properties, "{sv}", "Error", g_variant_new_boolean(error_));
             g_dbus_connection_emit_signal(bus, nullptr, bus_path, "org.freedesktop.DBus.Properties", "PropertiesChanged",
                 g_variant_new("(sa{sv}as)", bus_interface, &properties, nullptr), nullptr);
         }
-        if (window_) window_->state(message_, state_ == "recording", state_ != "idle", !result_.empty());
+        if (window_) window_->state(message_, state_ == "recording", state_ != "idle", !result_.empty(), core_ && !core_->last_transcription().empty() && core_->phase() != lv::WorkflowPhase::inserting);
     }
     void show_settings() {
         if (!window_) {

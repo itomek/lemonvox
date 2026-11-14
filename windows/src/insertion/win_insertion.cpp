@@ -224,13 +224,15 @@ void WinInsertion::inspect(OperationId operation, TargetToken original, TargetCo
 }
 
 void WinInsertion::insert(OperationId operation, TargetToken target, std::string text, VoidCompletion completion) {
-    enqueue([this, operation, target, text = std::move(text), completion = std::move(completion)]() mutable {
+    ++pending_inserts_;
+    if (!enqueue([this, operation, target, text = std::move(text), completion = std::move(completion)]() mutable {
         if (options_.insert_started) options_.insert_started(operation);
         Completion result{run_insert(operation, target, text)};
         // The text was dispatched or abandoned; the operation's tokens are finished.
         table_->invalidate(operation);
+        --pending_inserts_;
         post(std::move(completion), operation, result);
-    });
+    })) --pending_inserts_;
 }
 
 AdapterError WinInsertion::run_insert(OperationId operation, TargetToken token,
@@ -355,6 +357,7 @@ void WinInsertion::shutdown() {
         PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
     }
     worker_.join();
+    pending_inserts_.store(0);
 }
 
 } // namespace lemonvox::win

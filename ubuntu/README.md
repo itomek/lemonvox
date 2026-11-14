@@ -24,3 +24,5 @@ Open LemonVox and [connect Lemonade and select models](../docs/model-setup.md).
 Press **Ctrl+Alt+Space** to start and stop; **Ctrl+Super+Escape** cancels.
 
 [Cleanup settings](../docs/cleanup.md) · [Build, test and packaging](DEVELOPMENT.md) · [Report an issue](https://github.com/itomek/lemonvox/issues)
+
+[Native screenshot comparison and design verification status](../docs/desktop-design.md)

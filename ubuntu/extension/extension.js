@@ -25,6 +25,13 @@ export default class LemonVoxExtension extends Extension.Extension {
             stop: () => this._client.request('Stop'),
             cancel: () => this._dismissOrCancel(),
             clearResult: () => this._client.clearResult(),
+            copyLastTranscription: () => {
+                this._cancelPaste();
+                this._client.copyLastTranscription(text => {
+                    this._cancelPaste();
+                    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
+                });
+            },
             settings: () => this._client.request('ShowSettings'),
             quit: () => this._client.request('Quit'),
         };

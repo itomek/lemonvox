@@ -126,6 +126,7 @@ private:
     void apply_trigger_at_launch();
     void refresh_tray();
     void copy_pending();
+    void copy_last_transcription();
     void quit();
 
     HINSTANCE instance_;
@@ -221,7 +222,8 @@ bool App::run(bool open_settings_at_launch, bool smoke) {
     ui::TrayCallbacks tray_callbacks;
     tray_callbacks.toggle_dictation = [this] { controller_->toggle(); };
     tray_callbacks.cancel = [this] { controller_->cancel(); indicator_->set_state({}); };
-    tray_callbacks.copy_last = [this] { copy_pending(); };
+    tray_callbacks.menu_will_open = [this] { refresh_tray(); };
+    tray_callbacks.copy_last = [this] { copy_last_transcription(); };
     tray_callbacks.open_settings = [this] { open_settings(); };
     tray_callbacks.open_diagnostics = [this] {
         const std::wstring log = controller_->diagnostics().format();
@@ -438,9 +440,21 @@ void App::open_settings() {
 void App::refresh_tray() {
     ui::TrayStatus status;
     status.activity = activity_;
-    status.copy_available = controller_ && controller_->has_pending_text();
+    status.copy_available = controller_ && controller_->has_last_transcription()
+        && controller_->phase() != WorkflowPhase::inserting && !insertion_->clipboard_busy();
     status.detail = tray_detail_;
     tray_->set_status(status);
+}
+
+void App::copy_last_transcription() {
+    if (insertion_->clipboard_busy()) return;
+    if (controller_->copy_last_transcription([](const std::string &text) { return copy_text_to_clipboard(text); })) {
+        ui::IndicatorState state;
+        state.mode = ui::IndicatorMode::success;
+        state.message = L"Copied \u00B7 paste with Ctrl+V";
+        indicator_->set_state(state);
+    }
+    refresh_tray();
 }
 
 void App::copy_pending() {

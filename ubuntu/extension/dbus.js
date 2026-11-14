@@ -13,6 +13,7 @@ const CONTROL_METHODS = new Set([
     'Cancel',
     'ShowSettings',
     'ClearResult',
+    'CopyLastTranscription',
     'Quit',
 ]);
 
@@ -49,6 +50,7 @@ export class BackendClient {
             state: 'unavailable',
             message: 'LemonVox is unavailable.',
             result: '',
+            hasLastTranscription: false,
             palette: '',
             error: false,
         };
@@ -84,6 +86,23 @@ export class BackendClient {
             return;
         this._pendingMethod = method;
         this._connect(true);
+    }
+
+    copyLastTranscription(onText) {
+        if (this._destroyed || !this._proxy?.gNameOwner || !this._snapshot.hasLastTranscription)
+            return;
+        const generation = this._generation;
+        this._proxy.call('CopyLastTranscription', null, Gio.DBusCallFlags.NONE, 4000, null,
+            (proxy, result) => {
+                try {
+                    const [text] = proxy.call_finish(result).deep_unpack();
+                    if (!this._destroyed && generation === this._generation && typeof text === 'string' && text.length)
+                        onText(text);
+                } catch (_error) {
+                    // Retained text belongs to the backend; a failed request or
+                    // clipboard write can be retried from the menu.
+                }
+            });
     }
 
     clearResult() {
@@ -177,6 +196,7 @@ export class BackendClient {
             state,
             message: safeMessage(propertyString(this._proxy, 'Message')),
             result: propertyString(this._proxy, 'Result'),
+            hasLastTranscription: propertyBoolean(this._proxy, 'HasLastTranscription'),
             palette: propertyString(this._proxy, 'Palette'),
             error: propertyBoolean(this._proxy, 'Error'),
         };
@@ -221,6 +241,7 @@ export class BackendClient {
             state: 'unavailable',
             message: 'LemonVox is unavailable.',
             result: '',
+            hasLastTranscription: false,
             palette: '',
             error: false,
         };

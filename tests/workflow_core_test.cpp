@@ -1321,7 +1321,66 @@ void cleanup_telemetry_is_numeric_once_and_ignores_stale_results() {
     assert(diagnostics.cleanup.size() == 1 && insertion.inserted.empty());
 }
 
+void last_transcription_survives_failures_and_is_replaced_without_being_consumed() {
+    FakeCapture capture;
+    FakeTransport transport;
+    FakeInsertion insertion;
+    FakeDiagnostics diagnostics;
+    WorkflowCore workflow(capture, transport, insertion, diagnostics);
+    assert(workflow.last_transcription().empty());
+    auto transcribe = [&](const char *json) {
+        start_recording(workflow, capture, transport);
+        assert(workflow.stop("LemonVox-retention"));
+        capture.complete_stop(capture.pending_stops.size() - 1, wav_bytes());
+        transport.complete_next(successful_inventory());
+        transport.complete_next(successful_response(json));
+    };
+    transcribe(R"({"text":"first raw"})");
+    assert(workflow.last_transcription() == "first raw");
+    transport.complete_next({AdapterError::network, 0, {}});
+    assert(workflow.last_transcription() == "first raw");
+    start_recording(workflow, capture, transport);
+    workflow.cancel();
+    assert(workflow.last_transcription() == "first raw");
+    transcribe(R"({"text":"   "})");
+    assert(workflow.phase() == WorkflowPhase::idle);
+    assert(workflow.last_transcription() == "first raw");
+    // A malformed cleanup retains the new raw transcription.
+    transcribe(R"({"text":"raw after empty cleanup"})");
+    transport.complete_next(successful_response(R"({"choices":[{"message":{"content":" "},"finish_reason":"stop"}]})"));
+    assert(workflow.last_transcription() == "raw after empty cleanup");
+    // A later ASR transport error preserves the previous usable result.
+    start_recording(workflow, capture, transport);
+    assert(workflow.stop("LemonVox-failed-asr"));
+    capture.complete_stop(capture.pending_stops.size() - 1, wav_bytes());
+    transport.complete_next(successful_inventory());
+    transport.complete_next({AdapterError::network, 0, {}});
+    assert(workflow.last_transcription() == "raw after empty cleanup");
+    // Successful insertion does not consume the cleaned recovery text.
+    start_recording(workflow, capture, transport);
+    finish_with_cleanup(workflow, capture, transport);
+    assert(workflow.last_transcription() == "Send Tomasz 14 invoices.");
+    insertion.auto_insert = false;
+    transcribe(R"({"text":"second raw"})");
+    assert(workflow.last_transcription() == "second raw");
+    transport.complete_next(successful_response(R"({"choices":[{"message":{"content":"Second cleaned."},"finish_reason":"stop"}]})"));
+    assert(workflow.last_transcription() == "Second cleaned.");
+    insertion.complete_insert(insertion.pending_insert.size() - 1, {AdapterError::insertion_unavailable});
+    const auto first_copy = workflow.last_transcription();
+    const auto second_copy = workflow.last_transcription();
+    assert(first_copy == "Second cleaned." && first_copy == second_copy);
+    transcribe(R"({"text":"third raw"})");
+    workflow.cancel();
+    assert(workflow.last_transcription() == "third raw");
+    // A late cleanup completion must not replace the retained ASR text.
+    transport.complete_next(successful_response(R"({"choices":[{"message":{"content":"stale cleaned"},"finish_reason":"stop"}]})"));
+    assert(workflow.last_transcription() == "third raw");
+    workflow.shutdown();
+    assert(workflow.last_transcription().empty());
+}
+
 int main() {
+    last_transcription_survives_failures_and_is_replaced_without_being_consumed();
     cleanup_telemetry_is_numeric_once_and_ignores_stale_results();
     test_paste_at_current_focus();
     start_validates_models_before_starting_capture();

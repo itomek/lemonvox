@@ -43,14 +43,18 @@ class ExtensionContractTest(unittest.TestCase):
         self.assertIsNotNone(interface)
         self.assertEqual(
             {method.attrib["name"] for method in interface.findall("method")},
-            {"Toggle", "Stop", "Cancel", "ShowSettings", "ClearResult", "Quit"},
+            {"Toggle", "Stop", "Cancel", "ShowSettings", "ClearResult", "CopyLastTranscription", "Quit"},
         )
+        copy = interface.find("./method[@name='CopyLastTranscription']/arg")
+        self.assertEqual(copy.attrib, {"name": "text", "type": "s", "direction": "out"})
         properties = {prop.attrib["name"]: prop for prop in interface.findall("property")}
         for name in ("State", "Message", "Result", "Palette"):
             self.assertEqual(properties[name].attrib["type"], "s")
             self.assertEqual(properties[name].attrib["access"], "read")
         self.assertEqual(properties["Error"].attrib["type"], "b")
         self.assertEqual(properties["Error"].attrib["access"], "read")
+        self.assertEqual(properties["HasLastTranscription"].attrib["type"], "b")
+        self.assertEqual(properties["HasLastTranscription"].attrib["access"], "read")
         # GDBus supplies org.freedesktop.DBus.Properties, including
         # PropertiesChanged, for an exported object. The app interface must not
         # shadow that standard interface in its own XML.

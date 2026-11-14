@@ -236,8 +236,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         if CommandLine.arguments.contains("--smoke-menu") {
             let menu=NSMenu(); menu.autoenablesItems=false
             menuNeedsUpdate(menu)
-            let expectedMenu = ["Start Dictation", "", "Settings…"] + (AppIdentity.running.isDebug ? [] : ["Check for Updates…"]) + ["", "Quit \(AppIdentity.running.name)"]
+            let expectedMenu = ["Start Dictation", "Copy Last Transcription", "", "Settings…"] + (AppIdentity.running.isDebug ? [] : ["Check for Updates…"]) + ["", "Quit \(AppIdentity.running.name)"]
             precondition(menu.items.map(\.title) == expectedMenu)
+            precondition(menu.item(withTitle:"Copy Last Transcription")?.isEnabled == false)
             precondition(statusItem.button?.image?.isTemplate == true)
             _=lv_toggle(&sampleSession); menuNeedsUpdate(menu)
             precondition(menu.items.first?.title == "Stop Dictation" && menu.item(withTitle:"Cancel") != nil)
@@ -522,6 +523,9 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         menu.addItem(action)
         if active { menu.addItem(item("Cancel",#selector(cancel))) }
         if pendingText != nil && !inserting { menu.addItem(item("Copy Text",#selector(copyPending))) }
+        let copyLast = item("Copy Last Transcription", #selector(copyLastTranscription))
+        copyLast.isEnabled = canCopyLastTranscription
+        menu.addItem(copyLast)
         menu.addItem(.separator())
         let settingsItem=item("Settings…",#selector(configure)); settingsItem.keyEquivalent=","; menu.addItem(settingsItem)
         if !AppIdentity.running.isDebug { menu.addItem(item(updater.menuTitle,#selector(checkForUpdates))) }
@@ -983,6 +987,18 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         inserting = false; pendingText = nil; panel.orderOut(nil)
         setShortcutEditingEnabled(!sessionActive)
         applyDeferredPreferencesIfIdle()
+    }
+    private var canCopyLastTranscription: Bool {
+        workflowCreated && !inserting && !paste.active && !workflowAdapter.pasteActive &&
+            !workflow.lastTranscription.isEmpty
+    }
+    @objc func copyLastTranscription() {
+        guard canCopyLastTranscription else { return }
+        let text = workflow.lastTranscription
+        NSPasteboard.general.clearContents()
+        if !NSPasteboard.general.setString(text, forType: .string) {
+            panel.show("Could not copy transcription · try again")
+        }
     }
     @objc func copyPending() {
         guard let pendingText else { panel.show("No pending text"); return }

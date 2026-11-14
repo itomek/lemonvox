@@ -109,6 +109,7 @@ static void tray_text() {
     assert(items[0].command == TrayCommand::toggle_dictation && items[0].label == L"Start dictation" && items[0].enabled);
     assert(items[1].command == TrayCommand::cancel && !items[1].enabled);
     assert(items[2].command == TrayCommand::copy_last && !items[2].enabled);
+    assert(items[2].label == L"Copy Last Transcription");
     assert(items[3].command == TrayCommand::settings && items[3].separator_before);
     assert(items[4].command == TrayCommand::quit && items[4].separator_before);
     assert(tray_tooltip(status) == L"LemonVox \u2013 Ready");

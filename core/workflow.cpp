@@ -98,6 +98,7 @@ void WorkflowCore::cancel() {
 void WorkflowCore::shutdown() {
     if (shutting_down_) return;
     shutting_down_ = true;
+    last_transcription_.clear();
     const auto operation = active_operation_;
     if (operation != 0) {
         invalidate_active();
@@ -111,6 +112,10 @@ void WorkflowCore::shutdown() {
 
 WorkflowPhase WorkflowCore::phase() const {
     return phase_;
+}
+
+const std::string &WorkflowCore::last_transcription() const {
+    return last_transcription_;
 }
 
 bool WorkflowCore::is_shutdown() const {
@@ -273,6 +278,7 @@ void WorkflowCore::request_transcription(OperationId operation) {
             fail_protocol(completed, transcript.status, response.status);
             return;
         }
+        if (!transcript.value.empty()) last_transcription_ = transcript.value;
         TransportRequest cleanup;
         const auto status = Protocol::make_cleanup_request(protocol_config_, transcript.value, cleanup);
         if (status != LV_PROTOCOL_OK) {
@@ -335,6 +341,7 @@ void WorkflowCore::request_cleanup(OperationId operation, TransportRequest reque
 }
 
 void WorkflowCore::request_insertion(OperationId operation, std::string text) {
+    if (!text.empty()) last_transcription_ = text;
     result_text_ = std::move(text);
     set_phase(operation, WorkflowPhase::inserting);
     if (active_operation_ != operation || shutting_down_) return;

@@ -195,6 +195,14 @@ int lv_workflow_destroy(LVWorkflow *workflow);
 int lv_workflow_is_shutdown(const LVWorkflow *workflow);
 
 /*
+ * Read-only, non-consuming view of the latest nonempty ASR/cleaned text.
+ * Empty for null/shut-down handles or before a transcription is available.
+ * Borrowed bytes remain valid only until the next workflow mutation or destroy;
+ * callers must copy synchronously on the same serialized executor.
+ */
+LVProtocolSlice lv_workflow_last_transcription(const LVWorkflow *workflow);
+
+/*
  * Emergency no-callback teardown that consumes the handle. It suppresses all
  * native/core callbacks before stopping the core. If called from a bridge
  * entry or callback, physical deletion waits for that stack to unwind; the

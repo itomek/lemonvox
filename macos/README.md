@@ -17,6 +17,9 @@ configured shortcut to start and stop dictation. **X** cancels.
 
 ## Help
 
+[Native screenshot comparison and design verification status](../docs/desktop-design.md)
+
+
 - **No microphone or shortcut:** check LemonVox permissions in System Settings > Privacy & Security.
 - **Server or model error:** follow [model setup](../docs/model-setup.md).
 - [Cleanup settings](../docs/cleanup.md)

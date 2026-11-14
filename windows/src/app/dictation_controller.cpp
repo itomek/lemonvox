@@ -267,6 +267,16 @@ bool DictationController::busy() const {
     return core_ && core_->phase() != WorkflowPhase::idle;
 }
 
+bool DictationController::has_last_transcription() const {
+    return core_ && !core_->last_transcription().empty();
+}
+
+bool DictationController::copy_last_transcription(const std::function<bool(const std::string &)> &copy) {
+    // Insertion owns a temporary clipboard transaction until its callback.
+    if (phase() == WorkflowPhase::inserting || !has_last_transcription() || !copy) return false;
+    return copy(core_->last_transcription());
+}
+
 bool DictationController::copy_pending(const std::function<bool(const std::string &)> &copy) {
     if (pending_text_.empty() || !copy || !copy(pending_text_)) return false;
     discard_pending();

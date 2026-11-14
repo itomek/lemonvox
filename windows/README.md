@@ -24,6 +24,9 @@ wherever your cursor is when processing finishes. Change shortcuts in Settings.
 
 ## Help and development
 
+[Cross-platform design and native screenshot status](../docs/desktop-design.md)
+
+
 - [Model setup](../docs/model-setup.md) and [cleanup settings](../docs/cleanup.md)
 - [Build, test and packaging](DEVELOPMENT.md)
 - [Release publishing](DISTRIBUTION.md)
