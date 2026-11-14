@@ -9,4 +9,4 @@ PASS: enabled older-extension interface simulation refuses acknowledgement and p
 PASS: disabled extension refuses acknowledgement and re-enable restores shortcut delivery
 PASS: Shell discovered, enabled, activated, disabled, and deactivated lemonvox@itomek.com
 PASS: isolated GNOME Shell extension enable/disable test
-Keeping isolated test directory: /tmp/lemonvox-extension-shell.DL7eX1
+Keeping isolated test directory: /tmp/lemonvox-extension-shell.lKjwbO

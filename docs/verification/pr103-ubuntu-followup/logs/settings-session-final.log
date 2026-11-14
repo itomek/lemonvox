@@ -1,116 +1,114 @@
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[85610]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85610]: Successfully activated service 'org.a11y.atspi.Registry'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[90116]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90116]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.systemd1' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.Shell.Screencast' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.6' (uid=1000 pid=85684 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='ca.desrt.dconf' requested by ':1.7' (uid=1000 pid=85699 comm="/usr/libexec/evolution-source-registry" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.OnlineAccounts' requested by ':1.7' (uid=1000 pid=85699 comm="/usr/libexec/evolution-source-registry" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'ca.desrt.dconf'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
-goa-daemon-Message: 16:02:47.672: goa-daemon version 3.50.4 starting
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.6' (uid=1000 pid=85684 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.Shell.Notifications' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.Shell.CalendarServer'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.Identity' requested by ':1.9' (uid=1000 pid=85720 comm="/usr/libexec/goa-daemon" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.OnlineAccounts'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.Identity'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gnome.evolution.dataserver.AddressBook10' requested by ':1.11' (uid=1000 pid=85727 comm="/usr/libexec/evolution-calendar-factory" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.evolution.dataserver.AddressBook10'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.Shell.Notifications'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.AfcVolumeMonitor' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.AfcVolumeMonitor'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.GPhoto2VolumeMonitor' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.GPhoto2VolumeMonitor'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.23' (uid=1000 pid=85617 comm="/home/tomas/src/itomek/lemonvox-pr103-ubuntu/.buil" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.portal.Documents' requested by ':1.24' (uid=1000 pid=85904 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.systemd1' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.Shell.Screencast' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.6' (uid=1000 pid=90187 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.Shell.Notifications' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'ca.desrt.dconf'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.OnlineAccounts' requested by ':1.8' (uid=1000 pid=90203 comm="/usr/libexec/evolution-source-registry" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.Shell.Notifications'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.Shell.CalendarServer'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.6' (uid=1000 pid=90187 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
+goa-daemon-Message: 16:08:01.193: goa-daemon version 3.50.4 starting
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.Identity' requested by ':1.11' (uid=1000 pid=90243 comm="/usr/libexec/goa-daemon" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.Identity'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gnome.evolution.dataserver.AddressBook10' requested by ':1.14' (uid=1000 pid=90258 comm="/usr/libexec/evolution-calendar-factory" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.evolution.dataserver.AddressBook10'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.AfcVolumeMonitor' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.AfcVolumeMonitor'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.GPhoto2VolumeMonitor' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.GPhoto2VolumeMonitor'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.FileManager1' requested by ':1.0' (uid=1000 pid=90090 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+** Message: 16:08:01.827: Connecting to org.freedesktop.Tracker3.Miner.Files
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.FileManager1'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.24' (uid=1000 pid=90122 comm="/home/tomas/src/itomek/lemonvox-pr103-ubuntu/.buil" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.portal.Documents' requested by ':1.25' (uid=1000 pid=90467 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.portal.Documents'
 Ignoring invalid max threads value 4294967295 > max (100000).
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.24' (uid=1000 pid=85904 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.FileManager1' requested by ':1.0' (uid=1000 pid=85584 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gnome.Shell.Screencast'
-** Message: 16:02:48.403: Connecting to org.freedesktop.Tracker3.Miner.Files
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.FileManager1'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.24' (uid=1000 pid=85904 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.25' (uid=1000 pid=90467 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gnome.Shell.Screencast'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.25' (uid=1000 pid=90467 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
 
-(/usr/libexec/xdg-desktop-portal:85904): xdg-desktop-portal-WARNING **: 16:02:49.199: Failed connect to PipeWire: Couldn't connect to PipeWire
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.secrets' requested by ':1.24' (uid=1000 pid=85904 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
-** Message: 16:02:49.206: couldn't access control socket: /tmp/lemonvox-settings-acceptance.ZjCsN2/run/keyring/control: No such file or directory
-discover_other_daemon: 0dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.secrets'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.portal.Desktop'
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.gtk.vfs.Metadata' requested by ':1.28' (uid=1000 pid=86018 comm="gjs /usr/share/gnome-shell/extensions/ding@rasters" label="desktop-icons-ng (unconfined)")
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.gtk.vfs.Metadata'
+(/usr/libexec/xdg-desktop-portal:90467): xdg-desktop-portal-WARNING **: 16:08:02.587: Failed connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.secrets' requested by ':1.25' (uid=1000 pid=90467 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+** Message: 16:08:02.594: couldn't access control socket: /tmp/lemonvox-settings-acceptance.tRxC5N/run/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.gtk.vfs.Metadata' requested by ':1.29' (uid=1000 pid=90515 comm="gjs /usr/share/gnome-shell/extensions/ding@rasters" label="desktop-icons-ng (unconfined)")
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.gtk.vfs.Metadata'
 
-** (org.gnome.Nautilus:85942): WARNING **: 16:02:49.276: Unable to get contents of the bookmarks file: Error opening file /home/tomas/.gtk-bookmarks: No such file or directory
-dbus-daemon[85582]: [session uid=1000 pid=85582] Activating service name='org.freedesktop.Tracker3.Miner.Files' requested by ':1.27' (uid=1000 pid=85942 comm="/usr/bin/nautilus --gapplication-service" label="nautilus (unconfined)")
+** (org.gnome.Nautilus:90431): WARNING **: 16:08:02.683: Unable to get contents of the bookmarks file: Error opening file /home/tomas/.gtk-bookmarks: No such file or directory
+dbus-daemon[90088]: [session uid=1000 pid=90088] Activating service name='org.freedesktop.Tracker3.Miner.Files' requested by ':1.23' (uid=1000 pid=90431 comm="/usr/bin/nautilus --gapplication-service" label="nautilus (unconfined)")
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &DOWNLOAD. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &DOWNLOAD. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.335: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.781: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &DOWNLOAD. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &DOWNLOAD. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
 
-(tracker-miner-fs-3:86061): Tracker-WARNING **: 16:02:49.395: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
-dbus-daemon[85582]: [session uid=1000 pid=85582] Successfully activated service 'org.freedesktop.Tracker3.Miner.Files'
+(tracker-miner-fs-3:90563): Tracker-WARNING **: 16:08:02.824: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+dbus-daemon[90088]: [session uid=1000 pid=90088] Successfully activated service 'org.freedesktop.Tracker3.Miner.Files'
 PASS: rapid prompt edits flush on actual focus leave before debounce; recording preserved
 PASS: production Settings UI/store + synthetic capture/HTTP; all categories while recording; close-flush; invalid draft independence; original/next request snapshots; no installs
-gnome-shell-calendar-server[85684]: Lost (or failed to acquire) the name org.gnome.Shell.CalendarServer - exiting
-
-(evolution-calendar-factory:85727): libedbus-private-WARNING **: 16:02:50.361: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)
+gnome-shell-calendar-server[90187]: Lost (or failed to acquire) the name org.gnome.Shell.CalendarServer - exiting
 A connection to the bus can't be made
 
-(tracker-miner-fs-3:86061): GVFS-RemoteVolumeMonitor-WARNING **: 16:02:50.368: Owner of volume monitor org.gtk.vfs.UDisks2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+(tracker-miner-fs-3:90563): GVFS-RemoteVolumeMonitor-WARNING **: 16:08:03.747: Owner of volume monitor org.gtk.vfs.UDisks2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
 
-(tracker-miner-fs-3:86061): GVFS-RemoteVolumeMonitor-WARNING **: 16:02:50.368: Owner of volume monitor org.gtk.vfs.GoaVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+(tracker-miner-fs-3:90563): GVFS-RemoteVolumeMonitor-WARNING **: 16:08:03.747: Owner of volume monitor org.gtk.vfs.GoaVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
 
-(tracker-miner-fs-3:86061): GVFS-RemoteVolumeMonitor-WARNING **: 16:02:50.368: Owner of volume monitor org.gtk.vfs.MTPVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+(tracker-miner-fs-3:90563): GVFS-RemoteVolumeMonitor-WARNING **: 16:08:03.747: Owner of volume monitor org.gtk.vfs.MTPVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
 
-(tracker-miner-fs-3:86061): GVFS-RemoteVolumeMonitor-WARNING **: 16:02:50.368: Owner of volume monitor org.gtk.vfs.AfcVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+(tracker-miner-fs-3:90563): GVFS-RemoteVolumeMonitor-WARNING **: 16:08:03.747: Owner of volume monitor org.gtk.vfs.AfcVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
 
-(tracker-miner-fs-3:86061): GVFS-RemoteVolumeMonitor-WARNING **: 16:02:50.368: Owner of volume monitor org.gtk.vfs.GPhoto2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
-Tracker-Message: 16:02:50.373: Could not get size for 'file:///tmp/lemonvox-settings-acceptance.ZjCsN2/cache/tracker3/files/meta.db', Error when getting information for file “/tmp/lemonvox-settings-acceptance.ZjCsN2/cache/tracker3/files/meta.db”: No such file or directory
+(tracker-miner-fs-3:90563): GVFS-RemoteVolumeMonitor-WARNING **: 16:08:03.747: Owner of volume monitor org.gtk.vfs.GPhoto2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+Tracker-Message: 16:08:03.753: Could not get size for 'file:///tmp/lemonvox-settings-acceptance.tRxC5N/cache/tracker3/files/meta.db', Error when getting information for file “/tmp/lemonvox-settings-acceptance.tRxC5N/cache/tracker3/files/meta.db”: No such file or directory

@@ -2,27 +2,27 @@
 -- Generating done (0.0s)
 -- Build files have been written to: /tmp/pr103-followup-release-build
 [ 16%] Built target lemonvox_core
-[ 26%] Built target lemonvox_model_setup_test
+[ 23%] Built target lemonvox_model_setup_test
 [ 30%] Built target lemonvox_model_setup_client_test
 [ 36%] Built target lemonvox_ubuntu_adapters
-[ 43%] Built target lemonvox_workflow_audio_test
-[ 50%] Built target lemonvox_ubuntu_adapters_test
-[ 56%] Built target lemonvox_workflow_native_test
+[ 43%] Built target lemonvox_ubuntu_adapters_test
+[ 50%] Built target lemonvox_workflow_native_test
+[ 56%] Built target lemonvox_workflow_audio_test
 [ 60%] Building CXX object CMakeFiles/lemonvox_ubuntu_settings.dir/settings.cpp.o
 [ 63%] Building CXX object CMakeFiles/lemonvox_ubuntu_settings.dir/diagnostics.cpp.o
 [ 66%] Linking CXX static library liblemonvox_ubuntu_settings.a
 [ 66%] Built target lemonvox_ubuntu_settings
 [ 70%] Building CXX object CMakeFiles/lemonvox_diagnostics_test.dir/tests/diagnostics_test.cpp.o
-[ 73%] Building CXX object CMakeFiles/lemonvox.dir/main.cpp.o
-[ 80%] Building CXX object CMakeFiles/lemonvox_settings_test.dir/tests/settings_test.cpp.o
+[ 73%] Building CXX object CMakeFiles/lemonvox_settings_test.dir/tests/settings_test.cpp.o
+[ 76%] Building CXX object CMakeFiles/lemonvox.dir/main.cpp.o
+[ 80%] Building CXX object CMakeFiles/lemonvox_settings_ui_test.dir/tests/settings_ui_test.cpp.o
 [ 83%] Building CXX object CMakeFiles/lemonvox_settings_session_test.dir/tests/settings_session_test.cpp.o
-[ 76%] Building CXX object CMakeFiles/lemonvox_settings_ui_test.dir/tests/settings_ui_test.cpp.o
 [ 86%] Linking CXX executable lemonvox_diagnostics_test
 [ 86%] Built target lemonvox_diagnostics_test
-[ 90%] Linking CXX executable lemonvox_settings_ui_test
-[ 90%] Built target lemonvox_settings_ui_test
-[ 93%] Linking CXX executable lemonvox_settings_test
-[ 93%] Built target lemonvox_settings_test
+[ 90%] Linking CXX executable lemonvox_settings_test
+[ 90%] Built target lemonvox_settings_test
+[ 93%] Linking CXX executable lemonvox_settings_ui_test
+[ 93%] Built target lemonvox_settings_ui_test
 [ 96%] Linking CXX executable lemonvox_settings_session_test
 [ 96%] Built target lemonvox_settings_session_test
 [100%] Linking CXX executable lemonvox
@@ -34,15 +34,15 @@ Test project /tmp/pr103-followup-release-build
       Start  2: lemonvox_model_setup_client_test
  2/12 Test  #2: lemonvox_model_setup_client_test ...   Passed    0.00 sec
       Start  3: lemonvox_ubuntu_adapters_test
- 3/12 Test  #3: lemonvox_ubuntu_adapters_test ......   Passed    0.45 sec
+ 3/12 Test  #3: lemonvox_ubuntu_adapters_test ......   Passed    0.44 sec
       Start  4: lemonvox_version_test
  4/12 Test  #4: lemonvox_version_test ..............   Passed    0.01 sec
       Start  5: lemonvox_settings_test
  5/12 Test  #5: lemonvox_settings_test .............   Passed    0.01 sec
       Start  6: lemonvox_diagnostics_test
- 6/12 Test  #6: lemonvox_diagnostics_test ..........   Passed    0.04 sec
+ 6/12 Test  #6: lemonvox_diagnostics_test ..........   Passed    0.05 sec
       Start  7: lemonvox_workflow_native_test
- 7/12 Test  #7: lemonvox_workflow_native_test ......   Passed    1.51 sec
+ 7/12 Test  #7: lemonvox_workflow_native_test ......   Passed    1.53 sec
       Start  8: lemonvox_packaging_test
  8/12 Test  #8: lemonvox_packaging_test ............   Passed    0.03 sec
       Start  9: lemonvox_extension_policy_test
@@ -56,6 +56,6 @@ Test project /tmp/pr103-followup-release-build
 
 100% tests passed, 0 tests failed out of 12
 
-Total Test time (real) =   2.21 sec
-dpkg-deb: building package 'lemonvox' in '/tmp/pr103-followup-package-cb05585/lemonvox_0.7.0_arm64.deb'.
-Built /tmp/pr103-followup-package-cb05585/lemonvox_0.7.0_arm64.deb
+Total Test time (real) =   2.23 sec
+dpkg-deb: building package 'lemonvox' in '/tmp/pr103-followup-package-publish/lemonvox_0.7.0_arm64.deb'.
+Built /tmp/pr103-followup-package-publish/lemonvox_0.7.0_arm64.deb

@@ -1,6 +1,6 @@
 # PR 103 Ubuntu follow-up — 2026-11-14
 
-Started from `fca3bdc0040388510f117fb58529c38da5280619`, including the concurrent Windows fix. Final tested code/package revision: **`cb05585088af6774ff77203f362ef9d3039d9615`**, clean package provenance (`source_dirty: false`). Subsequent report-only commits retain this tested revision. This report supplements the earlier Ubuntu report; it does not convert missing acceptance evidence into a pass.
+Started from `fca3bdc0040388510f117fb58529c38da5280619`, including the concurrent Windows fix. Final tested publishable code/package revision: **`611a1d38a92f68600f1cbeeabd47520794894d03`**, clean package provenance (`source_dirty: false`). Subsequent report-only commits retain this tested revision. This report supplements the earlier Ubuntu report; it does not convert missing acceptance evidence into a pass.
 
 Environment: Ubuntu 24.04.5 LTS, aarch64, GNOME Shell 46.0, Wayland; GTK 4.14.5, libadwaita 1.5.0. Logged-in desktop scaling-factor is automatic (0), text scale 1.0. Native automation uses disposable headless GNOME compositors, private session buses and XDG directories. No extension installation/restart or preference changes on the logged-in desktop. Audio is `audiotestsrc` or a uniquely named null-sink monitor; HTTP responses are loopback fixtures. No real microphone, inference, or model download is required.
 
@@ -47,3 +47,5 @@ Remaining verification outside the exercised scope: spoken Orca output, every co
 The existing GNOME 46 extension has no reliable ordinary focused-client release/intervening-key stream to feed `lv_single_tap_event`. Implementing from bare activation alone would falsely trigger on modifier chords. No unsafe gesture is exposed, and defaults/cancellation remain unchanged. This is a blocker for this adapter/version, not a claim that every future Mutter/native integration is impossible.
 
 Remaining #98 acceptance: persisted modifier/side choices and actual standalone start/finish exactly once; native chord/pre-held/intervening/repeat/hold rejection; modifier-side selection; focus and Settings recording transitions; modifier conflicts/recovery; modifier relaunch persistence. Portable detector passes do not establish native delivery. Keep issue #98 and PR #103 open.
+
+Publication note: shell HTTPS credentials were unavailable. The connected GitHub app recreated the four commits with identical Git trees (verified locally with an empty diff), assigning new commit metadata. The complete final gates and clean package were rerun at the publishable revision above. Earlier local commit IDs in exploratory evidence are provenance, not the final tested revision. No branch was force-pushed.
