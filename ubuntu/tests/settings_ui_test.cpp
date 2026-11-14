@@ -56,6 +56,10 @@ gboolean snapshot(gpointer data) {
     assert(std::string(adw_preferences_window_get_visible_page_name(ADW_PREFERENCES_WINDOW(window))) == test.page);
     assert(has_label(widget, "Single tap modifier unavailable"));
     const int width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
+    const int scale = gtk_widget_get_scale_factor(widget);
+    if (g_getenv("GDK_SCALE")) assert(scale == std::stoi(g_getenv("GDK_SCALE")));
+    std::cout << "CAPTURE page=" << test.page << " theme=" << test.appearance
+              << " logical=" << width << "x" << height << " gdk_scale=" << scale << "\n";
     assert(width >= 600 && height >= 600);
     auto *paintable = gtk_widget_paintable_new(widget);
     auto *drawing = gtk_snapshot_new();

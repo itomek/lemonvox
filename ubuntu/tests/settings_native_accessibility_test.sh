@@ -23,6 +23,7 @@ if [[ "${1:-}" == '--session' ]]; then
             for page in General Models Advanced Diagnostics; do
                 GDK_SCALE="$scale" "$ui_binary" "$output/$theme-${page,,}-scale$scale.png" "$theme" "$page" connected
             done
+            GDK_SCALE="$scale" "$ui_binary" "$output/$theme-errors-scale$scale.png" "$theme" Models disconnected errors
         done
     done
     exit

@@ -1,0 +1,7 @@
+PASS: transitions, stale completion, model eligibility and safe insertion policy
+PASS: normalized single/double taps, sides, chords, repeats, holds, cancellation and session toggles
+PASS: portable adapter contracts own values, identify operations and isolate native behavior
+PASS: protocol configuration, wire mapping, Foundation-parity JSON and safe errors
+PASS: workflow validates models before recording
+PASS: reusable setup consent, progress, cancel acknowledgement and catalog verification
+PASS: portable core library, protocol mapper, workflow and adapter contracts

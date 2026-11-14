@@ -1,0 +1,16 @@
+[ 16%] Built target lemonvox_core
+[ 30%] Built target lemonvox_model_setup_client_test
+[ 30%] Built target lemonvox_model_setup_test
+[ 36%] Built target lemonvox_ubuntu_adapters
+[ 53%] Built target lemonvox_ubuntu_settings
+[ 53%] Built target lemonvox_workflow_native_test
+[ 60%] Built target lemonvox_workflow_audio_test
+[ 66%] Built target lemonvox_ubuntu_adapters_test
+[ 73%] Built target lemonvox
+[ 76%] Linking CXX executable lemonvox_diagnostics_test
+[ 80%] Linking CXX executable lemonvox_settings_test
+[ 86%] Built target lemonvox_settings_ui_test
+[ 90%] Linking CXX executable lemonvox_settings_session_test
+[ 93%] Built target lemonvox_diagnostics_test
+[ 96%] Built target lemonvox_settings_test
+[100%] Built target lemonvox_settings_session_test

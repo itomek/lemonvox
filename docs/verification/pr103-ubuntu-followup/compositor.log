@@ -1,0 +1,11 @@
+libmutter-Message: 15:57:39.606: Running GNOME Shell (using mutter 46.2) as a Wayland display server
+libmutter-Message: 15:57:39.628: Made thread 'KMS thread' realtime scheduled
+libmutter-Message: 15:57:39.676: Added device '/dev/dri/card1' (virtio_gpu) using no mode setting.
+libmutter-Message: 15:57:39.677: Created gbm renderer for '/dev/dri/card1'
+libmutter-Message: 15:57:39.677: Boot VGA GPU /dev/dri/card1 selected as primary
+libmutter-Message: 15:57:39.793: Added virtual monitor Meta-0
+
+(gnome-shell:79007): libmutter-WARNING **: 15:57:39.803: WL: unable to lock lockfile /run/user/1000/wayland-0.lock, maybe another compositor is running
+
+
+(gnome-shell:79007): libmutter-ERROR **: 15:57:39.803: Failed to create_socket
