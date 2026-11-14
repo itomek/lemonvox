@@ -318,6 +318,29 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             configure()
             config = DictationConfig(endpoint:"http://127.0.0.1:13306/v1",asrModel:"next-asr",cleanupModel:"next-cleanup",cleanupPrompt:"next synthetic prompt")
             settings.window.close()
+        } else if CommandLine.arguments.contains("--smoke-settings-recording-appearance") {
+            precondition(Bundle.main.bundleIdentifier?.hasPrefix("com.itomek.lemonvox.test.") == true,
+                "Appearance persistence smoke requires an isolated test bundle identifier")
+            let originalTrigger=triggerChoice, originalCancellation=cancellationChoice
+            let originalBinding=binding.reference
+            let next:AppearanceChoice=appearanceChoice == .light ? .dark : .light
+            sampleMode=true
+            toggle()
+            precondition(sampleSession.state == LV_RECORDING && !capture.isRecording)
+            configure()
+            precondition(settings.appearance.isEnabled && !settings.trigger.record.isEnabled)
+            settings.appearance.selectItem(at:next == .light ? 1 : 2)
+            precondition(NSApp.sendAction(settings.appearance.action!,to:settings,from:settings.appearance))
+            precondition(UserDefaults.standard.string(forKey:"appearanceChoice") == next.rawValue,
+                "Appearance selected during recording was not persisted immediately")
+            precondition(appearanceChoice == next && sampleSession.state == LV_RECORDING,
+                "Appearance autosave disrupted the recording session")
+            precondition(triggerChoice == originalTrigger && cancellationChoice == originalCancellation && binding.reference == originalBinding,
+                "Appearance autosave replaced an active shortcut binding")
+            settings.window.close()
+            precondition(sampleSession.state == LV_RECORDING && UserDefaults.standard.string(forKey:"appearanceChoice") == next.rawValue)
+            print("PASS: appearance action persists during synthetic recording before idle, retains active bindings and survives Settings close")
+            NSApp.terminate(nil)
         } else if CommandLine.arguments.contains("--smoke-settings-recording") {
             sampleMode = true
             toggle()
@@ -687,6 +710,15 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
                                           appearance: AppearanceChoice) throws {
         guard trigger != cancellation, case .combo = cancellation else { throw TriggerError.unavailable }
         if sessionActive {
+            // Appearance can apply independently while shortcut replacement waits
+            // for the active session. Persist first so a failed write leaves the
+            // saved and visible theme unchanged.
+            if appearance != appearanceChoice {
+                try SettingsPersistence.write(["appearanceChoice":appearance.rawValue])
+                appearanceChoice=appearance
+                applyAppearance()
+                settings.window.appearance=appearance.appKitAppearance
+            }
             deferredPreferences = (trigger, cancellation, appearance)
             return
         }
