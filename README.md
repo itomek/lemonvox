@@ -5,6 +5,9 @@ speech recognition (ASR). Press a shortcut to record, then stop to transcribe
 your speech, clean up punctuation and filler words, and insert the text into
 the app you’re using.
 
+If insertion fails, use **Copy Last Transcription** in the LemonVox menu to
+[recover your latest dictated text](docs/last-transcription.md).
+
 ## Inference server required
 
 Install and run [Lemonade](https://lemonade-server.ai/), then [connect it to LemonVox](docs/model-setup.md).

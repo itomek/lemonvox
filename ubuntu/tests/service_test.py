@@ -134,6 +134,7 @@ try:
         else:
             process = subprocess.Popen([str(BINARY), '--service'], env=env)
         wait_for(lambda: prop('State') == 'idle')
+        assert prop('HasLastTranscription') is False
         palette = prop('Palette').split()
         assert len(palette) == 4 and all(len(color) == 9 and color.startswith('#') for color in palette)
         light_palette = prop('Palette')
@@ -152,6 +153,10 @@ try:
         assert seen['wav'] and seen['asr'] == 1 and seen['cleanup'] == 1
         call('ClearResult')
         assert prop('Result') == ''
+        assert prop('HasLastTranscription') is True
+        assert call('CopyLastTranscription').unpack() == ('Send Alex the 14 invoices on Friday.',)
+        assert call('CopyLastTranscription').unpack() == ('Send Alex the 14 invoices on Friday.',)
+        assert prop('HasLastTranscription') is True
         call('Toggle')
         wait_for(lambda: prop('State') == 'recording')
         call('Cancel')
@@ -173,6 +178,7 @@ try:
         call('Stop')
         wait_for(lambda: prop('State') == 'idle')
         assert prop('Result') == '' and 'No speech' in prop('Message') and prop('Error') is True
+        assert prop('HasLastTranscription') is True
         # Errors must leave the service startable.
         mode = 'normal'
         call('Toggle')

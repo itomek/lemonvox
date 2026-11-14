@@ -202,6 +202,7 @@ import Foundation
             completed: { _, outcome in outcomes.append(outcome) }))
         native.bridge = bridge
 
+        precondition(bridge.lastTranscription.isEmpty)
         let operation = bridge.start(validConfig())
         let firstModels = native.transportRequests[0]
         precondition(bridge.completeTransport(operation: operation, requestID: firstModels.1,
@@ -220,20 +221,30 @@ import Foundation
         precondition(bridge.completeTransport(operation: operation, requestID: transcription.1,
             error: LV_WORKFLOW_ADAPTER_NONE, httpStatus: 200,
             body: Data(#"{"text":"Zażółć 🦊"}"#.utf8)))
+        precondition(bridge.lastTranscription == "Zażółć 🦊", "ASR must be recoverable before cleanup")
+        let rawSnapshot = bridge.lastTranscription
         let cleanup = native.transportRequests[3]
         precondition(bridge.completeTransport(operation: operation, requestID: cleanup.1,
             error: LV_WORKFLOW_ADAPTER_NONE, httpStatus: 200,
-            body: Data(#"{"choices":[{"message":{"content":"Zażółć 🦊"},"finish_reason":"stop"}]}"#.utf8)))
+            body: Data(#"{"choices":[{"message":{"content":"Zażółć 🦊."},"finish_reason":"stop"}]}"#.utf8)))
         let inspect = native.inspectRequests[0]
         precondition(bridge.completeInspect(operation: operation, requestID: inspect.1,
             error: LV_WORKFLOW_ADAPTER_NONE, target: target()))
         let insert = native.insertRequests[0]
-        precondition(insert.3 == "Zażółć 🦊")
+        precondition(insert.3 == "Zażółć 🦊.")
+        precondition(rawSnapshot == "Zażółć 🦊", "Swift must own its snapshot across updates")
+        precondition(bridge.lastTranscription == "Zażółć 🦊.")
         precondition(bridge.completeInsert(operation: operation, requestID: insert.1,
             error: LV_WORKFLOW_ADAPTER_UNAVAILABLE))
-        precondition(textEvents == ["Zażółć 🦊"], "text must be copied before the C++ callback returns")
+        precondition(textEvents == ["Zażółć 🦊."], "text must be copied before the C++ callback returns")
         precondition(outcomes.count == 1 && outcomes[0].kind == LV_WORKFLOW_OUTCOME_COPY_FALLBACK)
+        precondition(bridge.lastTranscription == "Zażółć 🦊.")
+        precondition(bridge.lastTranscription == "Zażółć 🦊.", "reading must not consume text")
+        _ = bridge.start(validConfig())
+        bridge.cancel()
+        precondition(bridge.lastTranscription == "Zażółć 🦊.", "new attempts and cancellation preserve text")
         bridge.shutdown()
+        precondition(bridge.lastTranscription.isEmpty)
         precondition(bridge.destroyIfReady())
 
         var failures: [WorkflowBridgeFailure] = []

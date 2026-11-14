@@ -579,6 +579,12 @@ extern "C" int lv_workflow_destroy(LVWorkflow *workflow) {
     return 1;
 }
 
+extern "C" LVProtocolSlice lv_workflow_last_transcription(const LVWorkflow *workflow) {
+    if (!workflow || workflow->shutdown_requested) return {nullptr, 0};
+    const auto &text = workflow->core->last_transcription();
+    return {reinterpret_cast<const uint8_t *>(text.data()), text.size()};
+}
+
 extern "C" int lv_workflow_is_shutdown(const LVWorkflow *workflow) {
     return workflow && workflow->shutdown_requested;
 }

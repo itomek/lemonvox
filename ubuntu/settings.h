@@ -40,7 +40,7 @@ public:
     void present();
     void health(LVServerHealthStatus);
     void notice(const std::string &text) { status(text); }
-    void state(const std::string &, bool recording, bool active, bool has_result);
+    void state(const std::string &, bool recording, bool active, bool has_result, bool has_last_transcription = false);
     void models(std::vector<ProtocolModel>, const std::string &status, bool installation_supported = false, const std::string &catalog_endpoint = {}, bool server_available = true);
     void setup_status(const std::string &, bool active, const std::string &installed = {}, bool asr = false);
 private:
