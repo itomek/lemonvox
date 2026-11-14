@@ -1,2 +1,2 @@
-6509f79b08fb3f6435ca4dfb4146009e855e1ea6be46a85023b9670dbcccdb56  /home/tomas/src/itomek/lemonvox-pr103-ubuntu/.build/ubuntu/lemonvox
-6509f79b08fb3f6435ca4dfb4146009e855e1ea6be46a85023b9670dbcccdb56  /tmp/lemonvox-settings-accessibility.jGtrP5/lemonvox
+761b734232b1189adafd23955b9f29914be7623b6f726be987b2344704e53287  /tmp/pr103-followup-package-final-root/usr/bin/lemonvox
+761b734232b1189adafd23955b9f29914be7623b6f726be987b2344704e53287  /tmp/lemonvox-settings-accessibility.a5kj37/lemonvox

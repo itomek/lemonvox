@@ -32,7 +32,9 @@ The accessibility defect was reproduced against the initial extracted package: t
 
 ## Captures and scope
 
-Twenty real GTK captures (including four invalid-endpoint states) cover light/dark × General/Models/Advanced/Diagnostics × subprocess GDK_SCALE=1/2. The private monitor reports supported scales `[1.0, 2.0]` in retained `display-config.txt`; each driver run asserts its actual GTK widget scale equals GDK_SCALE and logs page/theme/logical size/actual scale. Filenames encode the requested scale; these are logical 680×680 GTK render textures, not compositor screenshots at doubled pixel resolution. The Advanced and Models captures show the final layout. Advanced's closed combo can ellipsize its value at this width; native selection exposes the full option labels via the popup and accessibility tree.
+Twenty real GTK captures (including four invalid-endpoint states) cover light/dark × General/Models/Advanced/Diagnostics × actual private compositor scales 1/2. The launcher applies each scale temporarily through Mutter DisplayConfig and verifies the resulting monitor state before launching each capture group. The private monitor reports supported scales `[1.0, 2.0]` in retained `display-config.txt`; each driver run asserts its actual GTK widget scale equals GDK_SCALE and logs page/theme/logical size/actual scale. Filenames encode the requested scale; these are logical 680×680 GTK render textures, not compositor screenshots at doubled pixel resolution. The original GDK_SCALE-only attempt failed the new actual-widget-scale assertion at the first requested scale2: Wayland retained widget scale1. Those earlier filenames alone were not 200% evidence. The corrected run uses temporary `ApplyMonitorsConfig` method1 on the disposable Meta virtual monitor, then asserts GTK's actual scale for every capture. It passed all20 captures and both actual monitor scale states.
+
+The Advanced and Models captures show the final layout. Advanced's closed combo can ellipsize its value at this width; native selection exposes the full option labels via the popup and accessibility tree.
 
 This establishes native keyboard operation of the two exercised combo controls and AT-SPI names/error association. It does **not** establish spoken Orca output, every control's complete keyboard route, fractional compositor scaling, arbitrary resolutions, real-server quality or physical microphone behavior. Those boundaries must remain explicit.
 
@@ -41,3 +43,16 @@ This establishes native keyboard operation of the two exercised combo controls a
 An early exploratory fresh-profile probe reached the already running default endpoint for inventory GETs before the synthetic fixture was enforced. It performed no audio/inference/download action. Final acceptance uses only the synthetic endpoint and the fresh-case redirect.
 
 An early launcher revision omitted XDG_STATE_HOME; the final launcher isolates it. Read-only `stat` of the host `/home/tomas/.local/state/lemonvox/events.log` showed size 207 and modification/change time 2026-11-12 21:38:05, predating this Nov14 session, so the probe did not write that host diagnostic log. No host files were deleted or restored.
+
+## Final packaged native run
+
+```sh
+bash ubuntu/tests/settings_native_accessibility_test.sh \
+  /tmp/pr103-followup-package-final-root/usr/bin/lemonvox \
+  .build/ubuntu/lemonvox_settings_ui_test \
+  /tmp/pr103-followup-scale-fixed
+```
+
+Exit0. Actual app reports version0.7.0/build750b578. Packaged executable and copied test executable SHA-256 both `761b734232b1189adafd23955b9f29914be7623b6f726be987b2344704e53287`. All native AT-SPI cases listed above passed;20 capture assertions passed. Log `/tmp/pr103-followup-scale-fixed.log`; output retains binary hashes, initial DisplayConfig and separate actual scale1/2 DisplayConfig snapshots. Final evidence is copied into this directory by the parent verification session.
+
+For #97 Ubuntu, fresh/legacy/custom UI persistence and backend behavior pass this actual application process acceptance. Synthetic off and server-default payloads pass the native session integration, and generic omission is covered by the portable protocol suite (see the parent README). This does not close the cross-platform issue or claim full spoken screen-reader acceptance.

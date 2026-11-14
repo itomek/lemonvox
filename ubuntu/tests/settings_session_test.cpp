@@ -132,6 +132,20 @@ int main(int argc, char **argv) {
     auto *widget = GTK_WIDGET(gtk_application_get_windows(app)->data);
     auto edit = [&](const char *title, const std::string &text) { auto *w = row(widget, title); assert(w); gtk_editable_set_text(GTK_EDITABLE(w), text.c_str()); };
     auto select = [&](const char *title, guint index) { auto *w = row(widget, title); assert(w); adw_combo_row_set_selected(ADW_COMBO_ROW(w), index); };
+    auto *prompt = GTK_TEXT_VIEW(type(widget, GTK_TYPE_TEXT_VIEW)); assert(prompt);
+    adw_preferences_window_set_visible_page_name(ADW_PREFERENCES_WINDOW(widget), "Models");
+    spin([&] { return gtk_widget_get_mapped(GTK_WIDGET(prompt)); });
+    assert(gtk_widget_grab_focus(GTK_WIDGET(prompt)));
+    assert(gtk_window_get_focus(GTK_WINDOW(widget)) == GTK_WIDGET(prompt));
+    for (int i = 0; i < 20; ++i)
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(prompt), ("Blur prompt " + std::to_string(i)).c_str(), -1);
+    assert(saved.cleanup_prompt == "Original prompt 14."); // Debounce has not fired.
+    assert(gtk_widget_grab_focus(row(widget, "API endpoint")));
+    // Focus-controller leave must flush synchronously, before the 350ms timer.
+    assert(gtk_window_get_focus(GTK_WINDOW(widget)) != GTK_WIDGET(prompt));
+    assert(saved.cleanup_prompt == "Blur prompt 19" && store.load().cleanup_prompt == "Blur prompt 19");
+    assert(s.core->phase() == WorkflowPhase::recording);
+    std::cout << "PASS: rapid prompt edits flush on actual focus leave before debounce; recording preserved\n";
     // Every Settings category is changed while the production core records.
     edit("API endpoint", "invalid draft");
     select("Theme", 2); assert(saved.appearance == "dark" && saved.endpoint == endpoint);
@@ -141,7 +155,6 @@ int main(int argc, char **argv) {
     auto *debug = type(row(widget, "Debug traces"), GTK_TYPE_SWITCH); assert(debug);
     gtk_switch_set_active(GTK_SWITCH(debug), TRUE);
     edit("Dictation shortcut", "<Control><Alt>F9"); edit("Cancellation shortcut", "<Control><Super>F10");
-    auto *prompt = GTK_TEXT_VIEW(type(widget, GTK_TYPE_TEXT_VIEW)); assert(prompt);
     for (int i = 0; i < 20; ++i) gtk_text_buffer_set_text(gtk_text_view_get_buffer(prompt), ("Next prompt " + std::to_string(i)).c_str(), -1);
     // Actual close flushes pending prompt and shortcut edits before debounce.
     gtk_window_close(GTK_WINDOW(widget));

@@ -1,0 +1,6 @@
+[ 41%] Built target lemonvox_core
+[ 58%] Built target lemonvox_ubuntu_adapters
+[ 83%] Built target lemonvox_ubuntu_settings
+[ 91%] Building CXX object CMakeFiles/lemonvox_settings_session_test.dir/tests/settings_session_test.cpp.o
+[100%] Linking CXX executable lemonvox_settings_session_test
+[100%] Built target lemonvox_settings_session_test

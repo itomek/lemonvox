@@ -23,3 +23,15 @@ The first ASR/cleanup request pair reaches the original server and retains the o
 The persistence regression now also removes write permission from its owned temporary directory (0500), causing the actual GLib durable atomic replacement to fail. It confirms the previous INI remains readable with its original prompt and shortcut, and that the acknowledged binding is rolled back. Restoring directory permission (0700) permits retry; reloaded storage and the accepted binding both contain the new pair. Existing fault-injected bind timeout/write-failure tests remain in place. This permission-denial test runs as the ordinary desktop user.
 
 Limits: this integration executable is a native component acceptance harness, not the packaged application process. It does not itself establish package relaunch, AT-SPI keyboard/screen-reader behavior, real inference/microphone behavior, or actual GNOME shortcut delivery. Other follow-up reports cover those checks where available. No parity or issue-completion claim is made. Early harness iterations exposed missing next-model fixture inventory and an overly permissive test binding callback; these test-fixture defects were corrected before the final recorded run.
+
+
+## Immediate focus-leave follow-up
+
+After UI package candidate `750b578`, a test-only addition verifies rapid typing followed immediately by blur. On the mapped Models page, the harness focuses the actual prompt text view (`gtk_window_get_focus` asserts the focus target), applies twenty prompt edits, and verifies the previous saved prompt is still present. It then moves GTK focus to the endpoint row and immediately asserts both the active saved value and a fresh SettingsStore load contain the last prompt. No main-context iteration occurs between typing and the assertion, so the 350 ms debounce cannot be responsible. The core remains recording throughout. The later close-flush and original/next request snapshot checks still pass.
+
+```sh
+cmake --build /tmp/lemonvox-pr103-followup-build --target lemonvox_settings_session_test --parallel 2
+bash ubuntu/tests/settings_session_test.sh /tmp/lemonvox-pr103-followup-build/lemonvox_settings_session_test
+```
+
+Exit 0; both focus-leave and full session PASS lines appear in `logs/settings-session-blur.log`. Build output: `logs/settings-session-blur-build.log`. Initial use of `gtk_widget_has_focus` incorrectly required compositor activation; the final check correctly uses the native window's GTK focus target. No production code or runner changed for this follow-up.

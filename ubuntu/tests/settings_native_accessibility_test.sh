@@ -19,6 +19,7 @@ if [[ "${1:-}" == '--session' ]]; then
     cc -shared -fPIC -Wall -Wextra -Werror "$repo_root/ubuntu/tests/settings_connect_redirect.c" -ldl -o "$XDG_CACHE_HOME/connect-redirect.so"
     LEMONVOX_TEST_CONNECT_SHIM="$XDG_CACHE_HOME/connect-redirect.so" python3 "$repo_root/ubuntu/tests/settings_atspi_test.py" "$binary"
     for scale in 1 2; do
+        python3 "$repo_root/ubuntu/tests/settings_display_scale.py" "$scale" | tee "$output/display-scale$scale.txt"
         for theme in light dark; do
             for page in General Models Advanced Diagnostics; do
                 GDK_SCALE="$scale" "$ui_binary" "$output/$theme-${page,,}-scale$scale.png" "$theme" "$page" connected

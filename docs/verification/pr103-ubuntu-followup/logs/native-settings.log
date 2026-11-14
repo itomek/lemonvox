@@ -1,0 +1,117 @@
+Private session: /tmp/lemonvox-settings-accessibility.a5kj37
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[82812]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82812]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.systemd1' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.Shell.Screencast' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.7' (uid=1000 pid=82835 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.Shell.Notifications' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'ca.desrt.dconf'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.OnlineAccounts' requested by ':1.9' (uid=1000 pid=82851 comm="/usr/libexec/evolution-source-registry" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
+goa-daemon-Message: 16:00:31.867: goa-daemon version 3.50.4 starting
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.7' (uid=1000 pid=82835 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.Identity' requested by ':1.10' (uid=1000 pid=82877 comm="/usr/libexec/goa-daemon" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.Shell.CalendarServer'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.Identity'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.Shell.Notifications'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gnome.evolution.dataserver.AddressBook10' requested by ':1.14' (uid=1000 pid=82897 comm="/usr/libexec/evolution-calendar-factory" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.evolution.dataserver.AddressBook10'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gtk.vfs.AfcVolumeMonitor' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gtk.vfs.AfcVolumeMonitor'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.gtk.vfs.GPhoto2VolumeMonitor' requested by ':1.0' (uid=1000 pid=82785 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gtk.vfs.GPhoto2VolumeMonitor'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.25' (uid=1000 pid=82965 comm="/tmp/lemonvox-settings-accessibility.a5kj37/lemonv" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.portal.Documents' requested by ':1.26' (uid=1000 pid=83034 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.freedesktop.portal.Documents'
+Ignoring invalid max threads value 4294967295 > max (100000).
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.26' (uid=1000 pid=83034 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.gnome.Shell.Screencast'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.26' (uid=1000 pid=83034 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:83034): xdg-desktop-portal-WARNING **: 16:00:32.558: Failed connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[82781]: [session uid=1000 pid=82781] Activating service name='org.freedesktop.secrets' requested by ':1.26' (uid=1000 pid=83034 comm="/usr/libexec/xdg-desktop-portal" label="chatgpt (unconfined)")
+** Message: 16:00:32.565: couldn't access control socket: /tmp/lemonvox-settings-accessibility.a5kj37/run/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[82781]: [session uid=1000 pid=82781] Successfully activated service 'org.freedesktop.portal.Desktop'
+
+(process:82918): dbind-WARNING **: 16:00:33.207: AT-SPI: Error in GetItems, sender=:1.4, error=Object does not exist at path “/org/a11y/atspi/cache”
+PASS: named editable endpoint and Cleanup prompt exposed through AT-SPI
+PASS: inline endpoint error exposed through AT-SPI: API endpoint: Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment.
+Endpoint AT-SPI relations: [('labelled-by', 1), ('described-by', 1)]
+PASS: native keyboard Tab reached API and thinking behavior
+PASS: Advanced server-default selection autosaves via AT-SPI
+PASS: native keyboard Tab reached Theme
+PASS: named Diagnostics Debug traces autosaves through AT-SPI
+PASS: General theme autosaves via AT-SPI
+PASS: actual app close/reopen preserves endpoint and multiline prompt
+PASS: full process relaunch preserves endpoint/models/custom prompt/theme/Advanced
+PASS: native keyboard Tab reached API and thinking behavior
+PASS: exact fresh missing-file default thinking off and explicit override survive process relaunch
+PASS: legacy marker-free file remains generic with exact model/prompt values across process relaunch
+PASS: only synthetic inventory/health GETs; no inference or model downloads: ['/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models?show_all=true', '/v1/models', '/v1/health']
+PASS: disposable compositor actual logical monitor scale 1.0 (2, [(('Meta-0', 'MetaVendor', 'MetaVirtualMonitor', '0x00'), [('1920x1600@60.000', 1920, 1600, 60.0, 1.0, [1.0, 2.0], {'is-current': True, 'is-preferred': True})], {'is-builtin': False, 'display-name': 'MetaVendor'})], [(0, 0, 1.0, 0, True, [('Meta-0', 'MetaVendor', 'MetaVirtualMonitor', '0x00')], {})], {'renderer': 'native', 'layout-mode': 2, 'legacy-ui-scaling-factor': 1})
+CAPTURE page=General theme=light logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=light logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Advanced theme=light logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Diagnostics theme=light logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=light logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=General theme=dark logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=dark logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Advanced theme=dark logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Diagnostics theme=dark logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=dark logical=680x680 gdk_scale=1
+PASS: native Settings window rendered at supported default size
+PASS: disposable compositor actual logical monitor scale 2.0 (2, [(('Meta-0', 'MetaVendor', 'MetaVirtualMonitor', '0x00'), [('1920x1600@60.000', 1920, 1600, 60.0, 1.0, [1.0, 2.0], {'is-current': True, 'is-preferred': True})], {'is-builtin': False, 'display-name': 'MetaVendor'})], [(0, 0, 2.0, 0, True, [('Meta-0', 'MetaVendor', 'MetaVirtualMonitor', '0x00')], {})], {'renderer': 'native', 'layout-mode': 2, 'legacy-ui-scaling-factor': 2})
+CAPTURE page=General theme=light logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=light logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Advanced theme=light logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Diagnostics theme=light logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=light logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=General theme=dark logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=dark logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Advanced theme=dark logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Diagnostics theme=dark logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+CAPTURE page=Models theme=dark logical=680x680 gdk_scale=2
+PASS: native Settings window rendered at supported default size
+gnome-shell-calendar-server[82835]: Lost (or failed to acquire) the name org.gnome.Shell.CalendarServer - exiting
+A connection to the bus can't be made
+
+(evolution-calendar-factory:82897): libedbus-private-WARNING **: 16:01:34.949: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)

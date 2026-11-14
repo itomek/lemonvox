@@ -1,0 +1,7 @@
+version: 0.7.0
+architecture: arm64
+source_revision: 750b5780e5d72569cfce05238a7122779fa0f3dc
+source_dirty: false
+source_date_epoch: 1794689870
+scope: Ubuntu 24.04+ GNOME Wayland only; X11 is unsupported.
+lemonade: install and run Lemonade separately.

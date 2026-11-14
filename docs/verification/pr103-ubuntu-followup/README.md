@@ -30,6 +30,18 @@ bash scripts/build-ubuntu.sh --output /tmp/NEW-package --version 0.7.0 --build-d
 
 The `.deb` is extracted with `dpkg-deb -x`, never installed over the user's app. Package UI tests and component tests have separate evidence boundaries; the latter uses a fixture binding callback and is not evidence of actual compositor registration.
 
+## Results and acceptance boundaries
+
+- **#96 PASS for the exercised Ubuntu synthetic acceptance:** packaged close/reopen and full-process persistence; every category during native synthetic recording; rapid typing followed by immediate real GTK focus leave and close; independent valid edits beside invalid drafts; actual filesystem persistence failure and retry; compositor conflict/acknowledgement/older-interface/recovery checks; AT-SPI names, invalid state and navigable error association; native keyboard operation; both monitor-supported scales (100% and 200%). Storage rollback uses the production coordinator with a binding fixture; the extension's real compositor rollback/delivery is tested separately. These are explicit test boundaries, not a claim of one combined end-to-end storage-failure/compositor run.
+- **#97 PASS for Ubuntu:** fresh missing-file, legacy and custom packaged-process relaunch; exact model/prompt preservation; synthetic thinking-off/server-default/generic payload regressions; final Advanced and Models captures.
+- **#98 BLOCKED:** the input-delivery limitation and all remaining modifier acceptance gaps are listed below. No production modifier capability is exposed.
+
+Final CTest: **12/12, zero failures**. Portable core: all seven executables passed. Native GNOME extension regression passed. Native Settings/session regression passed, including immediate blur and close flush. Packaged service regression passed. Packaged AT-SPI acceptance and **20/20** native GTK captures passed. Retained logs contain commands/results; `native-settings.log` records actual compositor and GTK widget scales.
+
+The first scale assertion correctly rejected the environment-only `GDK_SCALE=2` setup: Wayland still supplied scale 1. The final launcher temporarily changes only its sole private MetaVirtualMonitor through Mutter DisplayConfig and asserts both compositor and actual widget scale. Earlier scale-labelled captures were replaced with the verified captures.
+
+Remaining verification outside the exercised scope: spoken Orca output, every control's complete keyboard route, fractional compositor scaling (not advertised by this private monitor), other monitor resolutions, and a single integrated packaged-app filesystem-failure plus real-compositor rollback run. The applicable components are covered separately; these broader checks are not claimed. No live microphone/inference or model download was requested or performed. Other operating systems retain their own acceptance requirements; these Ubuntu verdicts do not close the cross-platform issues.
+
 ## Standalone modifiers: BLOCKED (#98)
 
 The existing GNOME 46 extension has no reliable ordinary focused-client release/intervening-key stream to feed `lv_single_tap_event`. Implementing from bare activation alone would falsely trigger on modifier chords. No unsafe gesture is exposed, and defaults/cancellation remain unchanged. This is a blocker for this adapter/version, not a claim that every future Mutter/native integration is impossible.
