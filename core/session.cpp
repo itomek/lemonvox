@@ -12,6 +12,10 @@ static_assert(offsetof(LVNormalizedKeyEvent, timestamp) == 16 && sizeof(LVNormal
 static_assert(offsetof(LVDoubleTapDetector, pressed) == 16 && offsetof(LVDoubleTapDetector, first) == 40 &&
     sizeof(LVDoubleTapDetector) == 64, "trigger state layout must remain stable for native adapters");
 
+static_assert(std::is_standard_layout<LVSingleTapDetector>::value, "single-tap state must remain C-layout");
+static_assert(offsetof(LVSingleTapDetector, pressed) == 16 && sizeof(LVSingleTapDetector) == 40,
+    "single-tap state layout must remain stable for native adapters");
+
 uint32_t lv_abi_version(void) { return LV_ABI_VERSION; }
 void lv_init(LVSession *s) { s->state = LV_IDLE; s->generation = 0; }
 uint64_t lv_toggle(LVSession *s) {
@@ -101,4 +105,42 @@ int lv_double_tap_event(LVDoubleTapDetector *detector, LVNormalizedKeyEvent even
     detector->first = event;
     detector->has_first = 1;
     return 0;
+}
+
+void lv_single_tap_init(LVSingleTapDetector *detector, LVKeyIdentity target_key, LVKeySide target_side) {
+    detector->target_key = target_key;
+    detector->target_side = target_side;
+    lv_single_tap_cancel(detector);
+}
+
+void lv_single_tap_cancel(LVSingleTapDetector *detector) {
+    detector->has_pressed = 0;
+    detector->blocked = 0;
+    detector->pressed = {};
+}
+
+int lv_single_tap_event(LVSingleTapDetector *detector, LVNormalizedKeyEvent event) {
+    const bool matches = event.key == detector->target_key &&
+        (detector->target_side == LV_KEY_SIDE_ANY || event.side == detector->target_side);
+    if (event.action == LV_KEY_INTERVENING || !matches) {
+        if (detector->has_pressed) detector->blocked = 1;
+        return 0;
+    }
+    if (event.action == LV_KEY_PRESS) {
+        if (detector->has_pressed) {
+            detector->blocked = 1;
+            return 0;
+        }
+        detector->has_pressed = 1;
+        detector->blocked = 0;
+        detector->pressed = event;
+        return 0;
+    }
+    if (event.action != LV_KEY_RELEASE) return 0;
+    const double duration = event.timestamp - detector->pressed.timestamp;
+    const bool fire = detector->has_pressed && !detector->blocked &&
+        detector->pressed.key == event.key && detector->pressed.side == event.side &&
+        duration >= 0 && duration <= 0.25;
+    lv_single_tap_cancel(detector);
+    return fire;
 }
