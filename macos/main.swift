@@ -456,13 +456,15 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             let result=binding.replace(key:key,modifiers:modifiers)
             guard result == noErr else { panel.show("Shortcut unavailable (\(result)); previous retained"); return false }
             modifierTrigger?.stop(); modifierTrigger=nil
-        case .doubleTap(let key):
+        case .doubleTap(let key), .singleTap(let key):
             guard accessibilityFacts().trusted else {
                 pendingPermissionTrigger=choice
                 refreshAccessibilityStatus()
                 return false
             }
-            let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
+            let isSingleTap:Bool
+            if case .singleTap = choice { isSingleTap=true } else { isSingleTap=false }
+            let candidate=ModifierTrigger(key:key,singleTap:isSingleTap,allowed:{ [weak self] in
                 guard let self else { return false }; return (!self.configuring || self.isRecordingSession) && !self.inserting
             },fire:{ [weak self] in self?.toggle() },
               canCancel:{ [weak self] in
@@ -497,7 +499,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         refreshAccessibilityStatus()
         guard !workflowBusy && sampleSession.state == LV_IDLE && !inserting,
               accessibilityFacts().trusted else { return }
-        // Check Again never saves a failed draft; Save still owns draft changes.
+        // Check Again never saves a failed draft; autosave owns draft changes.
         if configuring { return }
         if binding.reference == nil && modifierTrigger == nil { _ = installTrigger(triggerChoice) }
     }
@@ -552,7 +554,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             return (self?.updater.automaticChecks ?? true,self?.updater.automaticInstallation ?? false)
         }
         settings.saveUpdatePreferences={ [weak self] checks,install in
-            self?.updater.automaticChecks=checks;self?.updater.automaticInstallation=install
+            guard let self else { return }
+            let previous=(self.updater.automaticChecks,self.updater.automaticInstallation)
+            self.updater.automaticChecks=checks;self.updater.automaticInstallation=install
+            if !UserDefaults.standard.synchronize() {
+                self.updater.automaticChecks=previous.0;self.updater.automaticInstallation=previous.1
+                _=UserDefaults.standard.synchronize()
+                throw SettingsPersistence.Failure()
+            }
         }
         if configuring { settings.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
         modifierTrigger?.reset(); configuring=true
@@ -567,7 +576,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         settings.show(config:config, save: { [weak self] updated in
             guard let self else { return }
-            UserDefaults.standard.set(try JSONEncoder().encode(updated), forKey:"dictationConfig")
+            try SettingsPersistence.write(["dictationConfig":try JSONEncoder().encode(updated)])
             self.config=updated
             self.serverHealth.setEndpoint(updated.endpoint)
         }, close: { [weak self] in
@@ -666,10 +675,8 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let encoder = JSONEncoder()
         let trigger = try encoder.encode(triggerChoice)
         let cancellation = try encoder.encode(cancellationChoice)
-        UserDefaults.standard.set(trigger, forKey: "triggerChoice")
-        UserDefaults.standard.set(cancellation, forKey: "cancellationChoice")
-        UserDefaults.standard.set(appearanceChoice.rawValue, forKey: "appearanceChoice")
-        UserDefaults.standard.removeObject(forKey: "currentField")
+        try SettingsPersistence.write(["triggerChoice":trigger,"cancellationChoice":cancellation,
+                                       "appearanceChoice":appearanceChoice.rawValue],removing:["currentField"])
     }
 
     private func commitGeneralPreferences(trigger: TriggerChoice, cancellation: TriggerChoice,
@@ -682,6 +689,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         guard validateCancellationCandidate(cancellation) else { throw TriggerError.unavailable }
         let triggerInstalled = binding.reference != nil || modifierTrigger != nil
         let previousPending = pendingPermissionTrigger
+        let previous=(triggerChoice,cancellationChoice,appearanceChoice)
         if trigger != triggerChoice || !triggerInstalled {
             guard installTrigger(trigger) else {
                 pendingPermissionTrigger = previousPending
@@ -690,7 +698,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         cancellationChoice = cancellation
         appearanceChoice = appearance
-        try persistGeneralPreferences()
+        do { try persistGeneralPreferences() }
+        catch {
+            if triggerChoice != previous.0 { _ = installTrigger(previous.0) }
+            triggerChoice=previous.0; cancellationChoice=previous.1; appearanceChoice=previous.2
+            throw error
+        }
         applyAppearance()
         settings.window.appearance = appearanceChoice.appKitAppearance
     }

@@ -27,13 +27,33 @@ private enum SettingsPreferenceError: LocalizedError {
     }
 }
 
+enum SettingsPersistence {
+    struct Failure: LocalizedError {
+        var errorDescription: String? { "Settings could not be written. Check storage space and preferences-folder permissions, then retry; previous settings were retained." }
+    }
+    static func write(_ values:[String:Any], removing:[String] = [], defaults:UserDefaults = .standard,
+                      flush: (() -> Bool)? = nil) throws {
+        let keys=Array(values.keys)+removing
+        let previous=keys.map { ($0,defaults.object(forKey:$0)) }
+        for (key,value) in values { defaults.set(value,forKey:key) }
+        for key in removing { defaults.removeObject(forKey:key) }
+        guard (flush?() ?? defaults.synchronize()) else {
+            for (key,value) in previous {
+                if let value { defaults.set(value,forKey:key) } else { defaults.removeObject(forKey:key) }
+            }
+            _=defaults.synchronize()
+            throw Failure()
+        }
+    }
+}
+
 enum RunningAppVersion {
     static func display(info: [String: Any]) -> String {
         AppIdentity(info: info, path: "").version
     }
 }
 
-@MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+@MainActor final class SettingsController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTextViewDelegate, NSTableViewDataSource, NSTableViewDelegate {
     let window: NSWindow
     let appVersion = NSTextField(labelWithString: RunningAppVersion.display(info: Bundle.main.infoDictionary ?? [:]))
     let serverIndicator = NSImageView()
@@ -42,7 +62,7 @@ enum RunningAppVersion {
     let scroll = NSScrollView()
     let categoryList = NSTableView()
     var scrolls: [NSScrollView] = []
-    private let categories = ["General", "Models & Providers", "Diagnostics"]
+    private let categories = ["General", "Models & Providers", "Diagnostics", "Advanced"]
     let trigger = TriggerControl(frame:.zero)
     let cancellationTrigger = TriggerControl(frame:.zero, allowsDoubleTap:false, initialChoice:.defaultMacCancellation)
     let appearance = NSPopUpButton()
@@ -50,7 +70,7 @@ enum RunningAppVersion {
     let automaticChecks=NSButton(checkboxWithTitle:"Check for updates automatically",target:nil,action:nil)
     let automaticInstallation=NSButton(checkboxWithTitle:"Download and install updates automatically",target:nil,action:nil)
     var updatePreferences:(() -> (Bool,Bool))?
-    var saveUpdatePreferences:((Bool,Bool) -> Void)?
+    var saveUpdatePreferences:((Bool,Bool) throws -> Void)?
     private var saveGeneralPreferences: ((TriggerChoice,TriggerChoice,AppearanceChoice) throws -> Void)?
     let endpoint = NSTextField()
     let transcription = ModelPicker()
@@ -59,8 +79,9 @@ enum RunningAppVersion {
     let cleanupBackend = NSPopUpButton()
     let cleanupThinking = NSButton(checkboxWithTitle:"Use server thinking default (Lemonade only)", target:nil, action:nil)
     private var cleanupContextTokens: UInt32 = 0
+    let advancedStatus = NSTextField(wrappingLabelWithString: "")
     let status = NSTextField(wrappingLabelWithString: "")
-    let version = NSTextField(labelWithString: "Tested with Lemonade 2026.44.1")
+    let version = NSTextField(labelWithString: "Server version not checked")
     let setupTranscription = NSButton(title: "Set up transcription…", target: nil, action: nil)
     let setupCleanup = NSButton(title: "Set up cleanup…", target: nil, action: nil)
     let cancelSetup = NSButton(title: "Cancel download", target: nil, action: nil)
@@ -74,7 +95,6 @@ enum RunningAppVersion {
     private(set) var installing = false
     private var setupGeneration = 0
     let retry = NSButton(title: "Refresh", target: nil, action: nil)
-    let save = NSButton(title: "Save", target: nil, action: nil)
     let accessibilityOpen=NSButton(title:"Accessibility…",target:nil,action:nil)
     let accessibilityRetry=NSButton(title:"Check Again",target:nil,action:nil)
     let accessibilityStatus=NSTextField(wrappingLabelWithString:"")
@@ -83,8 +103,8 @@ enum RunningAppVersion {
     let logPath = NSTextField(wrappingLabelWithString: "")
     let debugDiagnostics = NSButton(checkboxWithTitle:"Enable Debug diagnostic traces",target:nil,action:nil)
     let debugDiagnosticsDetail = NSTextField(wrappingLabelWithString:"Debug adds fixed trace events and numeric cleanup timing/token counts. It never stores dictated text, audio, credentials, private fields, clipboard content, or full provider responses.")
-    var saveDiagnosticPreferences: (Bool) -> Void = { enabled in
-        UserDefaults.standard.set(enabled, forKey: DiagnosticLog.debugEnabledPreferenceKey)
+    var saveDiagnosticPreferences: (Bool) throws -> Void = { enabled in
+        try SettingsPersistence.write([DiagnosticLog.debugEnabledPreferenceKey:enabled])
     }
     private let log: DiagnosticLog
     private let discover: (String) async throws -> DiscoveredModels
@@ -95,6 +115,11 @@ enum RunningAppVersion {
     private var previousMenu: NSMenu?
     private var saveConfig: ((DictationConfig) throws -> Void)?
     private var didClose: (() -> Void)?
+    private var lastGeneral: (TriggerChoice, TriggerChoice, AppearanceChoice)?
+    private var lastConfig: DictationConfig?
+    private var populating = false
+    private var autosaveTask: Task<Void, Never>?
+    private var configurationError: String?
     var loading = false
 
     init(log: DiagnosticLog = .shared, discover: @escaping (String) async throws -> DiscoveredModels,
@@ -106,10 +131,10 @@ enum RunningAppVersion {
         super.init()
         window.title = "\(AppIdentity.running.name) Settings"; window.isReleasedWhenClosed = false; window.delegate = self
         window.minSize=NSSize(width:820,height:480)
-        trigger.onChange = { [weak self] in self?.shortcutStatus.stringValue="" }
-        cancellationTrigger.onChange = { [weak self] in self?.shortcutStatus.stringValue="" }
-        transcription.onChange = { [weak self] in self?.updateSetupStatus() }
-        cleanup.onChange = { [weak self] in self?.updateSetupStatus() }
+        trigger.onChange = { [weak self] in self?.saveGeneral() }
+        cancellationTrigger.onChange = { [weak self] in self?.saveGeneral() }
+        transcription.onChange = { [weak self] in self?.updateSetupStatus(); self?.saveConfiguration() }
+        cleanup.onChange = { [weak self] in self?.updateSetupStatus(); self?.saveConfiguration() }
         guard let root = window.contentView else { return }
         scroll.frame=NSRect(x:180,y:52,width:640,height:638); scroll.autoresizingMask=[.width,.height]
         scroll.hasVerticalScroller=true; scroll.drawsBackground=false
@@ -133,7 +158,7 @@ enum RunningAppVersion {
         label("Cleanup prompt", 334)
         let promptScroll = NSScrollView(frame:NSRect(x:24,y:228,width:592,height:100)); promptScroll.hasVerticalScroller=true; promptScroll.borderType = .bezelBorder
         prompt.frame = promptScroll.bounds; prompt.isRichText=false; prompt.font = .systemFont(ofSize:12); prompt.isVerticallyResizable=true; prompt.autoresizingMask=[.width]
-        prompt.textContainer?.widthTracksTextView=true; promptScroll.documentView=prompt; view.addSubview(promptScroll)
+        prompt.delegate=self; prompt.textContainer?.widthTracksTextView=true; promptScroll.documentView=prompt; view.addSubview(promptScroll)
         label("Diagnostics", 198)
         debugDiagnostics.frame=NSRect(x:24,y:170,width:592,height:24)
         debugDiagnostics.setAccessibilityLabel("Enable Debug diagnostic traces")
@@ -174,6 +199,7 @@ enum RunningAppVersion {
         let generalView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
         let modelsView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
         let diagnosticsView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
+        let advancedView = NSView(frame:NSRect(x:0,y:0,width:640,height:638))
         for control in view.subviews {
             let y = control.frame.minY
             let destination: NSView
@@ -189,8 +215,8 @@ enum RunningAppVersion {
         }
         // Keep model selection, cleanup policy, and explicit setup in separate
         // vertical sections of the same scrollable document.
-        modelsView.frame.size.height += 220
-        for control in modelsView.subviews { control.frame.origin.y += 220 }
+        modelsView.frame.size.height += 70
+        for control in modelsView.subviews { control.frame.origin.y += 70 }
         // Setup occupies the bottom section; discovery never starts a download.
         setupTranscription.frame=NSRect(x:24,y:156,width:196,height:30)
         setupCleanup.frame=NSRect(x:228,y:156,width:178,height:30)
@@ -207,26 +233,29 @@ enum RunningAppVersion {
             modelsView.addSubview(control)
         }
         let backendLabel = NSTextField(labelWithString:"Cleanup API")
-        backendLabel.frame = NSRect(x:24,y:384,width:140,height:20); modelsView.addSubview(backendLabel)
-        cleanupBackend.addItems(withTitles:["OpenAI compatible", "Lemonade (thinking off)"])
-        cleanupBackend.frame = NSRect(x:170,y:378,width:446,height:28)
+        backendLabel.frame = NSRect(x:24,y:576,width:140,height:20); advancedView.addSubview(backendLabel)
+        cleanupBackend.addItems(withTitles:["OpenAI compatible", "Lemonade"])
+        cleanupBackend.frame = NSRect(x:170,y:548,width:446,height:28)
         cleanupBackend.setAccessibilityLabel("Cleanup API")
-        modelsView.addSubview(cleanupBackend)
-        cleanupThinking.frame = NSRect(x:24,y:346,width:592,height:24)
-        modelsView.addSubview(cleanupThinking)
-        let cleanupHelp = NSTextField(wrappingLabelWithString:"Select Lemonade only for a Lemonade server to disable thinking. OpenAI-compatible mode leaves vendor options unchanged. The default prompt asks to preserve complete dictation, including thanks and literal instructions. E2B is a fast candidate still awaiting qualification; keep a preferred installed model, such as E4B. No model is downloaded automatically.")
-        cleanupHelp.frame = NSRect(x:24,y:252,width:592,height:88)
+        advancedView.addSubview(cleanupBackend)
+        cleanupThinking.frame = NSRect(x:24,y:514,width:592,height:24)
+        advancedView.addSubview(cleanupThinking)
+        let cleanupHelp = NSTextField(wrappingLabelWithString:"Lemonade disables thinking unless the server-default override is selected. OpenAI-compatible mode sends no Lemonade thinking options; the server controls thinking.")
+        cleanupHelp.frame = NSRect(x:24,y:408,width:592,height:88)
         cleanupHelp.font = .systemFont(ofSize:11); cleanupHelp.textColor = .secondaryLabelColor
-        modelsView.addSubview(cleanupHelp)
+        advancedView.addSubview(cleanupHelp)
+        advancedStatus.frame=NSRect(x:24,y:324,width:592,height:72)
+        advancedStatus.textColor = .systemRed; advancedStatus.font = .systemFont(ofSize:11)
+        advancedView.addSubview(advancedStatus)
         scroll.removeFromSuperview()
-        for document in [generalView, modelsView, diagnosticsView] {
-            let pane = NSScrollView(frame:NSRect(x:180,y:148,width:640,height:542))
+        for document in [generalView, modelsView, diagnosticsView, advancedView] {
+            let pane = NSScrollView(frame:NSRect(x:180,y:96,width:640,height:594))
             pane.autoresizingMask = [.width,.height]; pane.hasVerticalScroller = true; pane.drawsBackground = false
             document.autoresizingMask = [.width]; pane.documentView = document
             root.addSubview(pane); scrolls.append(pane)
             pane.contentView.scroll(to:NSPoint(x:0,y:max(0,document.frame.height-pane.contentView.bounds.height)))
         }
-        let sidebar = NSScrollView(frame:NSRect(x:0,y:52,width:180,height:638))
+        let sidebar = NSScrollView(frame:NSRect(x:0,y:0,width:180,height:690))
         sidebar.autoresizingMask = [.height]; sidebar.drawsBackground = false
         sidebar.contentInsets = NSEdgeInsets(top:8,left:8,bottom:8,right:8)
         let categoryColumn = NSTableColumn(identifier:NSUserInterfaceItemIdentifier("category"))
@@ -246,24 +275,28 @@ enum RunningAppVersion {
         appVersion.autoresizingMask=[.width]; appVersion.toolTip=appVersion.stringValue
         appVersion.setAccessibilityLabel("Running \(AppIdentity.running.name) version and build")
         generalView.addSubview(appVersion)
-        serverIndicator.frame=NSRect(x:204,y:114,width:14,height:14)
+        serverIndicator.frame=NSRect(x:204,y:62,width:14,height:14)
         serverIndicator.image=NSImage(systemSymbolName:"circle.fill", accessibilityDescription:nil)
         serverIndicator.setAccessibilityElement(false)
         root.addSubview(serverIndicator)
-        serverStatus.frame=NSRect(x:226,y:112,width:570,height:20)
+        serverStatus.frame=NSRect(x:226,y:60,width:570,height:20)
         serverStatus.font = .systemFont(ofSize:12,weight:.medium); serverStatus.autoresizingMask = [.width]
         root.addSubview(serverStatus)
-        serverRequirement.frame=NSRect(x:226,y:64,width:570,height:44)
+        serverRequirement.frame=NSRect(x:226,y:12,width:570,height:44)
         serverRequirement.font = .systemFont(ofSize:11); serverRequirement.textColor = .secondaryLabelColor
         serverRequirement.autoresizingMask = [.width]; serverRequirement.isSelectable = true
         serverRequirement.setAccessibilityLabel("Inference server status detail")
         root.addSubview(serverRequirement)
         setServerHealth(LV_SERVER_HEALTH_CHECKING)
-        save.target=self; save.action=#selector(saveSettings); save.bezelStyle = .rounded; save.keyEquivalent="\r"; save.frame=NSRect(x:706,y:16,width:90,height:30); save.autoresizingMask = [.minXMargin]; root.addSubview(save)
+        for control in [appearance, cleanupBackend, cleanupThinking, debugDiagnostics, automaticChecks, automaticInstallation] as [NSControl] {
+            control.target=self; control.action=#selector(saveSettings)
+        }
     }
     func show(config: DictationConfig, save: @escaping (DictationConfig) throws -> Void, close: @escaping () -> Void) {
         if window.isVisible { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
-        saveConfig=save; didClose=close
+        populating=true
+        defer { populating=false }
+        saveConfig=save; didClose=close; lastConfig=config
         let updates=updatePreferences?() ?? (true,false)
         automaticChecks.state=updates.0 ? .on : .off
         automaticInstallation.state=updates.1 ? .on : .off
@@ -271,6 +304,7 @@ enum RunningAppVersion {
         endpoint.stringValue=config.endpoint; prompt.string=config.cleanupPrompt
         cleanupBackend.selectItem(at:config.cleanupBackend == .lemonade ? 1 : 0)
         cleanupThinking.state = config.cleanupThinking == .serverDefault ? .on : .off
+        cleanupThinking.isEnabled=config.cleanupBackend == .lemonade
         cleanupContextTokens = config.cleanupContextTokens
         populate(transcription, models:[], selected:config.asrModel)
         populate(cleanup, models:[], selected:config.cleanupModel)
@@ -325,14 +359,15 @@ enum RunningAppVersion {
         generation += 1; refreshTask?.cancel(); versionTask?.cancel(); loading=false
         status.stringValue="Endpoint changed. Refresh models to discover available choices."
         updateSetupStatus()
-        version.stringValue="Tested with Lemonade 2026.44.1 · server version not checked"
+        version.stringValue="Server version not checked"
+        scheduleAutosave()
     }
     @objc func refresh() {
         guard !installing else { return }
         refreshTask?.cancel(); versionTask?.cancel(); generation += 1
         let current=generation; let base=endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines)
         loading=true; status.stringValue="Loading models from server…"; retry.title="Refresh"
-        version.stringValue="Tested with Lemonade 2026.44.1 · checking server version…"
+        version.stringValue="Checking server version…"
         log.record(.discoveryStarted)
         refreshTask=Task { [weak self] in
             guard let self else { return }
@@ -359,7 +394,7 @@ enum RunningAppVersion {
             guard let self else { return }
             let actual=await self.readVersion(base)
             guard !Task.isCancelled, self.generation == current, self.window.isVisible else { return }
-            self.version.stringValue="Tested with Lemonade 2026.44.1 · server version: " + (actual ?? "unavailable")
+            self.version.stringValue="Server version: " + (actual ?? "unavailable")
         }
     }
     func updateSetupStatus(serverAvailable: Bool = true) {
@@ -429,7 +464,7 @@ enum RunningAppVersion {
                 self.populate(self.cleanup,models:models.cleanup,selected:chat)
                 // A newer explicit draft choice wins over this setup completion.
                 if picker.selectedID == modelID, let choice=picker.choices.first(where: { $0.id == modelID }) { picker.commit(choice) }
-                self.setupStatus.stringValue="Installation verified. " + ready.message + " Save to keep the selected model."
+                self.setupStatus.stringValue="Installation verified. " + ready.message
             } catch is CancellationError {
                 if self.generation == current { self.setupStatus.stringValue="Download canceled. The server was asked to stop; refresh to check its current state, then use Set up to retry. Existing settings are preserved." }
             } catch {
@@ -483,41 +518,77 @@ enum RunningAppVersion {
     func showPreferences(trigger choice:TriggerChoice, cancellation:TriggerChoice,
                          appearance choiceAppearance:AppearanceChoice,
                          save:@escaping (TriggerChoice,TriggerChoice,AppearanceChoice) throws -> Void) {
+        populating=true
         trigger.update(choice); cancellationTrigger.update(cancellation); selectAppearance(choiceAppearance)
+        populating=false
         shortcutStatus.stringValue=""
+        lastGeneral=(choice,cancellation,choiceAppearance)
         saveGeneralPreferences=save
     }
-    @objc func saveSettings() {
-        let config=DictationConfig(endpoint:endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines),
+    func textDidChange(_ notification: Notification) { scheduleAutosave() }
+    func textDidEndEditing(_ notification: Notification) { saveSettings() }
+    func controlTextDidEndEditing(_ notification: Notification) { saveSettings() }
+    private func scheduleAutosave() {
+        guard !populating, saveConfig != nil else { return }
+        autosaveTask?.cancel()
+        autosaveTask=Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds:350_000_000) } catch { return }
+            self?.saveConfiguration()
+        }
+    }
+    private func saveGeneral() {
+        guard !populating, let saveGeneralPreferences else { return }
+        do {
+            guard trigger.choice != cancellationTrigger.choice else { throw SettingsPreferenceError.matchingShortcuts }
+            try saveGeneralPreferences(trigger.choice,cancellationTrigger.choice,selectedAppearance)
+            lastGeneral=(trigger.choice,cancellationTrigger.choice,selectedAppearance)
+            shortcutStatus.stringValue=""
+        } catch {
+            shortcutStatus.stringValue=SafeDisplay.error(error)
+            // A rejected shortcut draft must not block a valid appearance edit.
+            if let previous=lastGeneral, previous.2 != selectedAppearance {
+                do {
+                    try saveGeneralPreferences(previous.0,previous.1,selectedAppearance)
+                    lastGeneral=(previous.0,previous.1,selectedAppearance)
+                } catch { shortcutStatus.stringValue=SafeDisplay.error(error) }
+            }
+        }
+    }
+    private func saveConfiguration() {
+        guard !populating, let previous=lastConfig, let saveConfig else { return }
+        var config=DictationConfig(endpoint:endpoint.stringValue.trimmingCharacters(in:.whitespacesAndNewlines),
             asrModel:selected(transcription),cleanupModel:selected(cleanup),cleanupPrompt:prompt.string,
             cleanupBackend:cleanupBackend.indexOfSelectedItem == 1 ? .lemonade : .generic,
             cleanupThinking:cleanupThinking.state == .on ? .serverDefault : .disabled,
             cleanupContextTokens:cleanupContextTokens)
-        let debugEnabled=debugDiagnostics.state == .on
+        var validationError: String?
+        do { _ = try config.baseURL() }
+        catch { validationError=SafeDisplay.error(error); config.endpoint=previous.endpoint }
         do {
-            trigger.cancelRecording(); cancellationTrigger.cancelRecording()
-            guard trigger.choice != cancellationTrigger.choice else { throw SettingsPreferenceError.matchingShortcuts }
-            _ = try config.baseURL()
-            if let saveGeneralPreferences {
-                try saveGeneralPreferences(trigger.choice,cancellationTrigger.choice,selectedAppearance)
+            if try JSONEncoder().encode(config) != JSONEncoder().encode(previous) {
+                try saveConfig(config); lastConfig=config; log.record(.configSaved)
             }
-            try saveConfig?(config)
-            if !AppIdentity.running.isDebug { saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on) }
-            log.debugEnabled=debugEnabled
-            saveDiagnosticPreferences(debugEnabled)
-            log.record(.configSaved)
-            window.close()
+            if let validationError { status.stringValue=validationError; configurationError=validationError }
+            else if let previousError=configurationError {
+                if status.stringValue == previousError { status.stringValue="Settings saved automatically." }
+                configurationError=nil
+            }
+            advancedStatus.stringValue=""
+        } catch { status.stringValue=SafeDisplay.error(error) + " Previous saved settings retained. Retry after checking storage permissions."; configurationError=status.stringValue; advancedStatus.stringValue=status.stringValue }
+    }
+    @objc func saveSettings() {
+        guard !populating else { return }
+        cleanupThinking.isEnabled=cleanupBackend.indexOfSelectedItem == 1
+        autosaveTask?.cancel(); autosaveTask=nil
+        saveGeneral(); saveConfiguration()
+        if !AppIdentity.running.isDebug {
+            do { try saveUpdatePreferences?(automaticChecks.state == .on,automaticInstallation.state == .on) }
+            catch { shortcutStatus.stringValue=SafeDisplay.error(error) }
         }
-        catch {
-            if error is SettingsPreferenceError || error is TriggerError {
-                shortcutStatus.stringValue=SafeDisplay.error(error); shortcutStatus.toolTip=shortcutStatus.stringValue
-                categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
-                shortcutStatus.scrollToVisible(shortcutStatus.bounds)
-            } else {
-                status.stringValue=SafeDisplay.error(error); status.toolTip=status.stringValue
-                categoryList.selectRowIndexes(IndexSet(integer:1), byExtendingSelection:false)
-                status.scrollToVisible(status.bounds)
-            }
+        let enabled=debugDiagnostics.state == .on
+        if enabled != log.debugEnabled {
+            do { try saveDiagnosticPreferences(enabled); log.debugEnabled=enabled }
+            catch { logPath.stringValue=SafeDisplay.error(error) }
         }
     }
     @objc func refreshLogs() {
@@ -548,8 +619,9 @@ enum RunningAppVersion {
     @objc func openLog() {
         if !NSWorkspace.shared.open(log.file) { logPath.stringValue="Could not open diagnostic log · " + log.file.path }
     }
-    func windowDidResignKey(_ notification:Notification) { trigger.cancelRecording(); cancellationTrigger.cancelRecording() }
+    func windowDidResignKey(_ notification:Notification) { trigger.cancelRecording(); cancellationTrigger.cancelRecording(); saveSettings() }
     func windowWillClose(_ notification: Notification) {
+        saveSettings()
         trigger.cancelRecording(); cancellationTrigger.cancelRecording()
         saveGeneralPreferences=nil
         transcription.popover.close(); cleanup.popover.close()
