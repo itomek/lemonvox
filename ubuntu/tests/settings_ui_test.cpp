@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
         assert(test.saved.appearance == start.settings.appearance);
         gtk_editable_set_text(GTK_EDITABLE(endpoint), test.show_error ? "invalid endpoint" : start.settings.endpoint.c_str());
         adw_preferences_window_set_visible_page_name(ADW_PREFERENCES_WINDOW(windows->data), test.page.c_str());
-        g_timeout_add(1000, snapshot, &test);
+        g_timeout_add(g_getenv("LEMONVOX_UI_TEST_DELAY_MS") ? std::stoi(g_getenv("LEMONVOX_UI_TEST_DELAY_MS")) : 1000, snapshot, &test);
     }), &start);
     // Screenshot filenames and appearance arguments are test-driver parameters,
     // not GApplication command-line options.

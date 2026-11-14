@@ -506,6 +506,26 @@ void SettingsWindow::save_field(GObject *object) {
         std::string(adw_preferences_row_get_title(ADW_PREFERENCES_ROW(object))) + ": " + error : error;
     gtk_label_set_text(label, ok ? "" : message.c_str());
     gtk_widget_set_visible(GTK_WIDGET(label), !ok);
+    // AdwEntryRow delegates editing to GtkText; expose validation on both the
+    // row and its actual focus target so screen readers find the same error.
+    GtkAccessible *targets[] = {GTK_ACCESSIBLE(control), nullptr};
+    if (GTK_IS_EDITABLE(control)) {
+        auto *delegate = gtk_editable_get_delegate(GTK_EDITABLE(control));
+        if (delegate && GTK_IS_ACCESSIBLE(delegate)) targets[1] = GTK_ACCESSIBLE(delegate);
+    }
+    for (auto *target : targets) {
+        if (!target) continue;
+        gtk_accessible_update_state(target, GTK_ACCESSIBLE_STATE_INVALID,
+            ok ? GTK_ACCESSIBLE_INVALID_FALSE : GTK_ACCESSIBLE_INVALID_TRUE, -1);
+        if (ok) {
+            gtk_accessible_reset_relation(target, GTK_ACCESSIBLE_RELATION_DESCRIBED_BY);
+        } else {
+            // GTK 4.14 AT-SPI cannot resolve ERROR_MESSAGE targets;
+            // described-by makes the validation message navigable.
+            gtk_accessible_update_relation(target, GTK_ACCESSIBLE_RELATION_DESCRIBED_BY, label, nullptr, -1);
+        }
+    }
+    if (!ok) gtk_accessible_announce(GTK_ACCESSIBLE(control), message.c_str(), GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM);
 }
 void SettingsWindow::status(const std::string &text) {
     for (auto *label : status_labels_) gtk_label_set_text(label, text.c_str());

@@ -72,6 +72,23 @@ int main() {
     assert(store.load().cleanup_prompt == lv_cleanup_default_prompt());
     assert(store.load().cleanup_model == restored.cleanup_model);
     assert(store.save(restored, error));
+    // A real filesystem failure: deny new files in this owned temporary
+    // directory, so GLib's atomic replacement fails while the old INI survives.
+    assert(g_chmod(dir, 0500) == 0);
+    auto retry = restored;
+    retry.toggle_shortcut = "<Control><Alt>F11";
+    bindings = 0; active = restored;
+    const auto disk_write = [&](const Settings &value, std::string &message) { return store.save(value, message); };
+    assert(!persist_settings_change(restored, retry, disk_write, bind, error));
+    assert(!error.empty() && bindings == 2 && active.toggle_shortcut == restored.toggle_shortcut);
+    assert(store.load().cleanup_prompt == restored.cleanup_prompt);
+    assert(store.load().toggle_shortcut == restored.toggle_shortcut);
+    assert(g_chmod(dir, 0700) == 0);
+    bindings = 0;
+    assert(persist_settings_change(restored, retry, disk_write, bind, error));
+    assert(bindings == 1 && active.toggle_shortcut == retry.toggle_shortcut);
+    assert(store.load().toggle_shortcut == retry.toggle_shortcut);
+    assert(store.save(restored, error));
     struct stat info {};
     assert(stat(path.c_str(), &info) == 0 && (info.st_mode & 0777) == 0600);
     assert(g_remove(path.c_str()) == 0);

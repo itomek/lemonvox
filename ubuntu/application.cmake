@@ -59,3 +59,10 @@ if(BUILD_TESTING)
         add_test(NAME lemonvox_shortcut_ack_test COMMAND "${NODE_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/tests/keybinding_ack_test.mjs")
     endif()
 endif()
+
+if(BUILD_TESTING)
+    add_executable(lemonvox_settings_session_test tests/settings_session_test.cpp)
+    target_compile_options(lemonvox_settings_session_test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_link_libraries(lemonvox_settings_session_test PRIVATE lemonvox_ubuntu_settings)
+    # Opt-in native display acceptance; never selects a microphone or real HTTP server.
+endif()
