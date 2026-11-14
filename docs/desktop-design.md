@@ -99,6 +99,11 @@ synthetic. The initial Models viewport truncates model names with native
 ellipsization and scrolls to lower controls; full-content visibility and
 accessibility still need review.
 
+[Ubuntu PR 104 verification](assets/desktop/ubuntu-pr104-verification/README.md)
+adds a fresh build/test run, six native Wayland Settings captures and three
+private Shell captures at `bed3cdb`. It records the browser matrix skip and
+remaining installed-app, appearance, scaling and accessibility checks.
+
 ### Reproduce captures
 
 Run from the repository root. Use a fresh absolute build directory and an
