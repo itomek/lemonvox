@@ -353,7 +353,7 @@ final class IndicatorPanel: NSPanel {
                                dockIsHidden: Bool, dockOrientation: String) -> NSPoint {
         // A side Dock must not shift the tile away from the display's center.
         let bottom = dockIsHidden || dockOrientation != "bottom" ? screenFrame.minY : visibleFrame.minY
-        return NSPoint(x: screenFrame.midX - SpeechBarMetrics.tileSize.width / 2, y: bottom + 8)
+        return NSPoint(x: screenFrame.midX - SpeechBarMetrics.tileSize.width / 2, y: bottom + 16)
     }
     private func anchor(to screen: NSScreen) {
         let dock = UserDefaults(suiteName: "com.apple.dock")
