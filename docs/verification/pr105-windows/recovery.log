@@ -1,0 +1,19 @@
+menu 0x200489 flags 1 foreground True
+PASS initial disabled
+menu 0x43015f flags 0 foreground True
+PASS first copy
+menu 0x3604fb flags 0 foreground True
+PASS repeated copy
+menu 0x3b04fb flags 0 foreground True
+PASS replacement
+menu 0x6a01dd flags 0 foreground True
+PASS cleanup failure raw recovery
+menu 0x740461 flags 0 foreground True
+PASS ASR failure preserves
+PENDING native cancellation scenario: ambiguous Cancel menu selection; covered by core tests only.
+menu 0x5304fb flags 1 foreground True
+PASS restart disabled
+PENDING insertion failure / cancel during insertion; synthetic mock-server only, no microphone or real Lemonade.
+menu 0x9604af flags 0 foreground True
+PASS final screenshot copy
+SCREENSHOT_READY final recovery copy

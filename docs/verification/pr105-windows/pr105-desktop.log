@@ -1,0 +1,25 @@
+[OUTPUT]
+Internal ctest changing into directory: C:/temp/lemonvox-pr105
+
+[HANDLER_OUTPUT]
+Test project C:/temp/lemonvox-pr105
+
+    Start 16: insertion_interactive_test
+1/6 Test #16: insertion_interactive_test .......   Passed    5.80 sec
+    Start 18: trigger_interactive_test
+2/6 Test #18: trigger_interactive_test .........   Passed   12.55 sec
+    Start 19: ui_demo_smoke
+3/6 Test #19: ui_demo_smoke ....................   Passed    3.78 sec
+    Start 21: ui_interactive_test
+4/6 Test #21: ui_interactive_test ..............   Passed    4.96 sec
+    Start 23: settings_interactive_test
+5/6 Test #23: settings_interactive_test ........   Passed    6.99 sec
+    Start 26: app_smoke
+6/6 Test #26: app_smoke ........................   Passed    0.98 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Label Time Summary:
+interactive    =  35.05 sec*proc (6 tests)
+
+Total Test time (real) =  35.08 sec

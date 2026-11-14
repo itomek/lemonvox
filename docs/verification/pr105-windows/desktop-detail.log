@@ -1,0 +1,108 @@
+Start testing: Nov 14 15:01 SA Pacific Standard Time
+----------------------------------------------------------
+11/27 Testing: lemonade_net_test
+11/27 Test: lemonade_net_test
+Command: "C:/temp/lemonvox-pr105/src/net/lemonade_net_test.exe"
+Directory: C:/temp/lemonvox-pr105/src/net
+"lemonade_net_test" start time: Nov 14 15:01 SA Pacific Standard Time
+Output:
+----------------------------------------------------------
+SKIPPED: no Lemonade server reachable at http://127.0.0.1:13305/v1
+<end of output>
+Test time =   2.70 sec
+----------------------------------------------------------
+Test Passed.
+"lemonade_net_test" end time: Nov 14 15:01 SA Pacific Standard Time
+"lemonade_net_test" time elapsed: 00:00:02
+----------------------------------------------------------
+
+25/27 Testing: pipeline_lemonade_test
+25/27 Test: pipeline_lemonade_test
+Command: "C:/temp/lemonvox-pr105/src/app/pipeline_lemonade_test.exe"
+Directory: C:/temp/lemonvox-pr105/src/app
+"pipeline_lemonade_test" start time: Nov 14 15:01 SA Pacific Standard Time
+Output:
+----------------------------------------------------------
+SKIP: Lemonade is not reachable at 127.0.0.1:13305
+<end of output>
+Test time =   3.00 sec
+----------------------------------------------------------
+Test Passed.
+"pipeline_lemonade_test" end time: Nov 14 15:02 SA Pacific Standard Time
+"pipeline_lemonade_test" time elapsed: 00:00:02
+----------------------------------------------------------
+
+27/27 Testing: app_e2e_test
+27/27 Test: app_e2e_test
+Command: "C:/temp/lemonvox-pr105/src/app/app_e2e_test.exe" "C:/temp/lemonvox-pr105/src/app/LemonVox.exe"
+Directory: C:/temp/lemonvox-pr105/src/app
+"app_e2e_test" start time: Nov 14 15:02 SA Pacific Standard Time
+Output:
+----------------------------------------------------------
+SKIP: Lemonade is not reachable
+<end of output>
+Test time =   2.66 sec
+----------------------------------------------------------
+Test Passed.
+"app_e2e_test" end time: Nov 14 15:02 SA Pacific Standard Time
+"app_e2e_test" time elapsed: 00:00:02
+----------------------------------------------------------
+
+End testing: Nov 14 15:02 SA Pacific Standard Time
+
+interactive =   2.66 sec*proc
+
+lemonade =   8.36 sec*proc
+
+[NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL][NUL]21/27 Testing: ui_interactive_test
+21/27 Test: ui_interactive_test
+Command: "C:/temp/lemonvox-pr105/src/ui/ui_interactive_test.exe"
+Directory: C:/temp/lemonvox-pr105/src/ui
+"ui_interactive_test" start time: Nov 14 15:01 SA Pacific Standard Time
+Output:
+----------------------------------------------------------
+ui_interactive_test passed
+<end of output>
+Test time =   4.96 sec
+----------------------------------------------------------
+Test Passed.
+"ui_interactive_test" end time: Nov 14 15:01 SA Pacific Standard Time
+"ui_interactive_test" time elapsed: 00:00:04
+----------------------------------------------------------
+
+23/27 Testing: settings_interactive_test
+23/27 Test: settings_interactive_test
+Command: "C:/temp/lemonvox-pr105/src/ui/settings_interactive_test.exe"
+Directory: C:/temp/lemonvox-pr105/src/ui
+"settings_interactive_test" start time: Nov 14 15:01 SA Pacific Standard Time
+Output:
+----------------------------------------------------------
+Settings visible after 84 ms
+dark mode: on
+settings_interactive_test passed
+<end of output>
+Test time =   6.99 sec
+----------------------------------------------------------
+Test Passed.
+"settings_interactive_test" end time: Nov 14 15:02 SA Pacific Standard Time
+"settings_interactive_test" time elapsed: 00:00:06
+----------------------------------------------------------
+
+26/27 Testing: app_smoke
+26/27 Test: app_smoke
+Command: "C:/temp/lemonvox-pr105/src/app/LemonVox.exe" "--smoke"
+Directory: C:/temp/lemonvox-pr105/src/app
+"app_smoke" start time: Nov 14 15:02 SA Pacific Standard Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.98 sec
+----------------------------------------------------------
+Test Passed.
+"app_smoke" end time: Nov 14 15:02 SA Pacific Standard Time
+"app_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 14 15:02 SA Pacific Standard Time
+
+interactive =  35.05 sec*proc

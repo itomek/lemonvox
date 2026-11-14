@@ -1,0 +1,161 @@
+-- The C compiler identification is MSVC 19.44.35230.0
+-- The CXX compiler identification is MSVC 19.44.35230.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (3.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/temp/lemonvox-pr105
+[1/106] Building CXX object CMakeFiles\lemonvox_core.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\core\session.cpp.obj
+[2/106] Building CXX object CMakeFiles\lv_common.dir\src\common\utf.cpp.obj
+[3/106] Building CXX object CMakeFiles\lv_common.dir\src\common\executor.cpp.obj
+[4/106] Building CXX object CMakeFiles\lemonvox_core.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\core\workflow.cpp.obj
+[5/106] Building CXX object CMakeFiles\lv_common.dir\src\common\trigger_binding.cpp.obj
+[6/106] Building CXX object src\ui\CMakeFiles\lv_ui.dir\theme.cpp.obj
+[7/106] Building CXX object CMakeFiles\lv_common.dir\src\net\endpoint_facts.cpp.obj
+[8/106] Building CXX object src\ui\CMakeFiles\lv_ui.dir\graphics.cpp.obj
+[9/106] Building CXX object src\ui\CMakeFiles\lv_ui.dir\icon.cpp.obj
+[10/106] Building CXX object src\ui\CMakeFiles\lv_ui.dir\tray.cpp.obj
+[11/106] Building CXX object src\ui\CMakeFiles\lv_icongen.dir\icongen.cpp.obj
+[12/106] Building CXX object src\ui\CMakeFiles\lv_ui.dir\indicator.cpp.obj
+[13/106] Building CXX object CMakeFiles\lemonvox_core.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\core\protocol.cpp.obj
+[14/106] Building CXX object src\prefs\CMakeFiles\lv_prefs.dir\preferences.cpp.obj
+[15/106] Building CXX object src\net\CMakeFiles\lv_net.dir\server_health.cpp.obj
+[16/106] Building CXX object src\net\CMakeFiles\lv_net.dir\model_catalog.cpp.obj
+[17/106] Building CXX object src\capture\CMakeFiles\lv_capture.dir\wav.cpp.obj
+[18/106] Building CXX object src\net\CMakeFiles\lv_net.dir\winhttp_transport.cpp.obj
+[19/106] Building CXX object src\capture\CMakeFiles\lv_capture.dir\wasapi_stream.cpp.obj
+[20/106] Building CXX object src\insertion\CMakeFiles\lv_insertion.dir\integrity.cpp.obj
+[21/106] Building CXX object src\capture\CMakeFiles\lv_capture.dir\device_list.cpp.obj
+[22/106] Building CXX object src\insertion\CMakeFiles\lv_insertion.dir\clipboard.cpp.obj
+[23/106] Building CXX object src\capture\CMakeFiles\lv_capture.dir\wasapi_capture.cpp.obj
+[24/106] Building CXX object src\insertion\CMakeFiles\lv_insertion.dir\target.cpp.obj
+[25/106] Building CXX object src\trigger\CMakeFiles\lv_trigger.dir\key_normalizer.cpp.obj
+[26/106] Building CXX object src\trigger\CMakeFiles\lv_trigger.dir\shortcut_recorder.cpp.obj
+[27/106] Building CXX object src\insertion\CMakeFiles\lv_insertion.dir\win_insertion.cpp.obj
+[28/106] Building CXX object src\trigger\CMakeFiles\lv_trigger.dir\global_trigger.cpp.obj
+[29/106] Building CXX object src\ui\CMakeFiles\lv_settings.dir\settings_layout.cpp.obj
+[30/106] Building CXX object CMakeFiles\session_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\session_test.cpp.obj
+[31/106] Building CXX object CMakeFiles\trigger_core_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\trigger_core_test.cpp.obj
+[32/106] Building CXX object src\ui\CMakeFiles\lv_settings.dir\settings_window.cpp.obj
+[33/106] Building CXX object src\app\CMakeFiles\lv_app_core.dir\file_capture.cpp.obj
+[34/106] Building CXX object src\app\CMakeFiles\lv_app_core.dir\dictation_controller.cpp.obj
+[35/106] Building CXX object CMakeFiles\contracts_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\contracts_test.cpp.obj
+[36/106] Building CXX object CMakeFiles\protocol_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\protocol_test.cpp.obj
+[37/106] Building CXX object CMakeFiles\common_test.dir\tests\common_test.cpp.obj
+[38/106] Building CXX object CMakeFiles\model_setup_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\model_setup_test.cpp.obj
+[39/106] Building CXX object CMakeFiles\model_setup_client_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\model_setup_client_test.cpp.obj
+[40/106] Building CXX object src\prefs\CMakeFiles\prefs_test.dir\__\__\tests\prefs_test.cpp.obj
+[41/106] Building CXX object src\net\CMakeFiles\lemonade_net_test.dir\__\__\tests\lemonade_net_test.cpp.obj
+[42/106] Building CXX object CMakeFiles\workflow_core_test.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\tests\workflow_core_test.cpp.obj
+[43/106] Building CXX object src\net\CMakeFiles\server_health_test.dir\__\__\tests\server_health_test.cpp.obj
+[44/106] Building CXX object src\capture\CMakeFiles\capture_device_test.dir\__\__\tests\capture_device_test.cpp.obj
+[45/106] Building CXX object src\net\CMakeFiles\net_test.dir\__\__\tests\net_test.cpp.obj
+[46/106] Building CXX object src\capture\CMakeFiles\capture_test.dir\__\__\tests\capture_test.cpp.obj
+[47/106] Building CXX object src\capture\CMakeFiles\lemonvox_mic_probe.dir\mic_probe.cpp.obj
+[48/106] Building CXX object src\insertion\CMakeFiles\insertion_unit_test.dir\__\__\tests\insertion_unit_test.cpp.obj
+[49/106] Building CXX object src\insertion\CMakeFiles\insertion_interactive_test.dir\__\__\tests\insertion_interactive_test.cpp.obj
+[50/106] Building CXX object src\trigger\CMakeFiles\trigger_unit_test.dir\__\__\tests\trigger_unit_test.cpp.obj
+[51/106] Building CXX object src\trigger\CMakeFiles\trigger_interactive_test.dir\__\__\tests\trigger_interactive_test.cpp.obj
+[52/106] Building CXX object src\insertion\CMakeFiles\insertion_matrix_probe.dir\__\__\tests\insertion_matrix_probe.cpp.obj
+[53/106] Building CXX object src\ui\CMakeFiles\ui_unit_test.dir\__\__\tests\ui_unit_test.cpp.obj
+[54/106] Building CXX object src\ui\CMakeFiles\settings_unit_test.dir\__\__\tests\settings_unit_test.cpp.obj
+[55/106] Building CXX object src\ui\CMakeFiles\ui_interactive_test.dir\__\__\tests\ui_interactive_test.cpp.obj
+[56/106] Building CXX object src\app\CMakeFiles\controller_test.dir\__\__\tests\controller_test.cpp.obj
+[57/106] Building CXX object src\app\CMakeFiles\pipeline_lemonade_test.dir\__\__\tests\pipeline_lemonade_test.cpp.obj
+[58/106] Building CXX object src\ui\CMakeFiles\settings_interactive_test.dir\__\__\tests\settings_interactive_test.cpp.obj
+[59/106] Building C object CMakeFiles\yyjson.dir\C_\Users\tomasz\src\itomek\lemonvox-pr105\third_party\yyjson\yyjson.c.obj
+[60/106] Linking C static library yyjson.lib
+[61/106] Linking CXX static library lemonvox_core.lib
+[62/106] Linking CXX static library lv_common.lib
+[63/106] Linking CXX executable trigger_core_test.exe
+[64/106] Linking CXX executable session_test.exe
+[65/106] Linking CXX static library src\ui\lv_ui.lib
+[66/106] Linking CXX executable contracts_test.exe
+[67/106] Linking CXX executable protocol_test.exe
+[68/106] Linking CXX executable workflow_core_test.exe
+[69/106] Linking CXX static library src\prefs\lv_prefs.lib
+[70/106] Linking CXX static library src\net\lv_net.lib
+[71/106] Linking CXX static library src\capture\lv_capture.lib
+[72/106] Linking CXX static library src\insertion\lv_insertion.lib
+[73/106] Linking CXX static library src\trigger\lv_trigger.lib
+[74/106] Linking CXX static library src\ui\lv_settings.lib
+[75/106] Linking CXX executable src\ui\lv_icongen.exe
+[76/106] Linking CXX static library src\app\lv_app_core.lib
+[77/106] Linking CXX executable model_setup_test.exe
+[78/106] Linking CXX executable common_test.exe
+[79/106] Linking CXX executable model_setup_client_test.exe
+[80/106] Linking CXX executable src\prefs\prefs_test.exe
+[81/106] Linking CXX executable src\net\net_test.exe
+[82/106] Linking CXX executable src\capture\capture_test.exe
+[83/106] Linking CXX executable src\net\lemonade_net_test.exe
+[84/106] Linking CXX executable src\net\server_health_test.exe
+[85/106] Linking CXX executable src\capture\capture_device_test.exe
+[86/106] Linking CXX executable src\capture\lemonvox_mic_probe.exe
+[87/106] Linking CXX executable src\insertion\insertion_unit_test.exe
+[88/106] Linking CXX executable src\insertion\insertion_interactive_test.exe
+[89/106] Linking CXX executable src\insertion\insertion_matrix_probe.exe
+[90/106] Rendering lemonvox.ico
+[91/106] Linking CXX executable src\trigger\trigger_unit_test.exe
+[92/106] Linking CXX executable src\trigger\trigger_interactive_test.exe
+[93/106] Linking CXX executable src\ui\ui_unit_test.exe
+[94/106] Building RC object src\app\CMakeFiles\lemonvox.dir\__\ui\lemonvox.rc.res
+[95/106] Linking CXX executable src\ui\settings_unit_test.exe
+[96/106] Linking CXX executable src\ui\ui_interactive_test.exe
+[97/106] Building RC object src\ui\CMakeFiles\lemonvox_ui_demo.dir\lemonvox.rc.res
+[98/106] Linking CXX executable src\ui\settings_interactive_test.exe
+[99/106] Linking CXX executable src\app\controller_test.exe
+[100/106] Linking CXX executable src\app\pipeline_lemonade_test.exe
+[101/106] Building CXX object src\ui\CMakeFiles\lemonvox_ui_demo.dir\ui_demo.cpp.obj
+[102/106] Linking CXX executable src\ui\lemonvox_ui_demo.exe
+[103/106] Building CXX object src\app\CMakeFiles\lemonvox.dir\main.cpp.obj
+[104/106] Linking CXX executable src\app\LemonVox.exe
+[105/106] Building CXX object src\app\CMakeFiles\app_e2e_test.dir\__\__\tests\app_e2e_test.cpp.obj
+[106/106] Linking CXX executable src\app\app_e2e_test.exe
+Internal ctest changing into directory: C:/temp/lemonvox-pr105
+Test project C:/temp/lemonvox-pr105
+      Start  1: core_session
+ 1/17 Test  #1: core_session .....................   Passed    0.81 sec
+      Start  2: core_trigger_core
+ 2/17 Test  #2: core_trigger_core ................   Passed    0.65 sec
+      Start  3: core_contracts
+ 3/17 Test  #3: core_contracts ...................   Passed    0.65 sec
+      Start  4: core_protocol
+ 4/17 Test  #4: core_protocol ....................   Passed    0.60 sec
+      Start  5: core_workflow_core
+ 5/17 Test  #5: core_workflow_core ...............   Passed    0.78 sec
+      Start  6: core_model_setup
+ 6/17 Test  #6: core_model_setup .................   Passed    0.86 sec
+      Start  7: core_model_setup_client
+ 7/17 Test  #7: core_model_setup_client ..........   Passed    0.96 sec
+      Start  8: common_test
+ 8/17 Test  #8: common_test ......................   Passed    1.12 sec
+      Start  9: prefs_test
+ 9/17 Test  #9: prefs_test .......................   Passed    1.19 sec
+      Start 10: net_test
+10/17 Test #10: net_test .........................   Passed    9.14 sec
+      Start 12: server_health_test
+11/17 Test #12: server_health_test ...............   Passed    0.55 sec
+      Start 13: capture_test
+12/17 Test #13: capture_test .....................   Passed    2.86 sec
+      Start 15: insertion_unit_test
+13/17 Test #15: insertion_unit_test ..............   Passed    1.36 sec
+      Start 17: trigger_unit_test
+14/17 Test #17: trigger_unit_test ................   Passed    0.59 sec
+      Start 20: ui_unit_test
+15/17 Test #20: ui_unit_test .....................   Passed    0.63 sec
+      Start 22: settings_unit_test
+16/17 Test #22: settings_unit_test ...............   Passed    0.79 sec
+      Start 24: controller_test
+17/17 Test #24: controller_test ..................   Passed    0.96 sec
+
+100% tests passed, 0 tests failed out of 17
+
+Total Test time (real) =  24.56 sec

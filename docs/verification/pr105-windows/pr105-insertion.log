@@ -1,0 +1,15 @@
+[OUTPUT]
+Internal ctest changing into directory: C:/temp/lemonvox-pr105
+
+[HANDLER_OUTPUT]
+Test project C:/temp/lemonvox-pr105
+
+    Start 16: insertion_interactive_test
+1/1 Test #16: insertion_interactive_test .......   Passed    7.83 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+interactive    =   7.83 sec*proc (1 test)
+
+Total Test time (real) =   7.84 sec
