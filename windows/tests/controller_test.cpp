@@ -144,6 +144,7 @@ struct Harness {
 
 void full_dictation_inserts_once() {
     Harness h;
+    assert(!h.controller.has_last_transcription());
     h.controller.toggle();
     h.wait_for_phase(WorkflowPhase::recording);
     h.controller.toggle();
@@ -155,7 +156,18 @@ void full_dictation_inserts_once() {
     assert(h.insertion.inserted == "Hello world.");
     assert(h.phases.front() == WorkflowPhase::preparing && h.phases.back() == WorkflowPhase::idle);
     assert(!h.controller.has_pending_text());
+    assert(h.controller.has_last_transcription());
+    std::string recovered;
+    assert(!h.controller.copy_last_transcription([](const std::string &) { return false; }));
+    for (int i = 0; i < 2; ++i) {
+        assert(h.controller.copy_last_transcription([&](const std::string &text) { recovered = text; return true; }));
+        assert(recovered == "Hello world.");
+    }
+    h.controller.cancel();
+    assert(h.controller.has_last_transcription());
     assert(h.capture.stops == 1 && h.insertion.insert_calls == 1);
+    h.controller.shutdown();
+    assert(!h.controller.has_last_transcription());
 }
 
 void stop_button_finishes_once() {

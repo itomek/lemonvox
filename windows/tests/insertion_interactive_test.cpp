@@ -225,6 +225,7 @@ struct Harness {
         });
         if (cancel_while_queued) {
             insertion.cancel(operation);
+            CHECK(insertion.clipboard_busy());
             SetEvent(g_gate);
         }
         pump_until([&] { return calls != 0; });
@@ -269,6 +270,7 @@ void run() {
     UiThreadExecutor executor;
     InsertionOptions options;
     options.insert_started = [](OperationId) {
+        CHECK(g_insertion->clipboard_busy());
         if (g_gate_armed.exchange(false)) WaitForSingleObject(g_gate, 10000);
     };
     options.before_send = [] {
@@ -375,6 +377,7 @@ void run() {
     original = harness.capture(10);
     g_cancel_before_send = true;
     CHECK(harness.insert(10, original.target.token) == AdapterError::canceled);
+    CHECK(!insertion.clipboard_busy());
     g_cancel_before_send = false;
     CHECK(text_of(edit).empty());
     check_sentinel_clipboard(custom);

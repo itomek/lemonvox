@@ -149,11 +149,13 @@ export class LemonVoxIndicator {
         this._stop = new PopupMenu.PopupMenuItem('Stop recording');
         this._cancel = new PopupMenu.PopupMenuItem('Cancel');
         this._copy = new PopupMenu.PopupMenuItem('Copy result');
+        this._copyLast = new PopupMenu.PopupMenuItem('Copy Last Transcription');
         this._settings = new PopupMenu.PopupMenuItem('Settings');
         this._quit = new PopupMenu.PopupMenuItem('Quit');
         this._toggle.connect('activate', () => this._actions.toggle());
         this._stop.connect('activate', () => this._actions.stop());
         this._cancel.connect('activate', () => this._actions.cancel());
+        this._copyLast.connect('activate', () => this._actions.copyLastTranscription());
         this._copy.connect('activate', () => copyResult(this._snapshot, this._actions.clearResult));
         this._settings.connect('activate', () => this._actions.settings());
         this._quit.connect('activate', () => this._actions.quit());
@@ -163,6 +165,7 @@ export class LemonVoxIndicator {
         this._indicator.menu.addMenuItem(this._stop);
         this._indicator.menu.addMenuItem(this._cancel);
         this._indicator.menu.addMenuItem(this._copy);
+        this._indicator.menu.addMenuItem(this._copyLast);
         this._indicator.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._indicator.menu.addMenuItem(this._settings);
         this._indicator.menu.addMenuItem(this._quit);
@@ -184,6 +187,7 @@ export class LemonVoxIndicator {
         this._stop.setSensitive(snapshot.available && model.showStop);
         this._cancel.setSensitive(snapshot.available && model.showCancel);
         this._copy.setSensitive(model.showCopy);
+        this._copyLast.setSensitive(snapshot.available && snapshot.hasLastTranscription === true && state !== 'inserting');
         this._settings.setSensitive(true);
         this._quit.setSensitive(snapshot.available);
     }

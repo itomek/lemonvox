@@ -20,7 +20,7 @@ enum class TrayActivity : std::uint8_t { idle, recording, processing, error };
 
 struct TrayStatus {
     TrayActivity activity = TrayActivity::idle;
-    bool copy_available = false; // fallback text is waiting to be copied
+    bool copy_available = false; // retained transcription is available and insertion is not using the clipboard
     std::wstring detail;         // optional tooltip suffix, e.g. a short error
 };
 
@@ -47,6 +47,7 @@ struct TrayCallbacks {
     std::function<void()> open_settings;
     std::function<void()> open_diagnostics; // menu item omitted when empty
     std::function<void()> quit;
+    std::function<void()> menu_will_open;
 };
 
 class TrayIcon {

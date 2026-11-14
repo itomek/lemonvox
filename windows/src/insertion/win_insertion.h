@@ -65,6 +65,7 @@ public:
     // release the operation's tokens; a new capture also drops older tokens.
     void release(OperationId operation);
     std::size_t token_count() const;
+    bool clipboard_busy() const { return pending_inserts_.load() != 0; }
 
 private:
     using Job = std::function<void()>;
@@ -92,6 +93,7 @@ private:
     // Nonzero until canceled or committed to SendInput. Never hold a mutex
     // across SendInput: the global keyboard hook runs on the UI thread.
     std::atomic<OperationId> pending_dispatch_{0};
+    std::atomic<unsigned> pending_inserts_{0};
     bool stopping_ = false;
     bool shut_down_ = false;
     HANDLE wake_ = nullptr;

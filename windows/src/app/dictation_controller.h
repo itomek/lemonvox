@@ -82,6 +82,8 @@ public:
 
     WorkflowPhase phase() const;
     bool busy() const;
+    bool has_last_transcription() const;
+    bool copy_last_transcription(const std::function<bool(const std::string &)> &copy);
     bool has_pending_text() const { return !pending_text_.empty(); }
     // Copies the retained fallback text through `copy`, then clears it on success.
     bool copy_pending(const std::function<bool(const std::string &)> &copy);
