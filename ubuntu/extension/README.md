@@ -9,10 +9,23 @@ It uses GNOME Shell's compositor keybinding API, not X11, input-device access,
 or the GlobalShortcuts portal. GNOME 46 on Ubuntu 24.04 does not advertise that
 portal. The default toggle is `Ctrl+Alt+Space`; Alt twice is unavailable because
 the Shell API registers accelerators rather than exposing modifier-only global
-events. The default cancellation chord is `Ctrl+Super+Escape`, because Ubuntu
+events. Single-tap modifiers are also unavailable in this adapter. Settings
+explicitly explains this restriction and accepts only key combinations. No
+modifier-only option is advertised as working; Ubuntu acceptance for #98 remains
+incomplete until a compositor adapter delivers standalone press/release events
+and native input-delivery tests verify suppression of chords, holds and repeats. The default cancellation chord is `Ctrl+Super+Escape`, because Ubuntu
 reserves `Ctrl+Alt+Escape` for panel cycling. The cancellation key is registered
 only for a non-idle operation, so the configured chord is ordinary input while
 LemonVox is idle.
+
+Settings saves valid fields automatically. Shortcut changes use the extension's
+`com.itomek.LemonVox.Shortcuts.SetShortcuts` acknowledgement interface on
+`org.gnome.Shell` at `/com/itomek/LemonVox/Shortcuts`. Both bindings must register
+before the application persists them; cancellation is then released while idle.
+A write failure requests restoration of the previous pair. Shortcut changes are
+refused during dictation and when this extension interface is unavailable;
+other valid settings still save. Native compositor verification of this new
+acknowledgement path remains required.
 
 The extension exposes a Shell bar during active work, with Stop while recording
 and Cancel while active. When processing finishes, it writes the result to the

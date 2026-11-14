@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import St from 'gi://St';
 
 import * as Extension from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -35,6 +36,14 @@ export default class LemonVoxExtension extends Extension.Extension {
             actions.cancel,
             message => this._showShortcutProblem(message),
             () => this._clearShortcutProblem());
+        const shortcutXml = `<node><interface name="com.itomek.LemonVox.Shortcuts">
+            <method name="SetShortcuts"><arg type="s" direction="in"/><arg type="s" direction="in"/>
+            <arg type="b" direction="out"/><arg type="s" direction="out"/></method>
+            </interface></node>`;
+        this._shortcutObject = Gio.DBusExportedObject.wrapJSObject(shortcutXml, {
+            SetShortcuts: (toggle, cancel) => this._bindings.setShortcuts(toggle, cancel),
+        });
+        this._shortcutObject.export(Gio.DBus.session, '/com/itomek/LemonVox/Shortcuts');
         this._client.start();
         this._update(this._client.snapshot);
     }
@@ -48,6 +57,8 @@ export default class LemonVoxExtension extends Extension.Extension {
         // late work if the D-Bus call races teardown.
         if (this._client && activeState(this._client.snapshot.state))
             this._client.request('Cancel');
+        this._shortcutObject?.unexport();
+        this._shortcutObject = null;
         this._bindings?.destroy();
         this._bindings = null;
         this._bar?.destroy();

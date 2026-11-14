@@ -238,7 +238,16 @@ private:
             window_ = std::make_unique<native::SettingsWindow>(GTK_APPLICATION(app_), settings_,
                 [this](const native::Settings &value, std::string &error) {
                     if (!native::endpoint_is_valid(value.endpoint)) { error = "Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment."; return false; }
-                    if (!store_.save(value, error)) return false;
+                    const bool shortcuts_changed = settings_.toggle_shortcut != value.toggle_shortcut || settings_.cancel_shortcut != value.cancel_shortcut;
+                    if (shortcuts_changed && state_ != "idle") {
+                        error = "Finish dictation before changing shortcuts. The existing shortcuts were kept."; return false;
+                    }
+                    if (!native::persist_settings_change(settings_, value,
+                        [this](const native::Settings &candidate, std::string &message) { return store_.save(candidate, message); },
+                        native::apply_verified_extension_shortcuts, error)) {
+                        if (shortcuts_changed) native::apply_extension_shortcuts(settings_);
+                        return false;
+                    }
                     const bool endpoint_changed = settings_.endpoint != value.endpoint;
                     settings_ = value; diagnostics_.set_debug(settings_.debug);
                     if (endpoint_changed) {

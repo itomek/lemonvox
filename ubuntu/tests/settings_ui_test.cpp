@@ -11,12 +11,27 @@ struct Test {
     std::string output, page;
     LVServerHealthStatus health_status = LV_SERVER_HEALTH_CHECKING;
     int result = 1;
+    int saves = 0;
+    bool reject_write = false;
+    lemonvox::ubuntu::Settings saved;
 };
 bool has_label(GtkWidget *widget, const std::string &text) {
     if (GTK_IS_LABEL(widget) && std::string(gtk_label_get_text(GTK_LABEL(widget))) == text) return true;
     for (auto *child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child))
         if (has_label(child, text)) return true;
     return false;
+}
+GtkWidget *find_row(GtkWidget *widget, const char *title) {
+    if (ADW_IS_PREFERENCES_ROW(widget) && std::string(adw_preferences_row_get_title(ADW_PREFERENCES_ROW(widget))) == title) return widget;
+    for (auto *child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child))
+        if (auto *found = find_row(child, title)) return found;
+    return nullptr;
+}
+GtkWidget *find_type(GtkWidget *widget, GType type) {
+    if (G_TYPE_CHECK_INSTANCE_TYPE(widget, type)) return widget;
+    for (auto *child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child))
+        if (auto *found = find_type(child, type)) return found;
+    return nullptr;
 }
 gboolean snapshot(gpointer data) {
     auto &test = *static_cast<Test *>(data);
@@ -29,6 +44,8 @@ gboolean snapshot(gpointer data) {
         test.health_status == LV_SERVER_HEALTH_DISCONNECTED ? "Server API unavailable" : "Checking server API…";
     assert(has_label(widget, expected));
     assert(!has_label(widget, "Server required"));
+    assert(!has_label(widget, "Save settings"));
+    assert(has_label(widget, "Single tap modifier unavailable"));
     const int width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
     assert(width >= 600 && height >= 600);
     auto *paintable = gtk_widget_paintable_new(widget);
@@ -43,6 +60,12 @@ gboolean snapshot(gpointer data) {
     if (!test.output.empty()) assert(gdk_texture_save_to_png(texture, test.output.c_str()));
     g_object_unref(texture); gsk_render_node_unref(node); g_object_unref(paintable);
     gsk_renderer_unrealize(renderer); g_object_unref(renderer);
+    // Close flushes the latest text without waiting for its debounce timer.
+    auto *prompt = GTK_TEXT_VIEW(find_type(widget, GTK_TYPE_TEXT_VIEW));
+    assert(prompt);
+    gtk_text_buffer_set_text(gtk_text_view_get_buffer(prompt), "Keep 42 invoices.", -1);
+    gtk_window_close(window);
+    assert(test.saved.cleanup_prompt == "Keep 42 invoices.");
     test.result = 0; test.window.reset();
     g_application_quit(G_APPLICATION(test.app)); return G_SOURCE_REMOVE;
 }
@@ -61,11 +84,34 @@ int main(int argc, char **argv) {
         auto &start = *static_cast<Start *>(data); auto &test = *start.test;
         lemonvox::ubuntu::apply_appearance(start.settings);
         test.window = std::make_unique<lemonvox::ubuntu::SettingsWindow>(app, start.settings,
-            [](const auto &, std::string &) { return true; }, [](const auto &) {}, [] {}, [](const auto &) {});
+            [&test](const auto &value, std::string &error) {
+                if (test.reject_write) { error = "Simulated persistence failure"; return false; }
+                test.saved = value; ++test.saves; return true;
+            }, [](const auto &) {}, [] {}, [](const auto &) {});
         test.window->health(test.health_status);
         test.window->present();
         auto *windows = gtk_application_get_windows(app);
         assert(windows);
+        auto *widget = GTK_WIDGET(windows->data);
+        assert(test.saves == 0); // Initialization and model population never write.
+        test.window->models({}, "No models");
+        assert(test.saves == 0);
+        auto *endpoint = find_row(widget, "API endpoint");
+        auto *appearance = find_row(widget, "Theme");
+        auto *debug_row = find_row(widget, "Debug traces");
+        assert(endpoint && appearance && debug_row);
+        auto *debug = GTK_SWITCH(find_type(debug_row, GTK_TYPE_SWITCH));
+        assert(debug);
+        gtk_editable_set_text(GTK_EDITABLE(endpoint), "invalid endpoint");
+        gtk_switch_set_active(debug, TRUE);
+        assert(test.saved.debug && test.saved.endpoint == start.settings.endpoint);
+        test.reject_write = true;
+        adw_combo_row_set_selected(ADW_COMBO_ROW(appearance), 1);
+        assert(test.saved.appearance == start.settings.appearance);
+        test.reject_write = false;
+        adw_combo_row_set_selected(ADW_COMBO_ROW(appearance), 2);
+        assert(test.saved.appearance == "dark");
+        gtk_editable_set_text(GTK_EDITABLE(endpoint), start.settings.endpoint.c_str());
         adw_preferences_window_set_visible_page_name(ADW_PREFERENCES_WINDOW(windows->data), test.page.c_str());
         g_timeout_add(500, snapshot, &test);
     }), &start);

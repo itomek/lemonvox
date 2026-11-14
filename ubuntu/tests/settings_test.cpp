@@ -20,9 +20,32 @@ int main() {
     assert(!SettingsStore::valid_shortcuts(invalid));
     std::string error;
     assert(!store.save(invalid, error));
+    invalid = original;
+    invalid.endpoint = "file:///tmp/invalid";
+    assert(!store.save(invalid, error));
     assert(original.cleanup_prompt == lv_cleanup_default_prompt());
     assert(original.cleanup_backend == LV_CLEANUP_BACKEND_LEMONADE);
     assert(original.cleanup_thinking == LV_CLEANUP_THINKING_DISABLED);
+    auto changed_shortcut = original;
+    changed_shortcut.toggle_shortcut = "<Control><Alt>F9";
+    int writes = 0, bindings = 0;
+    Settings active = original;
+    const auto persist = [&](const Settings &, std::string &) { ++writes; return true; };
+    const auto timed_out_bind = [&](const Settings &value, std::string &message) {
+        active = value; ++bindings;
+        if (bindings == 1) { message = "Timed out after registration"; return false; }
+        return true;
+    };
+    assert(!persist_settings_change(original, changed_shortcut, persist, timed_out_bind, error));
+    assert(writes == 0 && bindings == 2 && active.toggle_shortcut == original.toggle_shortcut);
+    bindings = 0;
+    const auto bind = [&](const Settings &value, std::string &) { active = value; ++bindings; return true; };
+    const auto fail_write = [&](const Settings &, std::string &message) { message = "Write failed"; return false; };
+    assert(!persist_settings_change(original, changed_shortcut, fail_write, bind, error));
+    assert(bindings == 2 && active.toggle_shortcut == original.toggle_shortcut);
+    bindings = 0;
+    assert(persist_settings_change(original, changed_shortcut, persist, bind, error));
+    assert(bindings == 1 && writes == 1 && active.toggle_shortcut == changed_shortcut.toggle_shortcut);
     auto custom = original;
     custom.cleanup_backend = LV_CLEANUP_BACKEND_LEMONADE;
     custom.cleanup_thinking = LV_CLEANUP_THINKING_SERVER_DEFAULT;

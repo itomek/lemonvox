@@ -32,6 +32,47 @@ export class ShortcutBindings {
             this._onReady?.();
     }
 
+    setShortcuts(toggle, cancel) {
+        if (this._active)
+            return [false, 'Finish dictation before changing shortcuts. Existing shortcuts were kept.'];
+        const candidate = {toggle: [toggle], cancel: [cancel]};
+        const valid = validateShortcutPair(candidate.toggle, candidate.cancel);
+        if (!valid.valid)
+            return [false, valid.reason];
+        if (this._rebindSource) {
+            GLib.source_remove(this._rebindSource);
+            this._rebindSource = 0;
+        }
+        const previous = this._lastGood;
+        this._restoring = true;
+        const toggleWritten = this._settings.set_strv(TOGGLE_KEY, candidate.toggle);
+        const cancelWritten = this._settings.set_strv(CANCEL_KEY, candidate.cancel);
+        if (!toggleWritten || !cancelWritten) {
+            this._restoring = false;
+            this._restoreLastGood();
+            return [false, 'GNOME shortcut settings are not writable. Existing shortcuts were kept.'];
+        }
+        // Probe both bindings even while idle, then release cancellation so
+        // ordinary input remains untouched until a dictation session starts.
+        this._active = true;
+        const accepted = this._install(candidate);
+        this._active = false;
+        this._lastGood = accepted ? candidate : previous;
+        this._settings.set_strv(TOGGLE_KEY, this._lastGood.toggle);
+        this._settings.set_strv(CANCEL_KEY, this._lastGood.cancel);
+        this._restoring = false;
+        const restored = this._install(this._lastGood);
+        if (accepted && restored) {
+            this._onReady?.();
+            return [true, ''];
+        }
+        if (accepted) {
+            this._lastGood = previous;
+            this._restoreLastGood();
+        }
+        return [false, 'GNOME could not register these shortcuts. Choose another combination; existing shortcuts were kept.'];
+    }
+
     setActive(active) {
         if (this._active === active)
             return;
