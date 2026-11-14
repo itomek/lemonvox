@@ -15,19 +15,45 @@ import AppKit
         let bottomDock = NSRect(x: -1920, y: -140, width: 1920, height: 996)
         let dockOrigin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: bottomDock,
             dockIsHidden: false, dockOrientation: "bottom")
-        precondition(dockOrigin == NSPoint(x: -1020, y: -132),
-            "The tile must center on its screen, 8 pt above a visible bottom Dock")
+        precondition(dockOrigin == NSPoint(x: -1020, y: -124),
+            "The tile must center on its screen, 16 pt above a visible bottom Dock")
         for orientation in ["bottom", "left", "right"] {
             let origin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: bottomDock,
                 dockIsHidden: true, dockOrientation: orientation)
-            precondition(origin == NSPoint(x: -1020, y: -192),
-                "An autohidden Dock must leave the tile 8 pt above the physical screen bottom")
+            precondition(origin == NSPoint(x: -1020, y: -184),
+                "An autohidden Dock must leave the tile 16 pt above the physical screen bottom")
         }
         for orientation in ["left", "right"] {
             let origin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: bottomDock,
                 dockIsHidden: false, dockOrientation: orientation)
-            precondition(origin == NSPoint(x: -1020, y: -192),
+            precondition(origin == NSPoint(x: -1020, y: -184),
                 "A side Dock must not alter screen-centered bottom positioning")
+        }
+        // NSScreen rectangles are logical points, including on Retina displays.
+        // Exercise displays above, below and beside the primary display without
+        // applying a backing-pixel scale to the requested clearance.
+        for display in [NSRect(x: 0, y: 0, width: 1440, height: 900),
+                        NSRect(x: 1440, y: 900, width: 1920, height: 1080),
+                        NSRect(x: -1920, y: -1080, width: 1920, height: 1080)] {
+            for hidden in [false, true] {
+                for orientation in ["bottom", "left", "right"] {
+                    var visible = display.insetBy(dx: 0, dy: 24)
+                    if orientation == "bottom" {
+                        visible.origin.y += 60
+                        visible.size.height -= 60
+                    } else {
+                        visible.size.width -= 60
+                        if orientation == "left" { visible.origin.x += 60 }
+                    }
+                    let origin = IndicatorPanel.anchoredOrigin(screenFrame: display, visibleFrame: visible,
+                        dockIsHidden: hidden, dockOrientation: orientation)
+                    let anchor = !hidden && orientation == "bottom" ? visible.minY : display.minY
+                    precondition(origin.y - anchor == 16, "Automatic clearance must be 16 logical points")
+                    precondition(origin.x + 60 == display.midX, "The visible tile must center on its display")
+                    precondition(display.contains(NSRect(origin: origin, size: IndicatorPanel.speechBarSize)),
+                        "The bar and attached cancel control must fit on the anchored display")
+                }
+            }
         }
         print("PASS: panel clamping, message clearance and Dock-aware bottom placement")
         if CommandLine.arguments.contains("--geometry") { return }
