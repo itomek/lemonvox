@@ -55,6 +55,9 @@ int main(int argc, char **argv) {
     if (argc > 4 && std::string(argv[4]) == "disconnected") test.health_status = LV_SERVER_HEALTH_DISCONNECTED;
     lemonvox::ubuntu::Settings settings;
     settings.appearance = argc > 2 ? argv[2] : "auto";
+    // Use only synthetic selections; this harness never contacts an endpoint.
+    settings.asr_model = "Whisper-Base";
+    settings.cleanup_model = "Gemma-4-E4B-it-GGUF";
     test.app = GTK_APPLICATION(adw_application_new("com.itomek.LemonVox.SettingsTest", G_APPLICATION_NON_UNIQUE));
     struct Start { Test *test; lemonvox::ubuntu::Settings settings; } start{&test, settings};
     g_signal_connect(test.app, "activate", G_CALLBACK(+[](GtkApplication *app, gpointer data) {
@@ -62,6 +65,15 @@ int main(int argc, char **argv) {
         lemonvox::ubuntu::apply_appearance(start.settings);
         test.window = std::make_unique<lemonvox::ubuntu::SettingsWindow>(app, start.settings,
             [](const auto &, std::string &) { return true; }, [](const auto &) {}, [] {}, [](const auto &) {});
+        lemonvox::ProtocolModel transcription;
+        transcription.id = start.settings.asr_model;
+        transcription.asr = true;
+        transcription.downloaded = true;
+        lemonvox::ProtocolModel cleanup;
+        cleanup.id = start.settings.cleanup_model;
+        cleanup.cleanup = true;
+        cleanup.downloaded = true;
+        test.window->models({transcription, cleanup}, "Synthetic model inventory for screenshot review.");
         test.window->health(test.health_status);
         test.window->present();
         auto *windows = gtk_application_get_windows(app);

@@ -28,7 +28,7 @@ class SyntheticBackend {
         this._state = 'idle';
         this._message = 'Ready';
         this._result = '';
-        this._palette = '#101112ff #202122ff #303132ff #404142ff';
+        this._palette = GLib.getenv('LEMONVOX_TEST_PALETTE') ?? '#101112ff #202122ff #303132ff #404142ff';
         this._error = false;
         this.object = Gio.DBusExportedObject.wrapJSObject(interfaceXml, this);
     }
