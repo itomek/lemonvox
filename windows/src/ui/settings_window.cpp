@@ -758,6 +758,8 @@ private:
             if (code == BN_CLICKED) {
                 SetWindowTextW(control(SettingsControl::prompt_edit),
                     settings::to_edit_newlines(utf8_to_wide(default_prompt_)).c_str());
+                // Multiline edits do not send EN_CHANGE for WM_SETTEXT.
+                save();
             }
             break;
         case SettingsControl::privacy_button:

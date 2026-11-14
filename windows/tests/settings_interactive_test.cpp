@@ -356,8 +356,7 @@ int main() {
         const auto disconnected = text_of(item(window, SettingsControl::endpoint_hint));
         CHECK(disconnected.find(L"Could not connect") != std::wstring::npos);
         CHECK(disconnected.find(L"Lemonade or another compatible OpenAI server") != std::wstring::npos);
-        const auto capabilities = text_of(item(window, SettingsControl::routing_note));
-        CHECK(capabilities.find(L"transcription, chat and discoverable compatible model metadata") != std::wstring::npos);
+        CHECK(!IsWindowVisible(item(window, SettingsControl::routing_note)));
         CHECK(text_of(item(window, SettingsControl::status)) == L"Loading models from server\u2026");
         CHECK(combo_items(item(window, SettingsControl::asr_combo)) == std::vector<std::wstring>{L"whisper-old"});
         CHECK(fake.endpoints == std::vector<std::string>{"http://127.0.0.1:13305/v1"});
@@ -456,8 +455,11 @@ int main() {
         const auto saved = *fake.saved;
         window.show(saved);
         CHECK(!IsWindowVisible(item(window, SettingsControl::execution_combo)));
+        CHECK(!IsWindowVisible(item(window, SettingsControl::routing_note)));
         click(window, SettingsControl::advanced_button);
         CHECK(IsWindowVisible(item(window, SettingsControl::execution_combo)));
+        CHECK(IsWindowVisible(item(window, SettingsControl::routing_note)));
+        CHECK(!text_of(item(window, SettingsControl::routing_note)).empty());
         select_combo(item(window, SettingsControl::execution_combo), L"Lemonade (server default)");
         CHECK(fake.saved->cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT);
         select_combo(item(window, SettingsControl::execution_combo), L"Compatible server (server default)");
