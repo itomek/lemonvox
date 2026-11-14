@@ -1,6 +1,6 @@
 # PR 103 Ubuntu follow-up — 2026-11-14
 
-Started from `fca3bdc0040388510f117fb58529c38da5280619`, including the concurrent Windows fix. The final PR comment records the exact combined tested commit. This report supplements the earlier Ubuntu report; it does not convert missing acceptance evidence into a pass.
+Started from `fca3bdc0040388510f117fb58529c38da5280619`, including the concurrent Windows fix. Final tested code/package revision: **`cb05585088af6774ff77203f362ef9d3039d9615`**, clean package provenance (`source_dirty: false`). Subsequent report-only commits retain this tested revision. This report supplements the earlier Ubuntu report; it does not convert missing acceptance evidence into a pass.
 
 Environment: Ubuntu 24.04.5 LTS, aarch64, GNOME Shell 46.0, Wayland; GTK 4.14.5, libadwaita 1.5.0. Logged-in desktop scaling-factor is automatic (0), text scale 1.0. Native automation uses disposable headless GNOME compositors, private session buses and XDG directories. No extension installation/restart or preference changes on the logged-in desktop. Audio is `audiotestsrc` or a uniquely named null-sink monitor; HTTP responses are loopback fixtures. No real microphone, inference, or model download is required.
 

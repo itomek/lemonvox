@@ -1,2 +1,2 @@
-761b734232b1189adafd23955b9f29914be7623b6f726be987b2344704e53287  /tmp/pr103-followup-package-final-root/usr/bin/lemonvox
-761b734232b1189adafd23955b9f29914be7623b6f726be987b2344704e53287  /tmp/lemonvox-settings-accessibility.a5kj37/lemonvox
+988e047a8a01fc47bedd7cbaef34e22a3252ba9c56e46a07e52717f9d32071a5  /tmp/pr103-followup-package-cb05585-root/usr/bin/lemonvox
+988e047a8a01fc47bedd7cbaef34e22a3252ba9c56e46a07e52717f9d32071a5  /tmp/lemonvox-settings-accessibility.NvPJPG/lemonvox
