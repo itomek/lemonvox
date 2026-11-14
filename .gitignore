@@ -1,10 +1,85 @@
+# Local build output
 .build/
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Compiled objects and native debug output
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.dSYM/
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# macOS / Xcode
 .DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Windows / Visual Studio
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.vs/
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+
+# Linux / GNOME
+.Trash-*/
+.nfs*
+gschemas.compiled
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor backups and temporary files
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+
+# Local credentials and signing material
 .env
 .env.*
+!.env.example
+!.env.sample
 *.p8
 *.p12
 *.pfx
 *.key
 *.cer
 *.certSigningRequest
+
+# Generated evidence and local planning documents
+/docs/evidence/
+/docs/superpowers/
+/docs/distribution/
