@@ -1,0 +1,1 @@
+PASS: native service start/Stop/result, recording/processing cancel, empty response recovery, private transient state

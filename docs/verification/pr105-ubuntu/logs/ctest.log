@@ -1,0 +1,28 @@
+Internal ctest changing into directory: /home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/.build/ubuntu-102
+Test project /home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/.build/ubuntu-102
+      Start  1: lemonvox_model_setup_test
+ 1/11 Test  #1: lemonvox_model_setup_test ..........   Passed    0.01 sec
+      Start  2: lemonvox_model_setup_client_test
+ 2/11 Test  #2: lemonvox_model_setup_client_test ...   Passed    0.01 sec
+      Start  3: lemonvox_ubuntu_adapters_test
+ 3/11 Test  #3: lemonvox_ubuntu_adapters_test ......   Passed    0.44 sec
+      Start  4: lemonvox_version_test
+ 4/11 Test  #4: lemonvox_version_test ..............   Passed    0.02 sec
+      Start  5: lemonvox_settings_test
+ 5/11 Test  #5: lemonvox_settings_test .............   Passed    0.02 sec
+      Start  6: lemonvox_diagnostics_test
+ 6/11 Test  #6: lemonvox_diagnostics_test ..........   Passed    0.05 sec
+      Start  7: lemonvox_workflow_native_test
+ 7/11 Test  #7: lemonvox_workflow_native_test ......   Passed    1.53 sec
+      Start  8: lemonvox_packaging_test
+ 8/11 Test  #8: lemonvox_packaging_test ............   Passed    0.03 sec
+      Start  9: lemonvox_extension_policy_test
+ 9/11 Test  #9: lemonvox_extension_policy_test .....   Passed    0.02 sec
+      Start 10: lemonvox_extension_dbus_test
+10/11 Test #10: lemonvox_extension_dbus_test .......   Passed    0.09 sec
+      Start 11: lemonvox_extension_contract_test
+11/11 Test #11: lemonvox_extension_contract_test ...   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 11
+
+Total Test time (real) =   2.25 sec

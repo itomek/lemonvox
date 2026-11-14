@@ -1,0 +1,7 @@
+PASS: cancellation rejects late ASR and preserves copied prior result
+PASS: HTTP cleanup failure retains new raw ASR result
+PASS: native insertion-unavailable fallback preserves cleaned recovery
+PASS: new cleaned result replaces raw recovery and repeated copies preserve it
+PASS: HTTP ASR failure preserves previous cleaned result
+PASS: real service process restart clears retained text
+PASS: native service start/Stop/result, recording/processing cancel, empty response recovery, private transient state

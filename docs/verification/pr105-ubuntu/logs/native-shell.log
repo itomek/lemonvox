@@ -1,0 +1,4 @@
+Starting isolated GNOME Shell 46 Wayland test
+PASS: Shell discovered, enabled, activated, disabled, and deactivated lemonvox@itomek.com
+PASS: isolated GNOME Shell extension enable/disable test
+Keeping isolated test directory: /tmp/lemonvox-extension-shell.fdbUom

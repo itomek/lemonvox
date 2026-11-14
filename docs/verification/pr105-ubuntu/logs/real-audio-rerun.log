@@ -1,0 +1,6 @@
+Synthetic ASR/cleanup did not independently preserve the expected name, number and day.
+
+Traceback (most recent call last):
+  File "/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/ubuntu/tests/audio-loopback.py", line 49, in <module>
+    raise RuntimeError('Synthetic speech workflow failed')
+RuntimeError: Synthetic speech workflow failed

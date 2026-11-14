@@ -1,0 +1,2 @@
+DIAGNOSTIC asr_checked=1 asr_matches=1 cleanup_matches=1 retained_equals_result=1
+PASS: played synthetic speech, production capture, independently checked real ASR/cleanup, expected name/number/day and Copy fallback

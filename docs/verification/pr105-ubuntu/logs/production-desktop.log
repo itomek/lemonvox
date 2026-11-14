@@ -1,0 +1,53 @@
+Private desktop root: /tmp/pr105-production-desktop.rvCZmn
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.a11y.Bus' requested by ':1.2' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[25017]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[25017]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.freedesktop.systemd1' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.Shell.Screencast' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.9' (uid=1000 pid=25043 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='ca.desrt.dconf' requested by ':1.10' (uid=1000 pid=25064 comm="/usr/libexec/evolution-source-registry" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'ca.desrt.dconf'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.Shell.Notifications' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.OnlineAccounts' requested by ':1.10' (uid=1000 pid=25064 comm="/usr/libexec/evolution-source-registry" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
+goa-daemon-Message: 14:25:48.050: goa-daemon version 3.50.4 starting
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.Shell.Notifications'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.9' (uid=1000 pid=25043 comm="/usr/libexec/gnome-shell-calendar-server" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.Shell.CalendarServer'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.Identity' requested by ':1.13' (uid=1000 pid=25080 comm="/usr/libexec/goa-daemon" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gtk.vfs.Daemon' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.Identity'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gnome.evolution.dataserver.AddressBook10' requested by ':1.18' (uid=1000 pid=25102 comm="/usr/libexec/evolution-calendar-factory" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.evolution.dataserver.AddressBook10'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gtk.vfs.AfcVolumeMonitor' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gtk.vfs.AfcVolumeMonitor'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Activating service name='org.gtk.vfs.GPhoto2VolumeMonitor' requested by ':1.1' (uid=1000 pid=24983 comm="gnome-shell --wayland --wayland-display=wayland-0" label="chatgpt (unconfined)")
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gtk.vfs.GPhoto2VolumeMonitor'
+dbus-daemon[24981]: [session uid=1000 pid=24981] Successfully activated service 'org.gnome.Shell.Screencast'
+(true,)
+PASS: production GNOME Copy Last Transcription menu repeatedly writes real Wayland clipboard
+PASS: copied durable transcription pasted into real GTK Wayland Entry without Enter
+PASS: actual GTK Settings Copy Last Transcription button activated with Tab/Space; status and independent Wayland clipboard match
+PASS: failed empty transcription retains previous result and GNOME menu copies it to real clipboard
+PASS: native service start/Stop/result, recording/processing cancel, empty response recovery, private transient state
+gnome-shell-calendar-server[25043]: Lost (or failed to acquire) the name org.gnome.Shell.CalendarServer - exiting
+
+(evolution-calendar-factory:25102): libedbus-private-WARNING **: 14:25:55.306: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)
+
+(evolution-addressbook-factory:25147): libedbus-private-WARNING **: 14:25:55.306: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)
+A connection to the bus can't be made

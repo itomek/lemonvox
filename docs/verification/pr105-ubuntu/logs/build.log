@@ -1,0 +1,40 @@
+[  7%] Building CXX object CMakeFiles/lemonvox_core.dir/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/core/session.cpp.o
+[  7%] Building CXX object CMakeFiles/lemonvox_core.dir/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/core/protocol.cpp.o
+[ 10%] Building CXX object CMakeFiles/lemonvox_core.dir/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/core/workflow.cpp.o
+[ 14%] Building C object CMakeFiles/lemonvox_core.dir/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/third_party/yyjson/yyjson.c.o
+[ 17%] Linking CXX static library liblemonvox_core.a
+[ 17%] Built target lemonvox_core
+[ 25%] Building CXX object CMakeFiles/lemonvox_model_setup_test.dir/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/tests/model_setup_test.cpp.o
+[ 25%] Building CXX object CMakeFiles/lemonvox_ubuntu_adapters.dir/adapters.cpp.o
+[ 28%] Linking CXX executable lemonvox_model_setup_test
+[ 28%] Built target lemonvox_model_setup_test
+[ 32%] Building CXX object CMakeFiles/lemonvox_model_setup_client_test.dir/home/tomas/.codex/worktrees/pr105-ubuntu-verification/lemonvox/tests/model_setup_client_test.cpp.o
+[ 35%] Linking CXX executable lemonvox_model_setup_client_test
+[ 39%] Linking CXX static library liblemonvox_ubuntu_adapters.a
+[ 39%] Built target lemonvox_ubuntu_adapters
+[ 42%] Building CXX object CMakeFiles/lemonvox_ubuntu_adapters_test.dir/tests/adapters_test.cpp.o
+[ 42%] Built target lemonvox_model_setup_client_test
+[ 46%] Building CXX object CMakeFiles/lemonvox_ubuntu_settings.dir/settings.cpp.o
+[ 50%] Linking CXX executable lemonvox_ubuntu_adapters_test
+[ 50%] Built target lemonvox_ubuntu_adapters_test
+[ 53%] Building CXX object CMakeFiles/lemonvox_workflow_native_test.dir/tests/workflow_native_test.cpp.o
+[ 57%] Building CXX object CMakeFiles/lemonvox_ubuntu_settings.dir/diagnostics.cpp.o
+[ 60%] Linking CXX static library liblemonvox_ubuntu_settings.a
+[ 60%] Built target lemonvox_ubuntu_settings
+[ 64%] Building CXX object CMakeFiles/lemonvox_workflow_audio_test.dir/tests/workflow_audio_test.cpp.o
+[ 67%] Linking CXX executable lemonvox_workflow_native_test
+[ 67%] Built target lemonvox_workflow_native_test
+[ 71%] Building CXX object CMakeFiles/lemonvox_settings_ui_test.dir/tests/settings_ui_test.cpp.o
+[ 75%] Linking CXX executable lemonvox_workflow_audio_test
+[ 75%] Built target lemonvox_workflow_audio_test
+[ 78%] Building CXX object CMakeFiles/lemonvox.dir/main.cpp.o
+[ 82%] Linking CXX executable lemonvox_settings_ui_test
+[ 82%] Built target lemonvox_settings_ui_test
+[ 85%] Building CXX object CMakeFiles/lemonvox_settings_test.dir/tests/settings_test.cpp.o
+[ 89%] Linking CXX executable lemonvox
+[ 89%] Built target lemonvox
+[ 92%] Building CXX object CMakeFiles/lemonvox_diagnostics_test.dir/tests/diagnostics_test.cpp.o
+[ 96%] Linking CXX executable lemonvox_settings_test
+[ 96%] Built target lemonvox_settings_test
+[100%] Linking CXX executable lemonvox_diagnostics_test
+[100%] Built target lemonvox_diagnostics_test
