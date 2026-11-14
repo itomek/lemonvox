@@ -43,9 +43,9 @@ WinGet pending; [download and setup](windows/README.md).
 compare macOS, Windows and Ubuntu. The current images are synthetic native
 fixtures; final three-platform parity verification remains open.
 
-| macOS Settings (Light / Dark) | Ubuntu General (Light) |
-| --- | --- |
-| ![macOS native Settings fixture, General, Models and Diagnostics in light and dark](docs/assets/desktop/macos-settings-light-dark.png) | ![Ubuntu native General settings fixture in light appearance](docs/assets/desktop/ubuntu-general-light.png) |
+| macOS Settings (Light / Dark) | Ubuntu General (Light) | Windows Settings (System Dark, 200%) |
+| --- | --- | --- |
+| ![macOS native Settings fixture, General, Models and Diagnostics in light and dark](docs/assets/desktop/macos-settings-light-dark.png) | ![Ubuntu native General settings fixture in light appearance](docs/assets/desktop/ubuntu-general-light.png) | ![Windows combined native Settings fixture in system-dark appearance at 200 percent scale](docs/assets/desktop/windows-settings.png) |
 
-Windows screenshot evidence is pending an unlocked native desktop; the linked
-comparison includes the reproducible capture command and missing checks.
+The comparison includes native evidence from all three platforms, reproducible
+capture commands and remaining appearance, scaling and accessibility checks.
