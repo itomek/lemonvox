@@ -176,7 +176,7 @@ void CALLBACK App::foreground_changed(HWINEVENTHOOK, DWORD, HWND window, LONG ob
 void App::on_foreground(HWND window) {
     if (!window || window == elevated_noticed_ || controller_->busy()) return;
     const auto binding = trigger_->active();
-    if (!binding || binding->kind != TriggerKind::double_tap) return;
+    if (!binding || binding->kind == TriggerKind::combination) return;
     if (indicator_->visible() && indicator_->state().mode != ui::IndicatorMode::notice) return;
     DWORD process = 0;
     GetWindowThreadProcessId(window, &process);

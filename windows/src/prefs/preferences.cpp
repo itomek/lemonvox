@@ -3,6 +3,7 @@
 #include "common/utf.h"
 
 #include <windows.h>
+#include <ktmw32.h>
 
 #include <optional>
 
@@ -105,9 +106,15 @@ WinPreferences PreferencesStore::load() const {
 }
 
 bool PreferencesStore::save(const WinPreferences &preferences) const {
+    // Registry transactions keep every persisted value at the last working
+    // snapshot if a later write fails, including UTF conversion failures.
+    const HANDLE transaction = CreateTransaction(nullptr, nullptr, 0, 0, 0, 0, nullptr);
+    if (transaction == INVALID_HANDLE_VALUE) return false;
     HKEY key = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, subkey_.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE,
-            nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    if (RegCreateKeyTransactedW(HKEY_CURRENT_USER, subkey_.c_str(), 0, nullptr,
+            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &key, nullptr,
+            transaction, nullptr) != ERROR_SUCCESS) {
+        CloseHandle(transaction);
         return false;
     }
     bool ok = true;
@@ -123,6 +130,9 @@ bool PreferencesStore::save(const WinPreferences &preferences) const {
     ok = write_utf8(key, kTrigger, serialize_trigger(preferences.trigger)) && ok;
     ok = write_wide(key, kCaptureDevice, preferences.capture_device_id) && ok;
     RegCloseKey(key);
+    if (ok) ok = CommitTransaction(transaction) != FALSE;
+    if (!ok) RollbackTransaction(transaction);
+    CloseHandle(transaction);
     return ok;
 }
 

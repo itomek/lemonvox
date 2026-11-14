@@ -169,6 +169,13 @@ void legacy_prompt_migrates_without_changing_model(const PreferencesStore &store
 }
 
 void save_rejects_invalid_utf8(const PreferencesStore &store) {
+    const auto before = store.load();
+    auto invalid = before;
+    invalid.endpoint = "http://changed.invalid/v1";
+    invalid.cleanup_prompt = "\xC3\x28";
+    assert(!store.save(invalid));
+    assert(store.load().endpoint == before.endpoint);
+    assert(store.load().cleanup_prompt == before.cleanup_prompt);
     WinPreferences preferences;
     preferences.asr_model = "\xC3\x28";
     assert(!store.save(preferences));

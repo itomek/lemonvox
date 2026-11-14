@@ -63,13 +63,14 @@ bool is_modifier_key(std::uint32_t vk) {
 }
 
 bool valid(const TriggerBinding &binding) {
-    if (binding.kind == TriggerKind::double_tap) {
+    if (binding.kind == TriggerKind::double_tap || binding.kind == TriggerKind::single_tap) {
         bool known = false;
         for (const auto &name : kTapNames) known = known || name.key == binding.tap_key;
         bool side = false;
         for (const auto &name : kSideNames) side = side || name.side == binding.tap_side;
         return known && side && binding.modifiers == 0 && binding.virtual_key == 0;
     }
+    if (binding.kind != TriggerKind::combination) return false;
     if (binding.tap_key != LV_KEY_OPTION || binding.tap_side != LV_KEY_SIDE_ANY) return false;
     if ((binding.modifiers & ~kAllModifiers) != 0) return false;
     // Shift alone would capture ordinary typing, so require a non-Shift modifier.
@@ -120,8 +121,8 @@ TriggerBinding default_trigger() {
 
 std::string serialize_trigger(const TriggerBinding &binding) {
     if (!valid(binding)) return serialize_trigger(default_trigger());
-    if (binding.kind == TriggerKind::double_tap) {
-        std::string text = "double:";
+    if (binding.kind == TriggerKind::double_tap || binding.kind == TriggerKind::single_tap) {
+        std::string text = binding.kind == TriggerKind::single_tap ? "single:" : "double:";
         for (const auto &name : kTapNames) if (name.key == binding.tap_key) text += name.storage;
         text += ':';
         for (const auto &name : kSideNames) if (name.side == binding.tap_side) text += name.storage;
@@ -143,7 +144,7 @@ std::string serialize_trigger(const TriggerBinding &binding) {
 bool parse_trigger(const std::string &text, TriggerBinding &binding) {
     const std::string_view view(text);
     TriggerBinding parsed;
-    if (view.rfind("double:", 0) == 0) {
+    if (view.rfind("double:", 0) == 0 || view.rfind("single:", 0) == 0) {
         const std::string_view rest = view.substr(7);
         const size_t colon = rest.find(':');
         if (colon == std::string_view::npos) return false;
@@ -158,7 +159,7 @@ bool parse_trigger(const std::string &text, TriggerBinding &binding) {
             if (side == name.storage) { parsed.tap_side = name.side; side_found = true; }
         }
         if (!key_found || !side_found) return false;
-        parsed.kind = TriggerKind::double_tap;
+        parsed.kind = view.rfind("single:", 0) == 0 ? TriggerKind::single_tap : TriggerKind::double_tap;
     } else if (view.rfind("combo:", 0) == 0) {
         const std::string_view rest = view.substr(6);
         const size_t colon = rest.rfind(':');
@@ -196,11 +197,11 @@ bool parse_trigger(const std::string &text, TriggerBinding &binding) {
 
 std::wstring describe_trigger(const TriggerBinding &binding) {
     const TriggerBinding &shown = valid(binding) ? binding : default_trigger();
-    if (shown.kind == TriggerKind::double_tap) {
+    if (shown.kind == TriggerKind::double_tap || shown.kind == TriggerKind::single_tap) {
         std::wstring label;
         for (const auto &name : kSideNames) if (name.side == shown.tap_side) label += name.label;
         for (const auto &name : kTapNames) if (name.key == shown.tap_key) label += name.label;
-        return label + L" twice";
+        return label + (shown.kind == TriggerKind::single_tap ? L" once" : L" twice");
     }
     std::wstring label;
     for (const auto &name : kModifierNames) {

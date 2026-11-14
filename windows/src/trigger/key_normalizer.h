@@ -3,6 +3,7 @@
 #include "session.h"
 
 #include <cstdint>
+#include <array>
 
 namespace lemonvox::win {
 
@@ -32,7 +33,7 @@ public:
     // Returns true and fills *out when the event must be fed to the detector;
     // false when it carries no information (repeat, key-up of an ordinary key,
     // LemonVox's own injected input).
-    bool key(const RawKeyEvent &event, LVNormalizedKeyEvent *out);
+    bool key(const RawKeyEvent &event, LVNormalizedKeyEvent *out, bool reject_repeats = false);
     // A mouse button press always interrupts a pending double tap.
     LVNormalizedKeyEvent mouse_button(std::uint32_t time_ms);
     // MOD_* flags for modifiers currently held (AltGr reports Ctrl+Alt, as Windows does).
@@ -42,6 +43,7 @@ public:
 private:
     double seconds(std::uint32_t time_ms);
 
+    std::array<bool, 256> ordinary_down_{};
     std::uint32_t down_ = 0;
     bool fake_ctrl_down_ = false;
     bool altgr_down_ = false;

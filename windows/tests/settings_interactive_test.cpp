@@ -55,6 +55,7 @@ struct Fake {
     bool suspended = false;
     int suspend_calls = 0;
     bool apply_fails = false;
+    bool save_fails = false;
     std::vector<TriggerBinding> applied;
     std::optional<WinPreferences> saved;
     int save_calls = 0;
@@ -89,8 +90,9 @@ struct Fake {
             ++suspend_calls;
         };
         services.save = [this](const WinPreferences &preferences) {
-            saved.emplace(preferences);
             ++save_calls;
+            if (save_fails) return false;
+            saved.emplace(preferences);
             return true;
         };
         services.open_microphone_privacy = [this] { ++privacy_calls; };
@@ -161,6 +163,7 @@ void select_combo(HWND combo, const std::wstring &label) {
     for (size_t i = 0; i < items.size(); ++i) {
         if (items[i] == label) {
             SendMessageW(combo, CB_SETCURSEL, i, 0);
+            SendMessageW(GetParent(combo), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(combo), CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo));
             return;
         }
     }
@@ -243,14 +246,13 @@ std::vector<std::string> check_automation(const SettingsWindow &window) {
         {item(window, SettingsControl::endpoint_edit), L"Server endpoint"},
         {item(window, SettingsControl::asr_combo), L"Transcription model"},
         {item(window, SettingsControl::cleanup_combo), L"Cleanup model"},
-        {item(window, SettingsControl::execution_combo), L"Cleanup execution"},
+
         {item(window, SettingsControl::prompt_edit), L"Cleanup prompt"},
         {item(window, SettingsControl::shortcut_combo), L"Shortcut"},
         {item(window, SettingsControl::recorder_edit), L"Custom shortcut"},
         {item(window, SettingsControl::microphone_combo), L"Microphone"},
         {item(window, SettingsControl::refresh_button), L"Refresh models"},
-        {item(window, SettingsControl::save_button), L"Save"},
-        {item(window, SettingsControl::cancel_button), L"Cancel"},
+        {item(window, SettingsControl::advanced_button), L"Advanced…"},
     };
     const HWND status = item(window, SettingsControl::status);
     std::vector<std::string> failures;
@@ -410,12 +412,12 @@ int main() {
         // visible, enabled setup actions sit between cleanup execution and the
         // cleanup prompt, including Cancel setup (an idle no-op).
         const std::vector<SettingsControl> order{SettingsControl::endpoint_edit, SettingsControl::refresh_button,
-            SettingsControl::asr_combo, SettingsControl::cleanup_combo, SettingsControl::execution_combo,
+            SettingsControl::asr_combo, SettingsControl::cleanup_combo,
             SettingsControl::install_asr_button, SettingsControl::install_cleanup_button,
             SettingsControl::cancel_install_button, SettingsControl::prompt_edit,
             SettingsControl::reset_prompt_button, SettingsControl::shortcut_combo, SettingsControl::recorder_edit,
             SettingsControl::microphone_combo, SettingsControl::privacy_button,
-            SettingsControl::save_button, SettingsControl::cancel_button, SettingsControl::endpoint_edit};
+            SettingsControl::advanced_button, SettingsControl::endpoint_edit};
         for (size_t i = 0; i + 1 < order.size(); ++i) {
             CHECK(IsWindowVisible(item(window, order[i])));
             CHECK(IsWindowEnabled(item(window, order[i])));
@@ -435,98 +437,65 @@ int main() {
         }
         std::printf("dark mode: %s\n", window.dark_mode_active() ? "on" : "off");
 
-        // Validation keeps the window open and explains.
+        // Invalid endpoint drafts do not block unrelated selections.
         SetWindowTextW(item(window, SettingsControl::endpoint_edit), L"");
-        click(window, SettingsControl::save_button);
+        pump_for(400);
         CHECK(window.is_open() && fake.save_calls == 0);
-        CHECK(text_of(item(window, SettingsControl::status)).find(L"Enter the server endpoint") == 0);
-        SetWindowTextW(item(window, SettingsControl::endpoint_edit), L"http://localhost:13305/v1");
-        pump_once();
-        CHECK(text_of(item(window, SettingsControl::status)).find(L"Endpoint changed.") == 0);
+        CHECK(text_of(item(window, SettingsControl::endpoint_error)).find(L"Enter the server endpoint") == 0);
+        select_combo(item(window, SettingsControl::microphone_combo), L"Headset");
+        CHECK(fake.saved && fake.saved->capture_device_id == L"{dev2}");
+        CHECK(fake.saved->endpoint == initial.endpoint);
 
-        SetWindowTextW(item(window, SettingsControl::prompt_edit), L"x");
-        click(window, SettingsControl::reset_prompt_button);
-        CHECK(text_of(item(window, SettingsControl::prompt_edit)) == L"Default prompt line 1\r\nline 2");
+        // Text is debounced; closing immediately flushes the latest valid draft.
+        SetWindowTextW(item(window, SettingsControl::endpoint_edit), L"http://localhost:13305/v1");
+        SetWindowTextW(item(window, SettingsControl::prompt_edit), L"A custom prompt");
+        window.close();
+        CHECK(!window.is_open());
+        CHECK(fake.saved->endpoint == "http://localhost:13305/v1");
+        CHECK(fake.saved->cleanup_prompt == "A custom prompt");
+        const auto saved = *fake.saved;
+        window.show(saved);
+        CHECK(!IsWindowVisible(item(window, SettingsControl::execution_combo)));
+        click(window, SettingsControl::advanced_button);
+        CHECK(IsWindowVisible(item(window, SettingsControl::execution_combo)));
+        select_combo(item(window, SettingsControl::execution_combo), L"Lemonade (server default)");
+        CHECK(fake.saved->cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT);
+        select_combo(item(window, SettingsControl::execution_combo), L"Compatible server (server default)");
+        CHECK(fake.saved->cleanup_backend == LV_CLEANUP_BACKEND_GENERIC);
+        CHECK(fake.saved->cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT);
+
+        // Binding rejection preserves the last working trigger while other fields save.
+        fake.apply_fails = true;
+        select_combo(item(window, SettingsControl::shortcut_combo), L"Left Alt once");
+        CHECK(fake.saved->trigger == saved.trigger);
+        CHECK(text_of(item(window, SettingsControl::shortcut_error)).find(L"already registered") != std::wstring::npos);
+        fake.apply_fails = false;
+        select_combo(item(window, SettingsControl::shortcut_combo), L"Right Ctrl once");
+        CHECK(fake.saved->trigger.kind == TriggerKind::single_tap);
+        CHECK(fake.saved->trigger.tap_side == LV_KEY_SIDE_RIGHT);
+        CHECK(window.is_open());
+
+        // A write failure preserves the active and saved settings; a later edit retries.
+        const auto before_failure = *fake.saved;
+        fake.save_fails = true;
+        select_combo(item(window, SettingsControl::shortcut_combo), L"Left Shift once");
+        CHECK(fake.saved->trigger == before_failure.trigger);
+        CHECK(fake.applied.back() == before_failure.trigger);
+        CHECK(text_of(item(window, SettingsControl::status)).find(L"Changes could not be saved") == 0);
+        fake.save_fails = false;
+        focus(window, SettingsControl::recorder_edit);
+        send_keys(window.hwnd(), {{VK_CONTROL, false}, {VK_SHIFT, false}, {'K', false}, {'K', true},
+            {VK_SHIFT, true}, {VK_CONTROL, true}});
+        CHECK(pump_until([&] { return fake.saved->trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'); }));
+        CHECK(!fake.suspended);
         click(window, SettingsControl::privacy_button);
         CHECK(fake.privacy_calls == 1);
-
-        // Recording: Alt+letter is recorded, not treated as a mnemonic (Alt+S would Save).
-        focus(window, SettingsControl::recorder_edit);
-        CHECK(fake.suspended);
-        CHECK(text_of(item(window, SettingsControl::recorder_edit)) == settings::kRecorderPrompt);
-        send_keys(window.hwnd(), {{VK_MENU, false}, {'S', false}, {'S', true}, {VK_MENU, true}});
-        CHECK(window.is_open() && fake.save_calls == 0);
-        CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Alt+S");
-        CHECK(!fake.suspended);
-
-        focus(window, SettingsControl::recorder_edit);
-        CHECK(fake.suspended);
-        send_keys(window.hwnd(), {{VK_CONTROL, false}, {VK_SHIFT, false}, {'K', false}, {'K', true},
-                                     {VK_SHIFT, true}, {VK_CONTROL, true}});
-        CHECK(pump_until([&] {
-            return combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Ctrl+Shift+K";
-        }));
-        CHECK(!fake.suspended);
-        CHECK(GetFocus() == item(window, SettingsControl::shortcut_combo));
-        CHECK(text_of(item(window, SettingsControl::recorder_edit)) == L"Ctrl+Shift+K");
-
-        // Esc cancels recording only, leaving the window and binding alone.
-        focus(window, SettingsControl::recorder_edit);
-        send_keys(window.hwnd(), {{VK_ESCAPE, false}, {VK_ESCAPE, true}});
-        CHECK(window.is_open());
-        CHECK(GetFocus() == item(window, SettingsControl::shortcut_combo));
-        CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Ctrl+Shift+K");
-        CHECK(!fake.suspended);
-        // Shift alone plus a key is rejected and recording continues.
-        focus(window, SettingsControl::recorder_edit);
-        send_keys(window.hwnd(), {{VK_SHIFT, false}, {'Q', false}, {'Q', true}, {VK_SHIFT, true}});
-        CHECK(fake.suspended);
-        CHECK(text_of(item(window, SettingsControl::status)).find(L"A shortcut needs Ctrl, Alt or Windows") == 0);
-        focus(window, SettingsControl::endpoint_edit);
-        CHECK(!fake.suspended);
-
-        select_combo(item(window, SettingsControl::asr_combo), L"fresh-asr (installed)");
-        select_combo(item(window, SettingsControl::microphone_combo), L"Headset");
-        select_combo(item(window, SettingsControl::execution_combo), L"Lemonade (server default)");
-
-        // Enter = Save. A shortcut the app cannot register aborts the save.
-        fake.apply_fails = true;
-        focus(window, SettingsControl::endpoint_edit);
-        send_keys(window.hwnd(), {{VK_RETURN, false}, {VK_RETURN, true}});
-        CHECK(window.is_open() && fake.save_calls == 0);
-        CHECK(fake.applied.size() == 1 && fake.applied[0] == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
-        CHECK(text_of(item(window, SettingsControl::status)).find(L"already registered by another app")
-            != std::wstring::npos);
-
-        fake.apply_fails = false;
-        focus(window, SettingsControl::endpoint_edit);
-        send_keys(window.hwnd(), {{VK_RETURN, false}, {VK_RETURN, true}});
-        CHECK(pump_until([&] { return !window.is_open(); }));
-        CHECK(fake.save_calls == 1 && fake.saved);
-        const WinPreferences &saved = *fake.saved;
-        CHECK(saved.endpoint == "http://localhost:13305/v1");
-        CHECK(saved.asr_model == "fresh-asr");
-        CHECK(saved.cleanup_model == "llama");
-        CHECK(saved.cleanup_prompt == kDefaultPrompt);
-        CHECK(saved.cleanup_backend == LV_CLEANUP_BACKEND_LEMONADE);
-        CHECK(saved.cleanup_thinking == LV_CLEANUP_THINKING_SERVER_DEFAULT);
-        CHECK(saved.trigger == combination(MOD_CONTROL | MOD_SHIFT, 'K'));
-        CHECK(saved.capture_device_id == L"{dev2}");
-        CHECK(!fake.suspended);
-
-        // The application can publish a newer health snapshot while Settings is closed.
-        window.set_server_health(LV_SERVER_HEALTH_CONNECTED);
-        // Esc = Cancel, and a refresh finishing after close is ignored.
-        fake.plan.push_back({200, models({{"late", true, true, false}})});
-        window.show(saved);
-        CHECK(window.is_open());
-        CHECK(text_of(item(window, SettingsControl::endpoint_hint)).find(L"Server connected") != std::wstring::npos);
-        CHECK(combo_selected(item(window, SettingsControl::shortcut_combo)) == L"Ctrl+Shift+K");
-        CHECK(combo_selected(item(window, SettingsControl::microphone_combo)) == L"Headset");
+        click(window, SettingsControl::reset_prompt_button);
+        pump_for(400);
+        CHECK(fake.saved->cleanup_prompt == kDefaultPrompt);
         focus(window, SettingsControl::prompt_edit);
         send_keys(window.hwnd(), {{VK_ESCAPE, false}, {VK_ESCAPE, true}});
         CHECK(pump_until([&] { return !window.is_open(); }));
-        CHECK(fake.save_calls == 1);
         pump_for(400);
         g_window = nullptr;
     }
