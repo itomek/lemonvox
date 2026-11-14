@@ -4,6 +4,8 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <map>
+#include <set>
 namespace lemonvox::ubuntu {
 struct Settings {
     std::string endpoint = "http://127.0.0.1:13305/v1";
@@ -30,6 +32,10 @@ private: std::string path_;
 };
 void apply_appearance(const Settings &);
 void apply_extension_shortcuts(const Settings &);
+bool apply_verified_extension_shortcuts(const Settings &candidate, std::string &error);
+using SettingsWrite = std::function<bool(const Settings &, std::string &)>;
+bool persist_settings_change(const Settings &saved, const Settings &candidate,
+    const SettingsWrite &persist, const SettingsWrite &bind, std::string &error);
 class SettingsWindow {
 public:
     using Save = std::function<bool(const Settings &, std::string &)>;
@@ -44,7 +50,10 @@ public:
     void models(std::vector<ProtocolModel>, const std::string &status, bool installation_supported = false, const std::string &catalog_endpoint = {}, bool server_available = true);
     void setup_status(const std::string &, bool active, const std::string &installed = {}, bool asr = false);
 private:
-    static void save_clicked(GtkButton *, gpointer);
+    void queue_save(GObject *, bool immediate);
+    void flush();
+    void save_field(GObject *);
+    void watch(GObject *, const char *, AdwPreferencesGroup *, GtkWidget *focus = nullptr);
     static void refresh_clicked(GtkButton *, gpointer);
     void install(bool asr);
     Settings read() const;
@@ -59,6 +68,10 @@ private:
     std::vector<AdwActionRow *> health_rows_;
     std::vector<GtkImage *> health_icons_;
     GtkButton *start_ = nullptr, *stop_ = nullptr, *cancel_button_ = nullptr, *copy_ = nullptr;
+    bool populating_ = true;
+    guint save_source_ = 0;
+    std::set<GObject *> pending_;
+    std::map<GObject *, GtkLabel *> errors_;
     Settings settings_;
     Save save_;
     Refresh refresh_;

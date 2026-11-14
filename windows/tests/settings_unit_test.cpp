@@ -89,11 +89,11 @@ static TriggerBinding combo(std::uint32_t modifiers, std::uint32_t vk) {
 
 static void trigger_choices() {
     auto choices = build_trigger_choices(default_trigger());
-    CHECK(choices.items.size() == 4);
+    CHECK(choices.items.size() == 16);
     CHECK(choices.items[0].label == L"Alt twice");
     CHECK(choices.items[1].label == L"Ctrl twice");
     CHECK(choices.items[2].label == L"Shift twice");
-    CHECK(choices.items[3].custom && choices.items[3].label == L"Custom shortcut\u2026");
+    CHECK(choices.items.back().custom && choices.items.back().label == L"Custom shortcut\u2026");
     CHECK(choices.selected == 0);
 
     TriggerBinding ctrl = default_trigger();
@@ -101,14 +101,14 @@ static void trigger_choices() {
     CHECK(build_trigger_choices(ctrl).selected == 1);
 
     choices = build_trigger_choices(combo(MOD_CONTROL | MOD_SHIFT, VK_SPACE));
-    CHECK(choices.items.size() == 5);
-    CHECK(choices.selected == 3);
-    CHECK(choices.items[3].label == L"Ctrl+Shift+Space");
+    CHECK(choices.items.size() == 17);
+    CHECK(choices.selected == 15);
+    CHECK(choices.items[15].label == L"Ctrl+Shift+Space");
 
     TriggerBinding left_alt = default_trigger();
     left_alt.tap_side = LV_KEY_SIDE_LEFT;
     choices = build_trigger_choices(left_alt);
-    CHECK(choices.selected == 3 && choices.items[3].label == L"Left Alt twice");
+    CHECK(choices.selected == 15 && choices.items[15].label == L"Left Alt twice");
 
     // An invalid stored binding falls back to the default rather than showing garbage.
     CHECK(build_trigger_choices(combo(MOD_SHIFT, 'K')).selected == 0);
@@ -211,26 +211,31 @@ static bool overlaps(const RECT &a, const RECT &b) {
 }
 
 static void layout_scales_without_overlap() {
-    for (const int dpi : {96, 120, 144, 192, 288}) {
-        const int line = MulDiv(16, dpi, 96);
-        const Layout layout = compute_layout(dpi, line, [line](SettingsControl control, int width) {
-            if (width == 0) return line * 5; // button text width
-            if (control == SettingsControl::endpoint_hint) return 3 * line;
-            return control == SettingsControl::routing_note ? 3 * line : line;
-        });
-        CHECK(layout.client.cx == MulDiv(560, dpi, 96) - 2 * MulDiv(16, dpi, 96) + 2 * MulDiv(16, dpi, 96));
-        CHECK(layout.row_height >= line);
-        const int count = static_cast<int>(SettingsControl::count);
-        for (int i = 0; i < count; ++i) {
-            const RECT &rect = layout.rects[i];
-            CHECK(rect.right > rect.left && rect.bottom > rect.top);
-            CHECK(rect.left >= 0 && rect.top >= 0 && rect.right <= layout.client.cx && rect.bottom <= layout.client.cy);
-            for (int j = i + 1; j < count; ++j) CHECK(!overlaps(rect, layout.rects[j]));
+    for (const bool advanced : {false, true}) {
+        for (const int dpi : {96, 120, 144, 192, 288}) {
+            const int line = MulDiv(16, dpi, 96);
+            const Layout layout = compute_layout(dpi, line, [line](SettingsControl control, int width) {
+                if (width == 0) return line * 5; // button text width
+                if (control == SettingsControl::endpoint_hint) return 3 * line;
+                return control == SettingsControl::routing_note ? 3 * line : line;
+            }, advanced);
+            CHECK(layout.client.cx == MulDiv(560, dpi, 96) - 2 * MulDiv(16, dpi, 96) + 2 * MulDiv(16, dpi, 96));
+            CHECK(layout.row_height >= line);
+            const int count = static_cast<int>(SettingsControl::count);
+            for (int i = 0; i < count; ++i) {
+                const RECT &rect = layout.rects[i];
+                if (!advanced && (i == static_cast<int>(SettingsControl::execution_label)
+                    || i == static_cast<int>(SettingsControl::execution_combo)
+                    || i == static_cast<int>(SettingsControl::routing_note))) continue;
+                CHECK(rect.right > rect.left && rect.bottom > rect.top);
+                CHECK(rect.left >= 0 && rect.top >= 0 && rect.right <= layout.client.cx && rect.bottom <= layout.client.cy);
+                for (int j = i + 1; j < count; ++j) CHECK(!overlaps(rect, layout.rects[j]));
+            }
+            // Every label sits above or beside (never below) the control it names.
+            CHECK(layout.rects[static_cast<int>(SettingsControl::asr_label)].bottom
+                <= layout.rects[static_cast<int>(SettingsControl::asr_combo)].top);
+            if (dpi == 96 && !advanced) CHECK(layout.client.cy < 800);
         }
-        // Every label sits above or beside (never below) the control it names.
-        CHECK(layout.rects[static_cast<int>(SettingsControl::asr_label)].bottom
-            <= layout.rects[static_cast<int>(SettingsControl::asr_combo)].top);
-        if (dpi == 96) CHECK(layout.client.cy < 700);
     }
 }
 

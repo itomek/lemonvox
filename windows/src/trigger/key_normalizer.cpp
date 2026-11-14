@@ -1,6 +1,7 @@
 #include "trigger/key_normalizer.h"
 
 #include <windows.h>
+#include <algorithm>
 
 namespace lemonvox::win {
 
@@ -78,14 +79,15 @@ double KeyNormalizer::seconds(std::uint32_t time_ms) {
     return static_cast<double>(elapsed_ms_) / 1000.0;
 }
 
-bool KeyNormalizer::key(const RawKeyEvent &event, LVNormalizedKeyEvent *out) {
+bool KeyNormalizer::key(const RawKeyEvent &event, LVNormalizedKeyEvent *out, bool reject_repeats) {
     if (event.extra_info == kLemonVoxInjectedTag) return false;
     const double now = seconds(event.time_ms);
     const bool up = (event.flags & LLKHF_UP) != 0 || event.message == WM_KEYUP || event.message == WM_SYSKEYUP;
 
     Modifier modifier{};
     if (!classify(event, &modifier)) {
-        if (up) return false;
+        if (event.vk_code < ordinary_down_.size()) ordinary_down_[event.vk_code] = !up;
+        if (up && !reject_repeats) return false;
         *out = intervening(now);
         return true;
     }
@@ -117,8 +119,13 @@ bool KeyNormalizer::key(const RawKeyEvent &event, LVNormalizedKeyEvent *out) {
 
     if (!up) {
         // Auto-repeat of a held modifier: still the same press.
-        if ((down_ & modifier.slot) != 0) return false;
-        const bool chord = (down_ & ~modifier.slot) != 0 || fake_ctrl_down_ || altgr_down_;
+        if ((down_ & modifier.slot) != 0) {
+            if (!reject_repeats) return false;
+            *out = intervening(now);
+            return true;
+        }
+        const bool chord = (down_ & ~modifier.slot) != 0 || fake_ctrl_down_ || altgr_down_
+            || (reject_repeats && std::any_of(ordinary_down_.begin(), ordinary_down_.end(), [](bool value) { return value; }));
         down_ |= modifier.slot;
         if (modifier.slot == kLeftCtrl) ctrl_down_time_ = event.time_ms;
         *out = chord ? intervening(now) : make(modifier.key, modifier.side, LV_KEY_PRESS, now);
@@ -144,6 +151,7 @@ std::uint32_t KeyNormalizer::held_modifiers() const {
 }
 
 void KeyNormalizer::reset() {
+    ordinary_down_.fill(false);
     down_ = 0;
     fake_ctrl_down_ = false;
     altgr_down_ = false;

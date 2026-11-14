@@ -39,7 +39,7 @@ public:
     // `registry_subkey` is relative to HKEY_CURRENT_USER; tests pass a scratch key.
     explicit PreferencesStore(std::wstring registry_subkey = L"Software\\LemonVox");
     WinPreferences load() const;
-    // Returns false if any value could not be written; earlier values may persist.
+    // Atomically saves all values; false preserves the previously saved snapshot.
     bool save(const WinPreferences &preferences) const;
     // Removes the whole subkey; used by tests and uninstall.
     bool erase() const;

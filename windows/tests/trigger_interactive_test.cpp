@@ -205,12 +205,28 @@ bool scenario(GlobalTrigger &trigger, UINT blocked_vk) {
     REQUIRE(combo(VK_F11));
     REQUIRE(settle_and_expect(6));
 
+    // Standalone right Ctrl taps fire once on release; chords keep typing normally.
+    TriggerBinding single;
+    single.kind = TriggerKind::single_tap;
+    single.tap_key = LV_KEY_CONTROL;
+    single.tap_side = LV_KEY_SIDE_RIGHT;
+    REQUIRE(trigger.apply(single, &error));
+    REQUIRE(send({{VK_RCONTROL, true}, {VK_RCONTROL, false}}));
+    REQUIRE(wait_for(7));
+    REQUIRE(settle_and_expect(7));
+    REQUIRE(send({{VK_LCONTROL, true}, {VK_LCONTROL, false}}));
+    REQUIRE(send({{VK_RCONTROL, true}, {'A', true}, {'A', false}, {VK_RCONTROL, false}}));
+    REQUIRE(settle_and_expect(7));
+    REQUIRE(send({{VK_RCONTROL, true}, {VK_RCONTROL, false}}));
+    REQUIRE(wait_for(8));
+    REQUIRE(settle_and_expect(8));
+
     // After shutdown nothing fires.
     trigger.shutdown();
     REQUIRE(trigger.input_generation() == 0);
     REQUIRE(!trigger.active());
     REQUIRE(double_alt());
-    REQUIRE(settle_and_expect(6));
+    REQUIRE(settle_and_expect(8));
     REQUIRE(!in_menu_mode());
     REQUIRE(!trigger.apply(default_trigger(), &error));
     REQUIRE(!g_wrong_thread.load());
@@ -351,7 +367,7 @@ int main() {
         driver.join();
         trigger.shutdown();
         executor.drain();
-        if (g_fired.load() != 6) ok = false;
+        if (g_fired.load() != 8) ok = false;
         executor.shutdown();
     }
 

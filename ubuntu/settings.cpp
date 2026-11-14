@@ -48,11 +48,15 @@ bool SettingsStore::valid_shortcuts(const Settings &s) {
         (a != b || am != bm);
 }
 bool SettingsStore::save(const Settings &s, std::string &error) const {
+    if (!endpoint_is_valid(s.endpoint)) { error = "Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment."; return false; }
     if (!valid_shortcuts(s)) { error = "Choose distinct shortcuts with Control, Alt or Super and a regular key."; return false; }
     auto *dir = g_path_get_dirname(path_.c_str());
     const bool made = g_mkdir_with_parents(dir, 0700) == 0;
     g_free(dir);
     if (!made) { error = "Could not create the private settings directory."; return false; }
+    if (g_file_test(path_.c_str(), G_FILE_TEST_EXISTS) && g_chmod(path_.c_str(), 0600) != 0) {
+        error = "Could not secure the settings file. Existing values were kept."; return false;
+    }
     auto *key = g_key_file_new();
     auto put = [&](const char *name, const std::string &v) { g_key_file_set_string(key, "Settings", name, v.c_str()); };
     put("endpoint", s.endpoint); put("asr_model", s.asr_model); put("cleanup_model", s.cleanup_model);
@@ -66,7 +70,6 @@ bool SettingsStore::save(const Settings &s, std::string &error) const {
     GError *failure = nullptr;
     bool ok = g_file_set_contents_full(path_.c_str(), bytes, static_cast<gssize>(size),
         static_cast<GFileSetContentsFlags>(G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE), 0600, &failure);
-    if (ok) ok = g_chmod(path_.c_str(), 0600) == 0;
     if (!ok) error = "Could not save settings.";
     g_clear_error(&failure); g_free(bytes); g_key_file_unref(key);
     return ok;
@@ -75,6 +78,35 @@ void apply_appearance(const Settings &s) {
     adw_style_manager_set_color_scheme(adw_style_manager_get_default(),
         s.appearance == "dark" ? ADW_COLOR_SCHEME_FORCE_DARK :
         s.appearance == "light" ? ADW_COLOR_SCHEME_FORCE_LIGHT : ADW_COLOR_SCHEME_DEFAULT);
+}
+bool persist_settings_change(const Settings &saved, const Settings &candidate,
+    const SettingsWrite &persist, const SettingsWrite &bind, std::string &error) {
+    const bool changed = saved.toggle_shortcut != candidate.toggle_shortcut || saved.cancel_shortcut != candidate.cancel_shortcut;
+    const auto restore = [&] {
+        std::string rollback_error;
+        if (!bind(saved, rollback_error))
+            error += " Shortcut restoration could not be confirmed. Re-enable the LemonVox extension before using dictation.";
+    };
+    if (changed && !bind(candidate, error)) { restore(); return false; }
+    if (!persist(candidate, error)) { if (changed) restore(); return false; }
+    return true;
+}
+bool apply_verified_extension_shortcuts(const Settings &candidate, std::string &error) {
+    GError *failure = nullptr;
+    auto *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &failure);
+    GVariant *reply = bus ? g_dbus_connection_call_sync(bus, "org.gnome.Shell",
+        "/com/itomek/LemonVox/Shortcuts", "com.itomek.LemonVox.Shortcuts", "SetShortcuts",
+        g_variant_new("(ss)", candidate.toggle_shortcut.c_str(), candidate.cancel_shortcut.c_str()),
+        G_VARIANT_TYPE("(bs)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 1500, nullptr, &failure) : nullptr;
+    bool ok = false;
+    if (reply) {
+        gboolean accepted = FALSE; const char *message = nullptr;
+        g_variant_get(reply, "(b&s)", &accepted, &message);
+        ok = accepted; if (!ok) error = message;
+        g_variant_unref(reply);
+    } else error = "Enable or update the LemonVox GNOME extension to verify shortcut registration. The change was not saved.";
+    g_clear_error(&failure); if (bus) g_object_unref(bus);
+    return ok;
 }
 void apply_extension_shortcuts(const Settings &s) {
     const char *schema_name = "org.gnome.shell.extensions.lemonvox";
@@ -171,6 +203,10 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     gtk_widget_set_sensitive(GTK_WIDGET(copy_), FALSE);
     toggle_ = entry(interaction, "Dictation shortcut", settings_.toggle_shortcut);
     cancel_ = entry(interaction, "Cancellation shortcut", settings_.cancel_shortcut);
+    auto *single_tap = ADW_ACTION_ROW(adw_action_row_new());
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(single_tap), "Single tap modifier unavailable");
+    adw_action_row_set_subtitle(single_tap, "GNOME Wayland currently delivers key combinations only. Standalone modifier taps require additional compositor support.");
+    adw_preferences_group_add(interaction, GTK_WIDGET(single_tap));
     auto *target = ADW_ACTION_ROW(adw_action_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(target), "Text destination");
     adw_action_row_set_subtitle(target, "The GNOME extension pastes once at current keyboard focus when processing finishes. Copy is available if paste cannot be dispatched.");
@@ -196,7 +232,9 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     g_signal_connect(refresh_button, "clicked", G_CALLBACK(refresh_clicked), this);
     adw_preferences_group_add(connection, refresh_button);
     asr_ = combo(connection, "Transcription model"); cleanup_ = combo(connection, "Cleanup model");
-    execution_ = combo(connection, "Cleanup execution");
+    auto *advanced_page = page(preferences, "Advanced", "preferences-other-symbolic", health_rows_, health_icons_);
+    auto *advanced = group(advanced_page, "Cleanup execution", "Lemonade thinking off explicitly disables reasoning. Compatible servers omit Lemonade-specific options; their thinking behavior is controlled by the server.");
+    execution_ = combo(advanced, "API and thinking behavior");
     const char *execution_modes[] = {"Compatible server · server default", "Lemonade · thinking off", "Lemonade · server default", nullptr};
     auto *execution_model = gtk_string_list_new(execution_modes);
     adw_combo_row_set_model(execution_, G_LIST_MODEL(execution_model)); g_object_unref(execution_model);
@@ -228,7 +266,7 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     }), this);
     gtk_widget_set_sensitive(GTK_WIDGET(cancel_install_button_), FALSE);
     adw_preferences_group_add(setup, setup_actions);
-    auto *prompt_group = group(models_page, "Cleanup prompt", "Choose Lemonade thinking off only for a Lemonade server. Compatible server keeps vendor options unset. The default prompt asks cleanup to preserve wording, facts and closings; selected models and custom prompts stay unchanged.");
+    auto *prompt_group = group(models_page, "Cleanup prompt", "API and thinking behavior are available in Advanced. Settings apply to the next dictation session.");
     auto *scroller = gtk_scrolled_window_new();
     gtk_widget_set_size_request(scroller, -1, 150);
     prompt_ = GTK_TEXT_VIEW(gtk_text_view_new());
@@ -260,23 +298,26 @@ SettingsWindow::SettingsWindow(GtkApplication *app, Settings settings, Save save
     g_signal_connect_data(log, "clicked", G_CALLBACK(+[](GtkButton *, gpointer data) { (*static_cast<std::function<void()> *>(data))(); }), callback,
         +[](gpointer data, GClosure *) { delete static_cast<std::function<void()> *>(data); }, G_CONNECT_DEFAULT);
     adw_preferences_group_add(logging, log);
-    for (auto *p : {general, models_page, diagnostics_page}) {
-        auto *save_group = group(p, "");
-        auto *actions = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-        gtk_widget_set_margin_top(actions, 12); gtk_widget_set_margin_bottom(actions, 12);
-        auto *status_label = GTK_LABEL(gtk_label_new("Settings apply to the next dictation session."));
-        gtk_label_set_wrap(status_label, TRUE); status_labels_.push_back(status_label);
-        gtk_box_append(GTK_BOX(actions), GTK_WIDGET(status_label));
-        auto *save_button = gtk_button_new_with_label("Save settings");
-        gtk_widget_set_halign(save_button, GTK_ALIGN_END);
-        gtk_widget_add_css_class(save_button, "suggested-action");
-        g_signal_connect(save_button, "clicked", G_CALLBACK(save_clicked), this);
-        gtk_box_append(GTK_BOX(actions), save_button);
-        adw_preferences_group_add(save_group, actions);
-    }
+    watch(G_OBJECT(endpoint_), "changed", connection, GTK_WIDGET(endpoint_));
+    watch(G_OBJECT(toggle_), "changed", interaction, GTK_WIDGET(toggle_));
+    watch(G_OBJECT(cancel_), "changed", interaction, GTK_WIDGET(cancel_));
+    watch(G_OBJECT(gtk_text_view_get_buffer(prompt_)), "changed", prompt_group, GTK_WIDGET(prompt_));
+    watch(G_OBJECT(asr_), "notify::selected", connection);
+    watch(G_OBJECT(cleanup_), "notify::selected", connection);
+    watch(G_OBJECT(appearance_), "notify::selected", appearance);
+    watch(G_OBJECT(execution_), "notify::selected", advanced);
+    watch(G_OBJECT(debug_), "notify::active", logging);
+    auto *status_label = GTK_LABEL(gtk_label_new("Settings save automatically. Changes apply to the next session."));
+    gtk_label_set_wrap(status_label, TRUE);
+    status_labels_.push_back(status_label);
+    adw_preferences_group_add(connection, GTK_WIDGET(status_label));
+    g_signal_connect(window_, "close-request", G_CALLBACK(+[](GtkWindow *, gpointer data) -> gboolean {
+        static_cast<SettingsWindow *>(data)->flush(); return FALSE;
+    }), this);
     models({}, "Refresh models to check the configured selections.");
+    populating_ = false;
 }
-SettingsWindow::~SettingsWindow() { gtk_window_destroy(window_); g_object_unref(window_); }
+SettingsWindow::~SettingsWindow() { flush(); gtk_window_destroy(window_); g_object_unref(window_); }
 void SettingsWindow::present() { gtk_window_present(window_); }
 void SettingsWindow::health(LVServerHealthStatus status) {
     const char *title = status == LV_SERVER_HEALTH_CONNECTED ? "Server API connected" :
@@ -301,6 +342,8 @@ void SettingsWindow::state(const std::string &text, bool recording, bool active,
     gtk_widget_set_sensitive(GTK_WIDGET(copy_), has_last_transcription);
 }
 void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::string &status, bool installation_supported, const std::string &catalog_endpoint, bool server_available) {
+    const bool was_populating = populating_;
+    populating_ = true;
     server_available_ = server_available;
     catalog_endpoint_ = catalog_endpoint;
     installation_supported_ = installation_supported;
@@ -325,6 +368,7 @@ void SettingsWindow::models(std::vector<ProtocolModel> inventory, const std::str
         adw_combo_row_set_model(row, G_LIST_MODEL(model)); adw_combo_row_set_selected(row, index); g_object_unref(model);
     };
     fill(asr_, true, asr_ids_, settings_.asr_model); fill(cleanup_, false, cleanup_ids_, settings_.cleanup_model);
+    populating_ = was_populating;
     this->status(status);
 }
 void SettingsWindow::setup_status(const std::string &text, bool active, const std::string &installed, bool asr) {
@@ -393,13 +437,95 @@ Settings SettingsWindow::read() const {
     auto *text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
     result.cleanup_prompt = text; g_free(text); return result;
 }
-void SettingsWindow::save_clicked(GtkButton *, gpointer data) {
-    auto &self = *static_cast<SettingsWindow *>(data); auto settings = self.read();
+void SettingsWindow::watch(GObject *object, const char *signal, AdwPreferencesGroup *parent, GtkWidget *focus) {
+    auto *label = GTK_LABEL(gtk_label_new(""));
+    gtk_label_set_wrap(label, TRUE);
+    gtk_widget_add_css_class(GTK_WIDGET(label), "error");
+    gtk_widget_set_visible(GTK_WIDGET(label), FALSE);
+    adw_preferences_group_add(parent, GTK_WIDGET(label));
+    errors_[object] = label;
+    if (std::string(signal) == "changed") {
+        g_signal_connect(object, signal, G_CALLBACK(+[](GObject *o, gpointer data) {
+            static_cast<SettingsWindow *>(data)->queue_save(o, false);
+        }), this);
+    } else {
+        g_signal_connect(object, signal, G_CALLBACK(+[](GObject *o, GParamSpec *, gpointer data) {
+            static_cast<SettingsWindow *>(data)->queue_save(o, true);
+        }), this);
+    }
+    if (focus) {
+        auto *controller = gtk_event_controller_focus_new();
+        g_signal_connect(controller, "leave", G_CALLBACK(+[](GtkEventControllerFocus *, gpointer data) {
+            static_cast<SettingsWindow *>(data)->flush();
+        }), this);
+        gtk_widget_add_controller(focus, controller);
+    }
+}
+void SettingsWindow::queue_save(GObject *object, bool immediate) {
+    if (populating_) return;
+    pending_.insert(object);
+    if (immediate) { pending_.erase(object); save_field(object); return; }
+    if (save_source_) g_source_remove(save_source_);
+    save_source_ = g_timeout_add(350, +[](gpointer data) -> gboolean {
+        auto &self = *static_cast<SettingsWindow *>(data);
+        self.save_source_ = 0; self.flush(); return G_SOURCE_REMOVE;
+    }, this);
+}
+void SettingsWindow::flush() {
+    if (save_source_) { g_source_remove(save_source_); save_source_ = 0; }
+    const auto pending = std::move(pending_); pending_.clear();
+    for (auto *object : pending) save_field(object);
+}
+void SettingsWindow::save_field(GObject *object) {
+    const auto draft = read();
+    auto candidate = settings_;
+    if (object == G_OBJECT(endpoint_)) candidate.endpoint = draft.endpoint;
+    else if (object == G_OBJECT(toggle_)) candidate.toggle_shortcut = draft.toggle_shortcut;
+    else if (object == G_OBJECT(cancel_)) candidate.cancel_shortcut = draft.cancel_shortcut;
+    else if (object == G_OBJECT(asr_)) candidate.asr_model = draft.asr_model;
+    else if (object == G_OBJECT(cleanup_)) candidate.cleanup_model = draft.cleanup_model;
+    else if (object == G_OBJECT(appearance_)) candidate.appearance = draft.appearance;
+    else if (object == G_OBJECT(execution_)) {
+        candidate.cleanup_backend = draft.cleanup_backend; candidate.cleanup_thinking = draft.cleanup_thinking;
+    } else if (object == G_OBJECT(debug_)) candidate.debug = draft.debug;
+    else if (object == G_OBJECT(gtk_text_view_get_buffer(prompt_))) candidate.cleanup_prompt = draft.cleanup_prompt;
     std::string error;
-    if (self.save_(settings, error)) {
-        self.settings_ = std::move(settings);
-        self.status("Saved. New settings apply to the next session.");
-    } else self.status(error);
+    bool ok = true;
+    if (!endpoint_is_valid(candidate.endpoint)) {
+        error = "Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment."; ok = false;
+    } else if (!SettingsStore::valid_shortcuts(candidate)) {
+        error = "Choose a distinct key combination with Control, Alt or Super. Standalone modifiers are unavailable."; ok = false;
+    } else ok = save_(candidate, error);
+    if (ok) settings_ = std::move(candidate);
+    auto *label = errors_.at(object);
+    auto *control = GTK_IS_WIDGET(object) ? GTK_WIDGET(object) : GTK_WIDGET(prompt_);
+    if (ok) gtk_widget_remove_css_class(control, "error");
+    else gtk_widget_add_css_class(control, "error");
+    gtk_widget_set_tooltip_text(control, ok ? nullptr : error.c_str());
+    const auto message = ADW_IS_PREFERENCES_ROW(object) ?
+        std::string(adw_preferences_row_get_title(ADW_PREFERENCES_ROW(object))) + ": " + error : error;
+    gtk_label_set_text(label, ok ? "" : message.c_str());
+    gtk_widget_set_visible(GTK_WIDGET(label), !ok);
+    // AdwEntryRow delegates editing to GtkText; expose validation on both the
+    // row and its actual focus target so screen readers find the same error.
+    GtkAccessible *targets[] = {GTK_ACCESSIBLE(control), nullptr};
+    if (GTK_IS_EDITABLE(control)) {
+        auto *delegate = gtk_editable_get_delegate(GTK_EDITABLE(control));
+        if (delegate && GTK_IS_ACCESSIBLE(delegate)) targets[1] = GTK_ACCESSIBLE(delegate);
+    }
+    for (auto *target : targets) {
+        if (!target) continue;
+        gtk_accessible_update_state(target, GTK_ACCESSIBLE_STATE_INVALID,
+            ok ? GTK_ACCESSIBLE_INVALID_FALSE : GTK_ACCESSIBLE_INVALID_TRUE, -1);
+        if (ok) {
+            gtk_accessible_reset_relation(target, GTK_ACCESSIBLE_RELATION_DESCRIBED_BY);
+        } else {
+            // GTK 4.14 AT-SPI cannot resolve ERROR_MESSAGE targets;
+            // described-by makes the validation message navigable.
+            gtk_accessible_update_relation(target, GTK_ACCESSIBLE_RELATION_DESCRIBED_BY, label, nullptr, -1);
+        }
+    }
+    if (!ok) gtk_accessible_announce(GTK_ACCESSIBLE(control), message.c_str(), GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM);
 }
 void SettingsWindow::status(const std::string &text) {
     for (auto *label : status_labels_) gtk_label_set_text(label, text.c_str());

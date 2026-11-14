@@ -86,6 +86,31 @@ struct Pipeline {
     }
 };
 
+void single_taps_require_standalone_release() {
+    KeyNormalizer normalizer;
+    LVSingleTapDetector detector{};
+    lv_single_tap_init(&detector, LV_KEY_OPTION, LV_KEY_SIDE_ANY);
+    int fired = 0;
+    const auto feed = [&](std::uint32_t vk, bool down, std::uint32_t time) {
+        LVNormalizedKeyEvent event;
+        if (normalizer.key(raw(vk, down, time), &event, true)
+            && lv_single_tap_event(&detector, event)) ++fired;
+    };
+    feed(VK_LMENU, true, 0); feed(VK_LMENU, false, 50);
+    assert(fired == 1);
+    feed('A', true, 100); feed(VK_LMENU, true, 110); feed(VK_LMENU, false, 150); feed('A', false, 160);
+    assert(fired == 1);
+    feed(VK_LMENU, true, 200); feed(VK_LMENU, true, 210); feed(VK_LMENU, false, 250);
+    assert(fired == 1);
+    feed(VK_LMENU, true, 300); feed('A', true, 310); feed('A', false, 320); feed(VK_LMENU, false, 350);
+    assert(fired == 1);
+    feed(VK_LMENU, true, 400); lv_single_tap_cancel(&detector);
+    feed(VK_LMENU, true, 410); feed(VK_LMENU, false, 450);
+    assert(fired == 1);
+    feed(VK_RMENU, true, 500); feed(VK_RMENU, false, 550);
+    assert(fired == 2);
+}
+
 void normalizer_table() {
     struct Row {
         std::uint32_t vk;
@@ -459,6 +484,7 @@ void recorder() {
 } // namespace
 
 int main() {
+    single_taps_require_standalone_release();
     normalizer_table();
     normalizer_injection_and_time();
     normalizer_altgr();

@@ -1,0 +1,6 @@
+(true, '130')
+(true, '"alt-pressed"')
+(true, '"[130]"')
+(true, '"alt-released"')
+(true, '"[130]"')
+(true, '"[130,130]"')

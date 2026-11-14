@@ -1,0 +1,29 @@
+PASS: named editable endpoint and Cleanup prompt exposed through AT-SPI
+PASS: inline endpoint error exposed through AT-SPI: API endpoint: Use an HTTP/HTTPS endpoint ending in /v1, without credentials, query or fragment.
+PASS: native keyboard Tab reached API and thinking behavior
+PASS: Advanced server-default selection autosaves via AT-SPI
+PASS: native keyboard Tab reached Theme
+PASS: named Diagnostics Debug traces autosaves through AT-SPI
+PASS: General theme autosaves via AT-SPI
+PASS: actual app close/reopen preserves endpoint and multiline prompt
+PASS: full process relaunch preserves endpoint/models/custom prompt/theme/Advanced
+PASS: native keyboard Tab reached API and thinking behavior
+PASS: exact fresh missing-file default thinking off and explicit override survive process relaunch
+PASS: legacy marker-free file remains generic with exact model/prompt values across process relaunch
+PASS: only synthetic inventory/health GETs; no inference or model downloads: ['/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health', '/v1/models', '/v1/models?show_all=true', '/v1/health']
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size
+PASS: native Settings window rendered at supported default size

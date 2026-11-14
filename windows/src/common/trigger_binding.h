@@ -7,11 +7,11 @@
 
 namespace lemonvox::win {
 
-// A persisted Windows trigger. double_tap uses the shared LVDoubleTapDetector;
+// A persisted Windows trigger. Modifier taps use shared normalized detectors;
 // combination uses a native global hotkey (MOD_* flags plus a virtual key).
 // LV_KEY_OPTION is the portable identity for Windows Alt, LV_KEY_COMMAND for
 // the Windows key.
-enum class TriggerKind : std::uint8_t { double_tap, combination };
+enum class TriggerKind : std::uint8_t { double_tap, combination, single_tap };
 
 struct TriggerBinding {
     TriggerKind kind = TriggerKind::double_tap;
@@ -28,7 +28,7 @@ struct TriggerBinding {
 // The Windows default: Alt pressed twice on either side (AltGr never counts).
 TriggerBinding default_trigger();
 
-// Stable ASCII storage form, e.g. "double:alt:any" or "combo:ctrl+shift:0x20".
+// Stable storage: "double:alt:any", "single:ctrl:right", "combo:ctrl+shift:0x20".
 std::string serialize_trigger(const TriggerBinding &binding);
 // Returns false and leaves `binding` unchanged for malformed or unsupported input.
 bool parse_trigger(const std::string &text, TriggerBinding &binding);

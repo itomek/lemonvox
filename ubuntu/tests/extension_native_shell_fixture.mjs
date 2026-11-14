@@ -1,5 +1,5 @@
 // A disposable Wayland GTK client for the headless Shell integration test.
-// It records only Escape key delivery count; it never observes text input.
+// It records synthetic key delivery and the disposable target field only.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gdk from 'gi://Gdk?version=4.0';
@@ -13,6 +13,14 @@ if (!eventFile || !focusFile || !textFile || !activationFile)
     throw new Error('fixture event, focus, text, and activation files are required');
 
 let escapeCount = 0;
+const modifierEvents = [];
+function recordModifier(action, keyval) {
+    if ([Gdk.KEY_Alt_L, Gdk.KEY_Alt_R, Gdk.KEY_Control_L, Gdk.KEY_Control_R,
+        Gdk.KEY_Shift_L, Gdk.KEY_Shift_R].includes(keyval)) {
+        modifierEvents.push(`${action}:${Gdk.keyval_name(keyval)}`);
+        GLib.file_set_contents(`${eventFile}.modifiers`, JSON.stringify(modifierEvents));
+    }
+}
 function record(value) {
     GLib.file_set_contents(eventFile, `${value}\n`);
 }
@@ -52,12 +60,14 @@ app.connect('activate', () => {
     const keyController = new Gtk.EventControllerKey();
     keyController.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
     keyController.connect('key-pressed', (_controller, keyval) => {
+        recordModifier('press', keyval);
         if (keyval === Gdk.KEY_Escape) {
             escapeCount++;
             record(`escape:${escapeCount}`);
         }
         return false;
     });
+    keyController.connect('key-released', (_controller, keyval) => recordModifier('release', keyval));
     entry.add_controller(keyController);
     const focusController = new Gtk.EventControllerFocus();
     focusController.connect('enter', () => recordFocus('focused'));

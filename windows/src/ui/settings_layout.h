@@ -92,6 +92,6 @@ struct Layout {
     int row_height = 0;
 };
 using MeasureText = std::function<int(SettingsControl control, int width)>;
-Layout compute_layout(int dpi, int line_height, const MeasureText &measure);
+Layout compute_layout(int dpi, int line_height, const MeasureText &measure, bool advanced = false);
 
 } // namespace lemonvox::win::settings

@@ -4,6 +4,7 @@ import Carbon
 @MainActor extension TriggerChoice {
     var display:String {
         switch self {
+        case .singleTap(let key): return (TriggerControl.modifiers.first { $0.1 == key }?.0 ?? "Modifier") + " once"
         case .doubleTap(let key): return (TriggerControl.modifiers.first { $0.1 == key }?.0 ?? "Modifier") + " twice"
         case .combo(let key,let modifiers):
             let prefix=[(UInt32(controlKey),"⌃"),(UInt32(optionKey),"⌥"),(UInt32(shiftKey),"⇧"),(UInt32(cmdKey),"⌘")].filter { modifiers & $0.0 != 0 }.map(\.1).joined()
@@ -28,7 +29,7 @@ import Carbon
     init(frame:NSRect, allowsDoubleTap: Bool = true, initialChoice: TriggerChoice = .defaultMac) {
         self.allowsDoubleTap = allowsDoubleTap
         super.init(frame:frame)
-        mode.addItems(withTitles:["Double tap modifier","Key combination"]); mode.target=self; mode.action=#selector(modeChanged)
+        mode.addItems(withTitles:["Double tap modifier","Key combination","Single tap modifier"]); mode.target=self; mode.action=#selector(modeChanged)
         modifier.addItems(withTitles:Self.modifiers.map(\.0)); modifier.target=self; modifier.action=#selector(modifierChanged)
         record.target=self; record.action=#selector(beginRecording)
         mode.frame=NSRect(x:0,y:32,width:190,height:26); modifier.frame=NSRect(x:198,y:32,width:180,height:26)
@@ -41,14 +42,15 @@ import Carbon
     func update(_ choice:TriggerChoice) {
         cancelRecording()
         let supported: TriggerChoice
-        if allowsDoubleTap { supported=choice } else if case .doubleTap = choice { supported = .defaultMacCancellation } else { supported=choice }
+        if allowsDoubleTap { supported=choice } else if case .combo = choice { supported=choice } else { supported = .defaultMacCancellation }
         self.choice=supported
         switch supported {
         case .doubleTap(let key): mode.selectItem(at:0); modifier.selectItem(at:Self.modifiers.firstIndex { $0.1 == key } ?? 0)
+        case .singleTap(let key): mode.selectItem(at:2); modifier.selectItem(at:Self.modifiers.firstIndex { $0.1 == key } ?? 0)
         case .combo: mode.selectItem(at:1)
         }
         mode.isHidden = !allowsDoubleTap
-        modifier.isHidden = !allowsDoubleTap || mode.indexOfSelectedItem != 0
+        modifier.isHidden = !allowsDoubleTap || mode.indexOfSelectedItem == 1
         record.isHidden = allowsDoubleTap && !modifier.isHidden
         summary.stringValue=displayedChoice
         onChange?()
@@ -56,11 +58,13 @@ import Carbon
     @objc func modeChanged() {
         guard allowsDoubleTap else { return }
         if mode.indexOfSelectedItem == 0 { update(.doubleTap(key:Self.modifiers[modifier.indexOfSelectedItem].1)) }
+        else if mode.indexOfSelectedItem == 2 { update(.singleTap(key:Self.modifiers[modifier.indexOfSelectedItem].1)) }
         else { update(.combo(key:9,modifiers:UInt32(cmdKey | optionKey))) }
     }
     @objc func modifierChanged() {
         guard allowsDoubleTap else { return }
-        update(.doubleTap(key:Self.modifiers[modifier.indexOfSelectedItem].1))
+        let key=Self.modifiers[modifier.indexOfSelectedItem].1
+        update(mode.indexOfSelectedItem == 2 ? .singleTap(key:key) : .doubleTap(key:key))
     }
     @objc func beginRecording() {
         cancelRecording(); recording=true; summary.stringValue="Press a key combination · Escape cancels"

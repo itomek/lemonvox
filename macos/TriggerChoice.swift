@@ -4,6 +4,7 @@ import Carbon
 enum TriggerChoice: Codable, Equatable {
     case combo(key: UInt16, modifiers: UInt32)
     case doubleTap(key: UInt16)
+    case singleTap(key: UInt16)
     static let defaultMac = TriggerChoice.doubleTap(key: 0) // Either Command, same side per pair.
     static let defaultMacCancellation = TriggerChoice.combo(key: 53, modifiers: UInt32(cmdKey))
     static func migrate(_ legacy: Int?) -> TriggerChoice {
@@ -29,10 +30,10 @@ struct DoubleTapDetector {
         let action:LVKeyAction=down ? LV_KEY_PRESS : LV_KEY_RELEASE
         return lv_double_tap_event(&core,LVNormalizedKeyEvent(key:normalized.key,side:normalized.side,action:action,timestamp:time)) != 0
     }
-    private static func normalizedTarget(_ key:UInt16) -> (key:LVKeyIdentity,side:LVKeySide) {
+    static func normalizedTarget(_ key:UInt16) -> (key:LVKeyIdentity,side:LVKeySide) {
         key == 0 ? (LV_KEY_COMMAND,LV_KEY_SIDE_ANY) : (normalized(key) ?? (LV_KEY_UNKNOWN,LV_KEY_SIDE_NONE))
     }
-    private static func normalized(_ key:UInt16) -> (key:LVKeyIdentity,side:LVKeySide)? {
+    static func normalized(_ key:UInt16) -> (key:LVKeyIdentity,side:LVKeySide)? {
         switch key {
         case 54: return (LV_KEY_COMMAND,LV_KEY_SIDE_RIGHT)
         case 55: return (LV_KEY_COMMAND,LV_KEY_SIDE_LEFT)
@@ -44,6 +45,23 @@ struct DoubleTapDetector {
         case 60: return (LV_KEY_SHIFT,LV_KEY_SIDE_RIGHT)
         default: return nil
         }
+    }
+}
+
+struct SingleTapDetector {
+    private var core: LVSingleTapDetector
+    init(key:UInt16) {
+        core=LVSingleTapDetector()
+        let target=DoubleTapDetector.normalizedTarget(key)
+        lv_single_tap_init(&core,target.key,target.side)
+    }
+    mutating func reset() { lv_single_tap_cancel(&core) }
+    mutating func intervening(time:TimeInterval) {
+        _=lv_single_tap_event(&core,LVNormalizedKeyEvent(key:LV_KEY_UNKNOWN,side:LV_KEY_SIDE_NONE,action:LV_KEY_INTERVENING,timestamp:time))
+    }
+    mutating func event(key:UInt16,down:Bool,time:TimeInterval) -> Bool {
+        guard let target=DoubleTapDetector.normalized(key) else { intervening(time:time); return false }
+        return lv_single_tap_event(&core,LVNormalizedKeyEvent(key:target.key,side:target.side,action:down ? LV_KEY_PRESS : LV_KEY_RELEASE,timestamp:time)) != 0
     }
 }
 

@@ -78,6 +78,12 @@ static void trigger_bindings_round_trip_and_reject_unsafe_values() {
     assert(describe_trigger(parsed) == L"Right Ctrl twice");
     assert(serialize_trigger(parsed) == "double:ctrl:right");
 
+    assert(parse_trigger("single:shift:left", parsed));
+    assert(parsed.kind == TriggerKind::single_tap && parsed.tap_key == LV_KEY_SHIFT);
+    assert(parsed.tap_side == LV_KEY_SIDE_LEFT);
+    assert(serialize_trigger(parsed) == "single:shift:left");
+    assert(describe_trigger(parsed) == L"Left Shift once");
+
     assert(parse_trigger("combo:ctrl+shift:0x20", parsed));
     assert(parsed.kind == TriggerKind::combination && parsed.modifiers == (MOD_CONTROL | MOD_SHIFT));
     assert(parsed.virtual_key == VK_SPACE);

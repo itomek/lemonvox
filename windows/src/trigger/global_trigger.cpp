@@ -73,6 +73,10 @@ struct GlobalTrigger::Impl {
     int hotkey_id = 0;
     KeyNormalizer normalizer;
     LVDoubleTapDetector detector{};
+    LVSingleTapDetector single_detector{};
+    bool single_tap = false;
+    void seed_held_keys();
+    void cancel_taps() { lv_double_tap_cancel(&detector); lv_single_tap_cancel(&single_detector); }
     std::uint32_t seen_generation = 0;
     DWORD last_hook_tick = 0;
 
@@ -111,7 +115,7 @@ LRESULT CALLBACK mouse_proc(int code, WPARAM wparam, LPARAM lparam) {
 }
 
 void CALLBACK foreground_proc(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {
-    if (t_listener) lv_double_tap_cancel(&t_listener->detector);
+    if (t_listener) t_listener->cancel_taps();
 }
 
 LRESULT CALLBACK listener_window_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -213,6 +217,8 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
             }
         }
         lv_double_tap_init(&detector, binding.tap_key, binding.tap_side);
+        lv_single_tap_init(&single_detector, binding.tap_key, binding.tap_side);
+        single_tap = binding.kind == TriggerKind::single_tap;
         if (hotkey_id != 0) {
             UnregisterHotKey(hwnd, hotkey_id);
             hotkey_id = 0;
@@ -221,6 +227,7 @@ bool GlobalTrigger::Impl::apply_on_thread(const TriggerBinding &binding, std::ws
     // Combination mode observes activity without feeding the tap normalizer.
     // A modifier released there must not remain logically held after rebinding.
     normalizer.reset();
+    seed_held_keys();
     set_active(binding);
     return true;
 }
@@ -246,12 +253,30 @@ bool GlobalTrigger::Impl::install_hooks(DWORD *code) {
             foreground_proc, 0, 0, WINEVENT_OUTOFCONTEXT);
     }
     normalizer.reset();
-    lv_double_tap_cancel(&detector);
+    seed_held_keys();
+    cancel_taps();
     last_hook_tick = GetTickCount();
     ++shared->input_generation;
     shared->observing_input = mouse_hook != nullptr;
     SetTimer(hwnd, kHealthTimer, kHealthIntervalMs, nullptr);
     return true;
+}
+
+void GlobalTrigger::Impl::seed_held_keys() {
+    // Rebinding/reinstalling while a key is held must not treat its next repeat
+    // as a fresh standalone tap. Keep physical held state until its release.
+    for (std::uint32_t vk = 8; vk < 255; ++vk) {
+        if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU || vk <= VK_XBUTTON2) continue;
+        if ((GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) == 0) continue;
+        RawKeyEvent raw;
+        raw.vk_code = vk;
+        raw.scan_code = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
+        raw.message = WM_KEYDOWN;
+        raw.time_ms = GetTickCount();
+        if (vk == VK_RCONTROL || vk == VK_RMENU || vk == VK_LWIN || vk == VK_RWIN) raw.flags = LLKHF_EXTENDED;
+        LVNormalizedKeyEvent ignored;
+        normalizer.key(raw, &ignored, true);
+    }
 }
 
 void GlobalTrigger::Impl::remove_hooks() {
@@ -264,7 +289,7 @@ void GlobalTrigger::Impl::remove_hooks() {
     mouse_hook = nullptr;
     foreground_hook = nullptr;
     normalizer.reset();
-    lv_double_tap_cancel(&detector);
+    cancel_taps();
 }
 
 void GlobalTrigger::Impl::teardown() {
@@ -290,7 +315,7 @@ void GlobalTrigger::Impl::sync_reset() {
     const std::uint32_t generation = reset_generation.load();
     if (generation == seen_generation) return;
     seen_generation = generation;
-    lv_double_tap_cancel(&detector);
+    cancel_taps();
 }
 
 void GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
@@ -306,12 +331,12 @@ void GlobalTrigger::Impl::on_key(WPARAM message, const KBDLLHOOKSTRUCT &info) {
     raw.time_ms = info.time;
     raw.extra_info = info.dwExtraInfo;
     LVNormalizedKeyEvent event;
-    if (!normalizer.key(raw, &event)) return;
+    if (!normalizer.key(raw, &event, single_tap)) return;
     if (shared->suspended.load()) {
-        lv_double_tap_cancel(&detector);
+        cancel_taps();
         return;
     }
-    if (lv_double_tap_event(&detector, event)) fire();
+    if (single_tap ? lv_single_tap_event(&single_detector, event) : lv_double_tap_event(&detector, event)) fire();
 }
 
 void GlobalTrigger::Impl::on_mouse(WPARAM message, const MSLLHOOKSTRUCT &info) {
@@ -319,10 +344,13 @@ void GlobalTrigger::Impl::on_mouse(WPARAM message, const MSLLHOOKSTRUCT &info) {
     if (info.dwExtraInfo != kLemonVoxInjectedTag) ++shared->input_generation;
     if (hotkey_id != 0) return;
     switch (message) {
-    case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN: case WM_XBUTTONDOWN:
+    case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN: case WM_XBUTTONDOWN: {
         if (info.dwExtraInfo == kLemonVoxInjectedTag) return;
-        lv_double_tap_event(&detector, normalizer.mouse_button(info.time));
+        const auto event = normalizer.mouse_button(info.time);
+        lv_double_tap_event(&detector, event);
+        lv_single_tap_event(&single_detector, event);
         return;
+    }
     default:
         return;
     }

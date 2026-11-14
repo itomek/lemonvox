@@ -56,14 +56,14 @@ struct SettingsServices {
     std::function<void()> cancel_install;
     // Capture devices, excluding the system default (the window adds it).
     std::function<std::vector<SettingsDevice>()> list_devices;
-    // Called on Save before `save` when the shortcut changed. Returning false
-    // keeps the previous binding active and aborts the save; `error` explains why.
+    // Called before persistence when the shortcut changed. Returning false
+    // keeps the previous binding active; unrelated valid settings still save.
     std::function<bool(const TriggerBinding &, std::wstring *error)> apply_trigger;
     // true while the shortcut recorder has focus, so the global trigger does not
     // fire (and registered hotkeys do not swallow keys) during recording.
     std::function<void(bool suspended)> set_trigger_suspended;
     // Persists and applies the preferences for the next operation. Returning
-    // false keeps the window open; the window then restores the old shortcut.
+    // false retains the last saved snapshot; the window restores the old shortcut.
     std::function<bool(const WinPreferences &)> save;
     // Opens ms-settings:privacy-microphone.
     std::function<void()> open_microphone_privacy;
@@ -97,12 +97,14 @@ enum class SettingsControl : int {
     microphone_label,
     microphone_combo,
     privacy_button,
-    save_button,
-    cancel_button,
+    advanced_button,
+    endpoint_error,
+    prompt_error,
+    shortcut_error,
     count,
 };
 
-// IDOK / IDCANCEL for Save / Cancel; 1000 + index for the rest.
+// Stable native child IDs, 1000 + index.
 int settings_control_id(SettingsControl control);
 
 // The native Settings window. Single instance per object; UI thread only.
@@ -117,13 +119,13 @@ public:
     // Opens Settings populated from `current` and starts an asynchronous model
     // refresh. If already open, brings the existing window forward unchanged.
     void show(const WinPreferences &current);
-    // Closes without saving (same as Cancel).
+    // Flushes pending valid edits and closes.
     void close();
     bool is_open() const;
     HWND hwnd() const;
     // Call from the app message loop before TranslateMessage/DispatchMessage;
     // returns true when the message was consumed (dialog keyboard navigation,
-    // Enter = Save, Esc = Cancel, mnemonics).
+    // Esc closes, mnemonics).
     bool pre_translate(MSG *message);
     // Whether the dark palette is in use (system dark mode, not high contrast).
     bool dark_mode_active() const;

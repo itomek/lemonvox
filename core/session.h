@@ -64,6 +64,19 @@ typedef struct {
 void lv_double_tap_init(LVDoubleTapDetector *detector, LVKeyIdentity target_key, LVKeySide target_side);
 void lv_double_tap_cancel(LVDoubleTapDetector *detector);
 int lv_double_tap_event(LVDoubleTapDetector *detector, LVNormalizedKeyEvent event);
+// Standalone taps fire on release within 250 ms. Adapters must report all
+// chords/other input as INTERVENING, including keys held before target press.
+// Cancellation discards pending input (focus loss, rebinding, recorder entry).
+typedef struct {
+    LVKeyIdentity target_key;
+    LVKeySide target_side;
+    int has_pressed;
+    int blocked;
+    LVNormalizedKeyEvent pressed;
+} LVSingleTapDetector;
+void lv_single_tap_init(LVSingleTapDetector *detector, LVKeyIdentity target_key, LVKeySide target_side);
+void lv_single_tap_cancel(LVSingleTapDetector *detector);
+int lv_single_tap_event(LVSingleTapDetector *detector, LVNormalizedKeyEvent event);
 #ifdef __cplusplus
 }
 static_assert(std::is_standard_layout<LVSession>::value, "LVSession must remain C-layout");

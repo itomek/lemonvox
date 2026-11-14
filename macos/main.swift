@@ -318,6 +318,29 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             configure()
             config = DictationConfig(endpoint:"http://127.0.0.1:13306/v1",asrModel:"next-asr",cleanupModel:"next-cleanup",cleanupPrompt:"next synthetic prompt")
             settings.window.close()
+        } else if CommandLine.arguments.contains("--smoke-settings-recording-appearance") {
+            precondition(Bundle.main.bundleIdentifier?.hasPrefix("com.itomek.lemonvox.test.") == true,
+                "Appearance persistence smoke requires an isolated test bundle identifier")
+            let originalTrigger=triggerChoice, originalCancellation=cancellationChoice
+            let originalBinding=binding.reference
+            let next:AppearanceChoice=appearanceChoice == .light ? .dark : .light
+            sampleMode=true
+            toggle()
+            precondition(sampleSession.state == LV_RECORDING && !capture.isRecording)
+            configure()
+            precondition(settings.appearance.isEnabled && !settings.trigger.record.isEnabled)
+            settings.appearance.selectItem(at:next == .light ? 1 : 2)
+            precondition(NSApp.sendAction(settings.appearance.action!,to:settings,from:settings.appearance))
+            precondition(UserDefaults.standard.string(forKey:"appearanceChoice") == next.rawValue,
+                "Appearance selected during recording was not persisted immediately")
+            precondition(appearanceChoice == next && sampleSession.state == LV_RECORDING,
+                "Appearance autosave disrupted the recording session")
+            precondition(triggerChoice == originalTrigger && cancellationChoice == originalCancellation && binding.reference == originalBinding,
+                "Appearance autosave replaced an active shortcut binding")
+            settings.window.close()
+            precondition(sampleSession.state == LV_RECORDING && UserDefaults.standard.string(forKey:"appearanceChoice") == next.rawValue)
+            print("PASS: appearance action persists during synthetic recording before idle, retains active bindings and survives Settings close")
+            NSApp.terminate(nil)
         } else if CommandLine.arguments.contains("--smoke-settings-recording") {
             sampleMode = true
             toggle()
@@ -457,13 +480,15 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             let result=binding.replace(key:key,modifiers:modifiers)
             guard result == noErr else { panel.show("Shortcut unavailable (\(result)); previous retained"); return false }
             modifierTrigger?.stop(); modifierTrigger=nil
-        case .doubleTap(let key):
+        case .doubleTap(let key), .singleTap(let key):
             guard accessibilityFacts().trusted else {
                 pendingPermissionTrigger=choice
                 refreshAccessibilityStatus()
                 return false
             }
-            let candidate=ModifierTrigger(key:key,allowed:{ [weak self] in
+            let isSingleTap:Bool
+            if case .singleTap = choice { isSingleTap=true } else { isSingleTap=false }
+            let candidate=ModifierTrigger(key:key,singleTap:isSingleTap,allowed:{ [weak self] in
                 guard let self else { return false }; return (!self.configuring || self.isRecordingSession) && !self.inserting
             },fire:{ [weak self] in self?.toggle() },
               canCancel:{ [weak self] in
@@ -498,7 +523,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         refreshAccessibilityStatus()
         guard !workflowBusy && sampleSession.state == LV_IDLE && !inserting,
               accessibilityFacts().trusted else { return }
-        // Check Again never saves a failed draft; Save still owns draft changes.
+        // Check Again never saves a failed draft; autosave owns draft changes.
         if configuring { return }
         if binding.reference == nil && modifierTrigger == nil { _ = installTrigger(triggerChoice) }
     }
@@ -556,7 +581,14 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
             return (self?.updater.automaticChecks ?? true,self?.updater.automaticInstallation ?? false)
         }
         settings.saveUpdatePreferences={ [weak self] checks,install in
-            self?.updater.automaticChecks=checks;self?.updater.automaticInstallation=install
+            guard let self else { return }
+            let previous=(self.updater.automaticChecks,self.updater.automaticInstallation)
+            self.updater.automaticChecks=checks;self.updater.automaticInstallation=install
+            if !UserDefaults.standard.synchronize() {
+                self.updater.automaticChecks=previous.0;self.updater.automaticInstallation=previous.1
+                _=UserDefaults.standard.synchronize()
+                throw SettingsPersistence.Failure()
+            }
         }
         if configuring { settings.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true); return }
         modifierTrigger?.reset(); configuring=true
@@ -571,7 +603,7 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         settings.show(config:config, save: { [weak self] updated in
             guard let self else { return }
-            UserDefaults.standard.set(try JSONEncoder().encode(updated), forKey:"dictationConfig")
+            try SettingsPersistence.write(["dictationConfig":try JSONEncoder().encode(updated)])
             self.config=updated
             self.serverHealth.setEndpoint(updated.endpoint)
         }, close: { [weak self] in
@@ -670,22 +702,30 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         let encoder = JSONEncoder()
         let trigger = try encoder.encode(triggerChoice)
         let cancellation = try encoder.encode(cancellationChoice)
-        UserDefaults.standard.set(trigger, forKey: "triggerChoice")
-        UserDefaults.standard.set(cancellation, forKey: "cancellationChoice")
-        UserDefaults.standard.set(appearanceChoice.rawValue, forKey: "appearanceChoice")
-        UserDefaults.standard.removeObject(forKey: "currentField")
+        try SettingsPersistence.write(["triggerChoice":trigger,"cancellationChoice":cancellation,
+                                       "appearanceChoice":appearanceChoice.rawValue],removing:["currentField"])
     }
 
     private func commitGeneralPreferences(trigger: TriggerChoice, cancellation: TriggerChoice,
                                           appearance: AppearanceChoice) throws {
         guard trigger != cancellation, case .combo = cancellation else { throw TriggerError.unavailable }
         if sessionActive {
+            // Appearance can apply independently while shortcut replacement waits
+            // for the active session. Persist first so a failed write leaves the
+            // saved and visible theme unchanged.
+            if appearance != appearanceChoice {
+                try SettingsPersistence.write(["appearanceChoice":appearance.rawValue])
+                appearanceChoice=appearance
+                applyAppearance()
+                settings.window.appearance=appearance.appKitAppearance
+            }
             deferredPreferences = (trigger, cancellation, appearance)
             return
         }
         guard validateCancellationCandidate(cancellation) else { throw TriggerError.unavailable }
         let triggerInstalled = binding.reference != nil || modifierTrigger != nil
         let previousPending = pendingPermissionTrigger
+        let previous=(triggerChoice,cancellationChoice,appearanceChoice)
         if trigger != triggerChoice || !triggerInstalled {
             guard installTrigger(trigger) else {
                 pendingPermissionTrigger = previousPending
@@ -694,7 +734,12 @@ let hotKeyHandler: EventHandlerUPP = { _, event, context in
         }
         cancellationChoice = cancellation
         appearanceChoice = appearance
-        try persistGeneralPreferences()
+        do { try persistGeneralPreferences() }
+        catch {
+            if triggerChoice != previous.0 { _ = installTrigger(previous.0) }
+            triggerChoice=previous.0; cancellationChoice=previous.1; appearanceChoice=previous.2
+            throw error
+        }
         applyAppearance()
         settings.window.appearance = appearanceChoice.appKitAppearance
     }

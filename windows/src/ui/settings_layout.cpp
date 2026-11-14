@@ -1,4 +1,4 @@
-﻿#include "ui/settings_layout.h"
+#include "ui/settings_layout.h"
 
 #include "common/utf.h"
 #include "protocol.h"
@@ -118,6 +118,17 @@ TriggerChoices build_trigger_choices(const TriggerBinding &current) {
         choice.label = describe_trigger(choice.binding);
         if (choice.binding == shown) choices.selected = static_cast<int>(choices.items.size());
         choices.items.push_back(choice);
+    }
+    for (const auto key : {LV_KEY_OPTION, LV_KEY_CONTROL, LV_KEY_SHIFT, LV_KEY_COMMAND}) {
+        for (const auto side : {LV_KEY_SIDE_ANY, LV_KEY_SIDE_LEFT, LV_KEY_SIDE_RIGHT}) {
+            TriggerChoice choice;
+            choice.binding = double_tap(key);
+            choice.binding.kind = TriggerKind::single_tap;
+            choice.binding.tap_side = side;
+            choice.label = describe_trigger(choice.binding);
+            if (choice.binding == shown) choices.selected = static_cast<int>(choices.items.size());
+            choices.items.push_back(choice);
+        }
     }
     if (choices.selected < 0) {
         TriggerChoice choice;
@@ -271,7 +282,7 @@ StatusText catalog_status(const SettingsCatalogResult &result, const std::wstrin
     return {L"", false};
 }
 
-Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
+Layout compute_layout(int dpi, int line_height, const MeasureText &measure, bool advanced) {
     const auto s = [dpi](int value) { return MulDiv(value, dpi, 96); };
     const auto at = [](Layout &layout, SettingsControl control, int x, int y, int w, int h) {
         layout.rects[static_cast<int>(control)] = RECT{x, y, x + w, y + h};
@@ -296,6 +307,9 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     at(layout, SettingsControl::endpoint_edit, margin, y, inner - refresh_w - column_gap, row);
     at(layout, SettingsControl::refresh_button, margin + inner - refresh_w, y, refresh_w, row);
     y += row + small_gap;
+    const int endpoint_error_h = std::max(line_height, measure(SettingsControl::endpoint_error, inner));
+    at(layout, SettingsControl::endpoint_error, margin, y, inner, endpoint_error_h);
+    y += endpoint_error_h + small_gap;
     const int hint_h = std::max(line_height, measure(SettingsControl::endpoint_hint, inner));
     at(layout, SettingsControl::endpoint_hint, margin, y, inner, hint_h);
     y += hint_h + small_gap;
@@ -307,16 +321,22 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     y += line_height + label_gap;
     at(layout, SettingsControl::asr_combo, margin, y, inner, row);
     y += row + group_gap;
-    const int model_half = (inner - column_gap) / 2;
-    at(layout, SettingsControl::cleanup_label, margin, y, model_half, line_height);
-    at(layout, SettingsControl::execution_label, margin + model_half + column_gap, y, inner - model_half - column_gap, line_height);
+    at(layout, SettingsControl::cleanup_label, margin, y, inner, line_height);
     y += line_height + label_gap;
-    at(layout, SettingsControl::cleanup_combo, margin, y, model_half, row);
-    at(layout, SettingsControl::execution_combo, margin + model_half + column_gap, y, inner - model_half - column_gap, row);
+    at(layout, SettingsControl::cleanup_combo, margin, y, inner, row);
     y += row + small_gap;
-    const int routing_h = std::max(line_height, measure(SettingsControl::routing_note, inner));
-    at(layout, SettingsControl::routing_note, margin, y, inner, routing_h);
-    y += routing_h + group_gap;
+    at(layout, SettingsControl::advanced_button, margin, y, inner, row);
+    y += row + small_gap;
+    if (advanced) {
+        at(layout, SettingsControl::execution_label, margin, y, inner, line_height);
+        y += line_height + label_gap;
+        at(layout, SettingsControl::execution_combo, margin, y, inner, row);
+        y += row + small_gap;
+        const int routing_h = std::max(line_height, measure(SettingsControl::routing_note, inner));
+        at(layout, SettingsControl::routing_note, margin, y, inner, routing_h);
+        y += routing_h + small_gap;
+    }
+    y += group_gap;
 
     const int setup_w = (inner - 2 * small_gap) / 3;
     at(layout, SettingsControl::install_asr_button, margin, y, setup_w, row);
@@ -331,7 +351,10 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     y += row + label_gap;
     const int prompt_h = 5 * line_height + s(10);
     at(layout, SettingsControl::prompt_edit, margin, y, inner, prompt_h);
-    y += prompt_h + group_gap;
+    y += prompt_h + small_gap;
+    const int prompt_error_h = std::max(line_height, measure(SettingsControl::prompt_error, inner));
+    at(layout, SettingsControl::prompt_error, margin, y, inner, prompt_error_h);
+    y += prompt_error_h + group_gap;
 
     const int half = (inner - column_gap) / 2;
     at(layout, SettingsControl::shortcut_label, margin, y, half, line_height);
@@ -339,7 +362,10 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     y += line_height + label_gap;
     at(layout, SettingsControl::shortcut_combo, margin, y, half, row);
     at(layout, SettingsControl::recorder_edit, margin + half + column_gap, y, inner - half - column_gap, row);
-    y += row + group_gap;
+    y += row + small_gap;
+    const int shortcut_error_h = std::max(line_height, measure(SettingsControl::shortcut_error, inner));
+    at(layout, SettingsControl::shortcut_error, margin, y, inner, shortcut_error_h);
+    y += shortcut_error_h + group_gap;
 
     const int privacy_w = button_width(SettingsControl::privacy_button, 180);
     at(layout, SettingsControl::microphone_label, margin, y, inner, line_height);
@@ -348,11 +374,7 @@ Layout compute_layout(int dpi, int line_height, const MeasureText &measure) {
     at(layout, SettingsControl::privacy_button, margin + inner - privacy_w, y, privacy_w, row);
     y += row + group_gap + s(6);
 
-    const int action_w = std::max(button_width(SettingsControl::save_button, 88),
-        button_width(SettingsControl::cancel_button, 88));
-    at(layout, SettingsControl::cancel_button, margin + inner - action_w, y, action_w, row);
-    at(layout, SettingsControl::save_button, margin + inner - 2 * action_w - s(8), y, action_w, row);
-    y += row + margin;
+    y += margin;
 
     layout.client = SIZE{inner + 2 * margin, y};
     return layout;

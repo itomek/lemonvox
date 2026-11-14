@@ -1,0 +1,2 @@
+344e058b079f3966b86caef4acf6ed115c9cd6497c08ddd8032df8a389202ebb  /tmp/pr103-followup-package-publish-root/usr/bin/lemonvox
+344e058b079f3966b86caef4acf6ed115c9cd6497c08ddd8032df8a389202ebb  /tmp/lemonvox-settings-accessibility.seZoaw/lemonvox

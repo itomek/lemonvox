@@ -55,24 +55,32 @@ import ApplicationServices
     private var activation:Any?
     private var localMonitor:Any?
     private var commandSides = ModifierCommandSides()
+    private var heldKeys = Set<UInt16>()
     private let canCancel:() -> Bool
     private let cancel:() -> Void
     private var detector:DoubleTapDetector
+    private var singleDetector:SingleTapDetector
+    private let singleTap:Bool
     let allowed:() -> Bool
     let fire:() -> Void
-    init(key:UInt16,allowed:@escaping () -> Bool,fire:@escaping () -> Void,
+    init(key:UInt16,singleTap:Bool = false,allowed:@escaping () -> Bool,fire:@escaping () -> Void,
          canCancel:@escaping () -> Bool = { false }, cancel:@escaping () -> Void = {}) {
         self.canCancel=canCancel; self.cancel=cancel
+        self.singleTap=singleTap; singleDetector=SingleTapDetector(key:key)
         detector=DoubleTapDetector(key:key); self.allowed=allowed; self.fire=fire
     }
     func start() -> Bool {
         guard AXIsProcessTrusted() else { return false }
         reset()
-        monitor=NSEvent.addGlobalMonitorForEvents(matching:[.flagsChanged,.keyDown,.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] event in
+        monitor=NSEvent.addGlobalMonitorForEvents(matching:[.flagsChanged,.keyDown,.keyUp,.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] event in
             MainActor.assumeIsolated { self?.receive(event) }
         }
-        localMonitor=NSEvent.addLocalMonitorForEvents(matching:[.flagsChanged,.keyDown,.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] event in
-            let consumed = MainActor.assumeIsolated { self?.observeCancellation(event) == true }
+        localMonitor=NSEvent.addLocalMonitorForEvents(matching:[.flagsChanged,.keyDown,.keyUp,.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] event in
+            let consumed = MainActor.assumeIsolated {
+                guard let self else { return false }
+                self.detector.reset(); self.singleDetector.reset()
+                return self.observeCancellation(event)
+            }
             return consumed ? nil : event
         }
         activation=NSWorkspace.shared.notificationCenter.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main) { [weak self] _ in
@@ -81,13 +89,16 @@ import ApplicationServices
         return monitor != nil
     }
     func reset() {
-        detector.reset()
+        detector.reset(); singleDetector.reset()
+        heldKeys=Set((0..<128).compactMap { CGEventSource.keyState(.combinedSessionState,key:CGKeyCode($0)) && DoubleTapDetector.normalized(UInt16($0)) == nil ? UInt16($0) : nil })
         commandSides.reset(commandHeld: NSEvent.modifierFlags.contains(.command))
     }
     func receive(_ event:NSEvent) {
+        if event.type == .keyDown { heldKeys.insert(event.keyCode) }
+        if event.type == .keyUp { heldKeys.remove(event.keyCode) }
         if observeCancellation(event) { return }
-        guard allowed() else { detector.reset(); return }
-        guard event.type == .flagsChanged else { detector.intervening(time:event.timestamp); return }
+        guard allowed() else { detector.reset(); singleDetector.reset(); return }
+        guard event.type == .flagsChanged else { detector.intervening(time:event.timestamp); singleDetector.intervening(time:event.timestamp); return }
         let key=event.keyCode
         let mask:NSEvent.ModifierFlags
         switch key {
@@ -95,13 +106,21 @@ import ApplicationServices
         case 58,61: mask = .option
         case 59,62: mask = .control
         case 56,60: mask = .shift
-        default: detector.intervening(time:event.timestamp); return
+        default: detector.intervening(time:event.timestamp); singleDetector.intervening(time:event.timestamp); return
         }
         let flags=event.modifierFlags.intersection([.command,.option,.control,.shift,.capsLock,.function])
-        guard flags.subtracting(mask).isEmpty else { detector.intervening(time:event.timestamp); return }
+        let raw=event.modifierFlags.rawValue
+        let pair:[UInt16]
+        switch key { case 54,55: pair=[54,55]; case 58,61: pair=[58,61]; case 59,62: pair=[59,62]; default: pair=[56,60] }
+        let oppositeHeld=pair.contains { $0 != key && raw & (Self.sideBits[$0] ?? 0) != 0 }
+        if !flags.subtracting(mask).isEmpty || (singleTap && (!heldKeys.isEmpty || oppositeHeld)) {
+            detector.intervening(time:event.timestamp); singleDetector.intervening(time:event.timestamp)
+            if !singleTap { return }
+        }
         // Device-specific flag bits disambiguate release when the opposite side is held.
         let down=(event.modifierFlags.rawValue & (Self.sideBits[key] ?? 0)) != 0
-        if detector.event(key:key,down:down,time:event.timestamp) { fire() }
+        let fired=singleTap ? singleDetector.event(key:key,down:down,time:event.timestamp) : detector.event(key:key,down:down,time:event.timestamp)
+        if fired { fire() }
     }
     private func observeCancellation(_ event:NSEvent) -> Bool {
         commandSides.observe(event)

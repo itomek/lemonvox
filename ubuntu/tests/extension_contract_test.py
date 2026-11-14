@@ -3,6 +3,7 @@
 
 import json
 import pathlib
+import re
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -26,6 +27,15 @@ class ExtensionContractTest(unittest.TestCase):
         self.assertEqual(keys["cancel-shortcut"].findtext("default"), "['<Control><Super>Escape']")
         self.assertEqual(keys["appearance"].attrib["type"], "s")
         self.assertEqual(keys["appearance"].findtext("default"), "'auto'")
+
+    def test_shortcut_acknowledgement_interface(self):
+        source = (ROOT / "extension.js").read_text(encoding="utf-8")
+        xml = re.search(r"const shortcutXml = `(.*?)`;", source, re.S).group(1)
+        interface = ET.fromstring(xml).find("./interface[@name='com.itomek.LemonVox.Shortcuts']")
+        method = interface.find("method[@name='SetShortcuts']")
+        self.assertEqual([(arg.attrib["type"], arg.attrib["direction"]) for arg in method.findall("arg")],
+                         [("s", "in"), ("s", "in"), ("b", "out"), ("s", "out")])
+        self.assertIn("/com/itomek/LemonVox/Shortcuts", source)
 
     def test_backend_contract_contains_only_control_methods_and_safe_properties(self):
         root = ET.parse(ROOT / "dbus-interface.xml").getroot()

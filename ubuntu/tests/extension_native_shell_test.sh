@@ -64,6 +64,6 @@ if ! env -u DISPLAY -u XAUTHORITY \
     tail -160 "$session_log" >&2 || true
     exit 1
 fi
-rg '^PASS:' "$session_log"
+rg '^(PASS|EVIDENCE):' "$session_log"
 
 printf 'PASS: isolated GNOME Shell extension enable/disable test\n'

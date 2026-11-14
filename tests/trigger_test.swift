@@ -68,6 +68,9 @@ private struct TriggerTrace { let key:UInt16; let down:Bool; let time:TimeInterv
   precondition(TriggerChoice.migrate(nil) == .defaultMac && TriggerChoice.migrate(0) == .defaultMac)
   precondition(TriggerChoice.migrate(1) == .combo(key:49,modifiers:768))
   let restored=try JSONDecoder().decode(TriggerChoice.self,from:JSONEncoder().encode(TriggerChoice.defaultMac)); precondition(restored == .defaultMac)
+  let singleChoice=TriggerChoice.singleTap(key:54)
+  let restoredSingle=try JSONDecoder().decode(TriggerChoice.self,from:JSONEncoder().encode(singleChoice))
+  precondition(restoredSingle == singleChoice)
   print("PASS: Swift-to-core trace parity, full double taps, chord reset, holds/repeats/gaps/side rejection, migration and persistence")
  }
 }

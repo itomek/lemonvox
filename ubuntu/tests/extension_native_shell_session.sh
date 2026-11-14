@@ -388,6 +388,52 @@ wait_for_fixture_event 'escape:1'
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_Escape'
 wait_for_fixture_event 'escape:2'
 
+phase='standalone-modifier-delivery-probe'
+# Probe public compositor hooks while an external Wayland client owns focus.
+# This is diagnostic evidence, not a modifier implementation: a stage observer
+# that misses client keys cannot safely feed the shared standalone-tap policy.
+shell_eval "import('gi://Clutter').then(({default: Clutter}) => { global.__lvSpecialModifierEvents = []; global.__lvSpecialModifierSignal = global.display.connect('modifiers-accelerator-activated', () => { global.__lvSpecialModifierEvents.push('activated'); return false; }); global.__lvModifierProbe = []; global.__lvModifierProbeSignal = global.stage.connect('captured-event', (_stage, event) => { if ([Clutter.EventType.KEY_PRESS, Clutter.EventType.KEY_RELEASE].includes(event.type())) global.__lvModifierProbe.push([event.type(), event.get_key_symbol()]); return Clutter.EVENT_PROPAGATE; }); return 'probe-installed'; })" >"$test_root/modifier-stage-probe.log"
+for modifier in Alt_L Alt_R Control_L Control_R Shift_L Shift_R; do
+    send_shortcut '' "Clutter.KEY_$modifier"
+done
+sleep 0.2
+modifier_probe="$(shell_eval "JSON.stringify({focus: global.display.focus_window?.get_title(), events: global.__lvModifierProbe})")"
+printf '%s\n' "$modifier_probe" >>"$test_root/modifier-stage-probe.log"
+special_modifier_probe="$(shell_eval 'JSON.stringify(global.__lvSpecialModifierEvents)')"
+printf '%s\n' "$special_modifier_probe" >"$test_root/modifier-special-probe.log"
+shell_eval "global.display.disconnect(global.__lvSpecialModifierSignal); delete global.__lvSpecialModifierSignal; delete global.__lvSpecialModifierEvents; 'special-probe-removed'" >/dev/null
+printf 'EVIDENCE: GNOME modifiers-accelerator-activated for ordinary modifiers: %s\n' "$special_modifier_probe"
+shell_eval "global.stage.disconnect(global.__lvModifierProbeSignal); delete global.__lvModifierProbeSignal; delete global.__lvModifierProbe; 'probe-removed'" >/dev/null
+[[ -f "$fixture_events.modifiers" ]] || fail 'modifier probe did not reach the external Wayland fixture'
+for modifier in Alt_L Alt_R Control_L Control_R Shift_L Shift_R; do
+    for action in press release; do
+        [[ "$(<"$fixture_events.modifiers")" == *"$action:$modifier"* ]] || fail "modifier probe did not deliver $action:$modifier to external client"
+    done
+done
+printf 'EVIDENCE: focused Wayland modifier delivery: %s\n' "$(<"$fixture_events.modifiers")"
+printf 'EVIDENCE: GNOME stage captured-event modifier observer: %s\n' "$modifier_probe"
+accelerator_probe="$(shell_eval "JSON.stringify(['Alt_L', 'Alt_R', 'Control_L', 'Control_R', 'Shift_L', 'Shift_R'].map(key => { const action = global.display.grab_accelerator(key, 0); if (action) global.display.ungrab_accelerator(action); return [key, action]; }))")"
+printf '%s\n' "$accelerator_probe" >"$test_root/modifier-accelerator-probe.log"
+printf 'EVIDENCE: GNOME bare modifier accelerator registration: %s\n' "$accelerator_probe"
+
+# An accepted bare accelerator is not proof of release-only delivery. Record
+# activation timing and preserve the focused client's ordinary Alt chord input.
+shell_eval "Promise.all([import('gi://Meta'), import('gi://Shell'), import('resource:///org/gnome/shell/ui/main.js')]).then(([{default: Meta}, {default: Shell}, Main]) => { global.__lvBareEvents = []; global.__lvBareAction = global.display.grab_accelerator('Alt_L', 0); if (global.__lvBareAction) Main.wm.allowKeybinding(Meta.external_binding_name_for_action(global.__lvBareAction), Shell.ActionMode.NORMAL); global.__lvBareSignal = global.display.connect('accelerator-activated', (_display, action) => { if (action === global.__lvBareAction) global.__lvBareEvents.push(action); }); return global.__lvBareAction; })" >"$test_root/modifier-activation-probe.log"
+shell_eval "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxTestVirtualKeyboard.notify_keyval(0, Clutter.KEY_Alt_L, Clutter.KeyState.PRESSED); return 'alt-pressed'; })" >>"$test_root/modifier-activation-probe.log"
+sleep 0.1
+shell_eval 'JSON.stringify(global.__lvBareEvents)' >>"$test_root/modifier-activation-probe.log"
+shell_eval "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxTestVirtualKeyboard.notify_keyval(0, Clutter.KEY_Alt_L, Clutter.KeyState.RELEASED); return 'alt-released'; })" >>"$test_root/modifier-activation-probe.log"
+sleep 0.1
+shell_eval 'JSON.stringify(global.__lvBareEvents)' >>"$test_root/modifier-activation-probe.log"
+send_shortcut 'Clutter.KEY_Alt_L' 'Clutter.KEY_a'
+sleep 0.1
+shell_eval 'JSON.stringify(global.__lvBareEvents)' >>"$test_root/modifier-activation-probe.log"
+shell_eval "global.display.disconnect(global.__lvBareSignal); if (global.__lvBareAction) global.display.ungrab_accelerator(global.__lvBareAction); delete global.__lvBareSignal; delete global.__lvBareAction; delete global.__lvBareEvents; 'bare-probe-removed'" >/dev/null
+shell_eval "Promise.all([import('gi://GObject'), import('gi://Clutter')]).then(([{default: GObject}, {default: Clutter}]) => JSON.stringify([['display', global.display], ['backend', global.backend], ['seat', Clutter.get_default_backend().get_default_seat()]].map(([name, object]) => ({name, signals: (() => { const result = []; for (let type = object.constructor.\$gtype; type; type = GObject.type_parent(type)) result.push(...GObject.signal_list_ids(type).map(id => GObject.signal_query(id).signal_name)); return result; })(), methods: (() => { const result = []; for (let prototype = Object.getPrototypeOf(object); prototype; prototype = Object.getPrototypeOf(prototype)) result.push(...Object.getOwnPropertyNames(prototype)); return result.filter(name => /key|event|device|seat|modifier|state/.test(name)); })()}))))" >"$test_root/modifier-api-probe.log"
+! rg '^\(false,' "$test_root/modifier-api-probe.log" "$test_root/modifier-activation-probe.log" || fail 'modifier API probe failed'
+printf 'EVIDENCE: GNOME bare Alt activation timing and chord: %s\n' "$(tr '\n' ' ' <"$test_root/modifier-activation-probe.log")"
+assert_backend_state idle
+
 phase='default-toggle'
 # The default toggle is a compositor-native binding. It routes to the service,
 # reveals the non-focusable native bar and does not take focus from the client.
@@ -470,6 +516,37 @@ wait_for_eval \
     "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj._bar.actor.visible ? 'result-bar-still-visible' : 'result-bar-hidden')" \
     result-bar-hidden
 
+
+phase='acknowledged-shortcuts'
+set_shortcuts() {
+    gdbus call --session --dest org.gnome.Shell \
+        --object-path /com/itomek/LemonVox/Shortcuts \
+        --method com.itomek.LemonVox.Shortcuts.SetShortcuts "$1" "$2"
+}
+accepted="$(set_shortcuts '<Control><Super>F9' '<Control><Super>F12')"
+[[ "$accepted" == "(true, '')" ]] || fail 'available shortcut pair was not acknowledged'
+# Mutter addKeybinding reports success for this reserved chord; actual grab
+# availability must reject both roles and preserve the last usable pair.
+gsettings set org.gnome.desktop.wm.keybindings cycle-panels "['<Control><Alt>Escape']"
+for pair in toggle cancel; do
+    if [[ "$pair" == toggle ]]; then
+        rejected="$(set_shortcuts '<Control><Alt>Escape' '<Control><Super>F12')"
+    else
+        rejected="$(set_shortcuts '<Control><Super>F9' '<Control><Alt>Escape')"
+    fi
+    [[ "$rejected" == '(false,'* ]] || fail "reserved $pair shortcut was acknowledged"
+done
+wait_for_eval \
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const b = Main.extensionManager.lookup('$uuid').stateObj._bindings; return b._toggleInstalled && !b._cancelInstalled && b._lastGood.toggle[0] === '<Control><Super>F9' && b._lastGood.cancel[0] === '<Control><Super>F12' ? 'ack-pair-preserved' : 'ack-pair-pending'; })" \
+    ack-pair-preserved
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F9'
+wait_for_backend_state recording
+wait_for_extension_state recording true
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F12'
+wait_for_backend_state idle
+wait_for_extension_state idle false
+printf 'PASS: native shortcut acknowledgement rejects compositor conflicts and preserves working delivery\n'
+
 phase='rebind-shortcuts'
 # Settings updates rebind both compositor shortcuts without accepting the old
 # toggle. The private schema directory is the staged extension, never a host
@@ -490,6 +567,18 @@ phase='rebound-cancel'
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F11'
 wait_for_backend_state idle
 wait_for_extension_state idle false
+
+phase='older-extension-acknowledgement'
+# Simulate an enabled older extension that has working keybindings but lacks
+# the new acknowledgement endpoint; do not substitute a successful settings write.
+shell_eval "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const extension = Main.extensionManager.lookup('$uuid').stateObj; extension._shortcutObject.unexport(); extension._shortcutObject = null; return 'old-interface-simulated'; })" >"$test_root/older-extension-simulation.log"
+if set_shortcuts '<Control><Super>F8' '<Control><Super>F9' >"$test_root/older-extension-ack.log" 2>&1; then
+    fail 'enabled extension without acknowledgement interface accepted shortcuts'
+fi
+wait_for_eval \
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => { const b = Main.extensionManager.lookup('$uuid').stateObj._bindings; return b._lastGood.toggle[0] === '<Control><Super>F10' && b._lastGood.cancel[0] === '<Control><Super>F11' ? 'older-pair-preserved' : 'older-pair-changed'; })" \
+    older-pair-preserved
+printf 'PASS: enabled older-extension interface simulation refuses acknowledgement and preserves bindings\n'
 
 phase='disable-cancel'
 # Put the service back into an active operation so disable must issue its
@@ -529,6 +618,26 @@ wait_for_backend_state idle
 send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F10'
 sleep 0.2
 assert_backend_state idle
+
+
+phase='ack-recovery'
+if set_shortcuts '<Control><Super>F10' '<Control><Super>F11' >"$test_root/disabled-shortcut-ack.log" 2>&1; then
+    fail 'disabled extension acknowledged shortcuts'
+fi
+gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+    --method org.gnome.Shell.Extensions.EnableExtension "$uuid" >/dev/null
+wait_for_eval \
+    "import('resource:///org/gnome/shell/ui/main.js').then(Main => Main.extensionManager.lookup('$uuid').stateObj?._client.snapshot.available ? 'backend-ready' : 'backend-pending')" \
+    backend-ready
+accepted="$(set_shortcuts '<Control><Super>F10' '<Control><Super>F11')"
+[[ "$accepted" == "(true, '')" ]] || fail 're-enabled extension did not recover shortcut acknowledgement'
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F10'
+wait_for_backend_state recording
+wait_for_extension_state recording true
+send_shortcut 'Clutter.KEY_Control_L, Clutter.KEY_Super_L' 'Clutter.KEY_F11'
+wait_for_backend_state idle
+wait_for_extension_state idle false
+printf 'PASS: disabled extension refuses acknowledgement and re-enable restores shortcut delivery\n'
 
 if rg -q '(JS ERROR|ERROR.*lemonvox@itomek\.com|SyntaxError)' "$shell_log"; then
     fail 'GNOME Shell logged an extension JavaScript error'

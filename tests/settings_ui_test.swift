@@ -31,22 +31,22 @@ import AppKit
     pane.debugDiagnostics.state = .on
     pane.endpoint.stringValue = "ftp://example.invalid/v1"
     pane.saveSettings()
-    precondition(pane.window.isVisible && !log.debugEnabled && persisted.isEmpty)
+    precondition(pane.window.isVisible && log.debugEnabled && persisted == [true])
 
     pane.endpoint.stringValue = config.endpoint
     pane.window.close()
-    precondition(!log.debugEnabled && persisted.isEmpty)
+    precondition(log.debugEnabled && persisted == [true])
 
     pane.show(config: config, save: { _ in }, close: {})
-    precondition(pane.debugDiagnostics.state == .off)
+    precondition(pane.debugDiagnostics.state == .on)
     pane.debugDiagnostics.state = .on
     pane.saveSettings()
-    precondition(log.debugEnabled && persisted == [true] && !pane.window.isVisible)
+    precondition(log.debugEnabled && persisted.last == true && pane.window.isVisible)
 
     pane.show(config: config, save: { _ in }, close: {})
     precondition(pane.debugDiagnostics.state == .on)
     pane.window.close()
-    print("PASS: Debug diagnostics is quiet by default, documents exclusions, and persists only after Save")
+    print("PASS: Debug diagnostics is quiet by default, documents exclusions, and autosaves independently of invalid endpoint drafts")
 }
 
 @MainActor private func generalPreferencesTest() {
@@ -98,6 +98,50 @@ import AppKit
     }
 }
 
+@MainActor private func autosaveTest() async throws {
+    _ = NSApplication.shared
+    let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at:directory) }
+    let suite="lemonvox-autosave-test-\(UUID().uuidString)"
+    let defaults=UserDefaults(suiteName:suite)!
+    defer { defaults.removePersistentDomain(forName:suite) }
+    defaults.set("working",forKey:"value")
+    do { try SettingsPersistence.write(["value":"draft","new":true],defaults:defaults,flush:{false}); preconditionFailure("Expected write failure") }
+    catch { precondition(defaults.string(forKey:"value") == "working" && defaults.object(forKey:"new") == nil) }
+    try SettingsPersistence.write(["value":"saved"],defaults:defaults)
+    precondition(defaults.string(forKey:"value") == "saved")
+    let config=DictationConfig(endpoint:"http://127.0.0.1:13305/v1",asrModel:"asr",cleanupModel:"cleanup",cleanupPrompt:"Original")
+    let pane=SettingsController(log:DiagnosticLog(directory:directory),discover:{ _ in
+        DiscoveredModels(transcription:[],cleanup:[],reason:nil,version:nil)
+    })
+    pane.window.alphaValue=0
+    var saves=0, fail=false, saved=config
+    pane.show(config:config,save:{ candidate in
+        if fail { throw CocoaError(.fileWriteNoPermission) }
+        saved=candidate; saves += 1
+    },close:{})
+    try await Task.sleep(nanoseconds:400_000_000)
+    precondition(saves == 0,"Initialization/discovery must not persist settings")
+    pane.prompt.string="Debounced prompt"
+    pane.textDidChange(Notification(name:NSText.didChangeNotification,object:pane.prompt))
+    precondition(saves == 0)
+    try await Task.sleep(nanoseconds:450_000_000)
+    precondition(saved.cleanupPrompt == "Debounced prompt" && saves == 1 && pane.window.isVisible)
+    pane.endpoint.stringValue="ftp://invalid.example/v1"
+    pane.prompt.string="Valid unrelated edit"
+    pane.saveSettings()
+    precondition(saved.endpoint == config.endpoint && saved.cleanupPrompt == "Valid unrelated edit")
+    precondition(!pane.status.stringValue.isEmpty)
+    fail=true; pane.prompt.string="Failed write"; pane.saveSettings()
+    precondition(saved.cleanupPrompt == "Valid unrelated edit" && pane.status.stringValue.contains("Previous saved"))
+    fail=false; pane.endpoint.stringValue=config.endpoint
+    pane.prompt.string="Close flush"
+    pane.textDidChange(Notification(name:NSText.didChangeNotification,object:pane.prompt))
+    pane.window.close()
+    precondition(saved.cleanupPrompt == "Close flush")
+    print("PASS: autosave debounce, initialization guard, independent valid edits, persistence failure and close flush")
+}
+
 @MainActor private func modelSetupUITest() async throws {
     _ = NSApplication.shared
     var downloaded=false, installs=0, confirmations=0, fail=false, slow=false
@@ -137,8 +181,10 @@ import AppKit
         pane.window.contentView?.layoutSubtreeIfNeeded()
         precondition(!pane.cleanupBackend.frame.intersects(pane.setupTranscription.frame))
         precondition(!pane.cleanupThinking.frame.intersects(pane.setupStatus.frame))
+        pane.categoryList.selectRowIndexes(IndexSet(integer:3),byExtendingSelection:false)
         pane.cleanupBackend.scrollToVisible(pane.cleanupBackend.bounds)
         precondition(pane.cleanupBackend.visibleRect.contains(pane.cleanupBackend.bounds))
+        pane.categoryList.selectRowIndexes(IndexSet(integer:1),byExtendingSelection:false)
         pane.setupStatus.scrollToVisible(pane.setupStatus.bounds)
         precondition(pane.setupStatus.visibleRect.contains(pane.setupStatus.bounds))
     }
@@ -184,7 +230,7 @@ import AppKit
     precondition(!pane.installing)
     try await Task.sleep(nanoseconds:200_000_000)
     precondition(pane.endpoint.stringValue.contains("13306") && pane.transcription.selectedID == "setup-asr")
-    precondition(pane.cleanup.selectedID == "existing-cleanup" && saved == nil)
+    precondition(pane.cleanup.selectedID == "existing-cleanup")
     checkCleanupDraft()
     pane.saveSettings()
     precondition(saved?.cleanupBackend == .lemonade && saved?.cleanupThinking == .serverDefault)
@@ -217,7 +263,7 @@ import AppKit
         if CommandLine.arguments.contains("--setup-only") {
             _ = NSApplication.shared
             Task { @MainActor in
-                do { try await modelSetupUITest() }
+                do { try await autosaveTest(); try await modelSetupUITest() }
                 catch { fatalError("Model setup UI test failed: \(error)") }
                 NSApp.terminate(nil)
             }
@@ -244,6 +290,9 @@ import AppKit
         precondition(pane.appVersion.superview === pane.scrolls[0].documentView,
                      "Settings must show the running LemonVox version in General")
         precondition(pane.appVersion.isSelectable)
+        precondition(!pane.window.contentView!.subviews.contains { ($0 as? NSButton)?.title == "Save" })
+        precondition(pane.cleanupBackend.superview === pane.scrolls[3].documentView)
+        precondition(!pane.version.stringValue.contains("Tested with"))
         precondition(pane.appVersion.accessibilityLabel() == "Running \(AppIdentity.running.name) version and build")
         precondition(!pane.appVersion.frame.intersects(pane.shortcutStatus.frame))
         precondition(pane.appearance.frame.maxY < pane.cancellationTrigger.frame.minY)
@@ -296,9 +345,9 @@ import AppKit
         pane.updatePreferences={ (false,true) }
         pane.saveUpdatePreferences={ updateSaved=($0,$1) }
         pane.show(config:config,save:{ saved=$0 },close:{ closed=true })
-        precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && pane.save.isEnabled)
+        precondition(pane.window.isVisible && pane.loading && pane.endpoint.isEditable && !pane.window.contentView!.subviews.contains { ($0 as? NSButton)?.title == "Save" })
         precondition(pane.cleanupBackend.indexOfSelectedItem == 0 && pane.cleanupThinking.state == .off)
-        precondition(pane.categoryList.numberOfRows == 3)
+        precondition(pane.categoryList.numberOfRows == 4)
         pane.cancellationTrigger.update(pane.trigger.choice)
         pane.saveSettings()
         precondition(pane.window.isVisible && pane.categoryList.selectedRow == 0)
@@ -332,7 +381,7 @@ import AppKit
             pane.window.setContentSize(size)
             for health in [LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING] {
                 pane.setServerHealth(health)
-                for row in 0..<3 {
+                for row in 0..<4 {
                     pane.categoryList.selectRowIndexes(IndexSet(integer:row), byExtendingSelection:false)
                     precondition(pane.serverRequirement.window === pane.window && !pane.serverRequirement.isHidden)
                     precondition(pane.serverRequirement.stringValue.contains("Requires Lemonade") == (health == LV_SERVER_HEALTH_DISCONNECTED))
@@ -342,8 +391,8 @@ import AppKit
                     let notice = pane.serverRequirement.frame
                     precondition(notice.minX >= pane.scrolls[row].frame.minX + 20,
                                  "Server notice must align with Settings content, not the sidebar")
-                    precondition(notice.minY >= pane.save.frame.maxY + 12,
-                                 "Server notice must sit above the Save action row")
+                    precondition(notice.minY >= 12,
+                                 "Server notice must fit at the bottom without a Save footer")
                     precondition(notice.maxY <= pane.scrolls[row].frame.minY - 8,
                                  "Settings scroll content must reserve space for the notice")
                     let textHeight = pane.serverRequirement.cell!.cellSize(forBounds:
@@ -359,11 +408,11 @@ import AppKit
         pane.endpoint.stringValue = "ftp://example.invalid/v1"
         pane.saveSettings()
         precondition(pane.window.isVisible && pane.categoryList.selectedRow == 1)
-        precondition(pane.status.visibleRect.contains(pane.status.bounds), "Save error must be visible after scrolling")
+        precondition(!pane.status.stringValue.isEmpty, "Invalid endpoint needs inline feedback")
         modelClip.scroll(to:NSPoint(x:0,y:0))
         pane.categoryList.selectRowIndexes(IndexSet(integer:0), byExtendingSelection:false)
         pane.saveSettings()
-        precondition(pane.categoryList.selectedRow == 1 && pane.status.visibleRect.contains(pane.status.bounds))
+        precondition(pane.categoryList.selectedRow == 0 && !pane.status.stringValue.isEmpty)
         pane.endpoint.stringValue = config.endpoint
         pane.prompt.string = config.cleanupPrompt
         pane.debugDiagnostics.state = .off
@@ -376,11 +425,11 @@ import AppKit
                 if CommandLine.arguments.contains("--render"), let view=pane.window.contentView {
                     let renderHeight = CommandLine.arguments.contains("--render-minimum") ? 480 : 690
                     pane.window.setContentSize(NSSize(width:820,height:renderHeight))
-                    let output=NSImage(size:NSSize(width:1640,height:renderHeight*3))
+                    let output=NSImage(size:NSSize(width:1640,height:renderHeight*4))
                     output.lockFocus()
-                    for row in 0..<3 {
+                    for row in 0..<4 {
                     pane.categoryList.selectRowIndexes(IndexSet(integer:row),byExtendingSelection:false)
-                    pane.setServerHealth([LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING][row])
+                    pane.setServerHealth([LV_SERVER_HEALTH_CONNECTED, LV_SERVER_HEALTH_DISCONNECTED, LV_SERVER_HEALTH_CHECKING, LV_SERVER_HEALTH_CONNECTED][row])
                     let activeScroll = pane.scrolls[row]
                     if let document = activeScroll.documentView {
                         let bottom = row == 1 && CommandLine.arguments.contains("--render-model-bottom")
@@ -395,12 +444,12 @@ import AppKit
                         RunLoop.main.run(until:Date().addingTimeInterval(0.15))
                         view.effectiveAppearance.performAsCurrentDrawingAppearance {
                             NSColor.windowBackgroundColor.setFill()
-                            NSRect(x:column*820,y:(2-row)*renderHeight,width:820,height:renderHeight).fill()
+                            NSRect(x:column*820,y:(3-row)*renderHeight,width:820,height:renderHeight).fill()
                         }
                         if let bitmap=view.bitmapImageRepForCachingDisplay(in:view.bounds) {
                             view.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in:view.bounds,to:bitmap) }
                             let image=NSImage(size:view.bounds.size); image.addRepresentation(bitmap)
-                            image.draw(in:NSRect(x:column*820,y:(2-row)*renderHeight,width:820,height:renderHeight))
+                            image.draw(in:NSRect(x:column*820,y:(3-row)*renderHeight,width:820,height:renderHeight))
                         }
                     }
                     }
@@ -419,7 +468,7 @@ import AppKit
                 }
                 pane.cleanup.commit(ModelChoice(id:remote.id,title:remote.id + " · remote"))
                 pane.endpoint.stringValue="http://127.0.0.1:13306/v1"; pane.refresh()
-                precondition(pane.loading && pane.save.isEnabled)
+                precondition(pane.loading && !pane.window.contentView!.subviews.contains { ($0 as? NSButton)?.title == "Save" })
                 afterDiscovery(pane) {
                     MainActor.assumeIsolated {
                         precondition(!pane.loading && pane.status.stringValue.contains("401"))
@@ -450,7 +499,7 @@ import AppKit
                                 pane.saveSettings()
                                 precondition(updateSaved?.0 == false && updateSaved?.1 == true)
                                 precondition(saved?.asrModel == config.asrModel && saved?.cleanupModel == config.cleanupModel)
-                                precondition(saved?.cleanupPrompt == "Saved across categories" && !pane.window.isVisible)
+                                precondition(saved?.cleanupPrompt == "Saved across categories" && pane.window.isVisible)
                                 precondition(saved?.cleanupBackend == .lemonade && saved?.cleanupThinking == .serverDefault)
                                 precondition(savedPreferences?.0 == .combo(key:9,modifiers:2304))
                                 precondition(savedPreferences?.1 == .defaultMacCancellation && savedPreferences?.2 == .dark)

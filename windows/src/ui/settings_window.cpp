@@ -1,4 +1,4 @@
-﻿#include "ui/settings_window.h"
+#include "ui/settings_window.h"
 
 #include "common/utf.h"
 #include "ui/settings_layout.h"
@@ -54,11 +54,9 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"", Kind::combo},
     {L"C&leanup model", Kind::label},
     {L"", Kind::combo},
-    {L"Cleanup e&xecution", Kind::label},
+    {L"Cleanup API and &thinking", Kind::label},
     {L"", Kind::combo},
-    {L"The server must provide transcription, chat and discoverable compatible model metadata. Remote cleanup sends text "
-     L"through that provider. Choose Lemonade thinking off only for Lemonade; compatible server leaves vendor options unset. "
-     L"Installing downloads model files after confirmation; loading an installed model uses memory, usually at first inference.", Kind::note},
+    {L"Lemonade thinking off disables reasoning. Server default lets Lemonade decide. Compatible servers receive no Lemonade-specific thinking options.", Kind::note},
     {L"Set up transcription…", Kind::button},
     {L"Set up cleanup…", Kind::button},
     {L"Cancel setup", Kind::button},
@@ -72,8 +70,10 @@ constexpr Spec kSpecs[kControlCount] = {
     {L"&Microphone", Kind::label},
     {L"", Kind::combo},
     {L"Microphone pri&vacy settings\u2026", Kind::button},
-    {L"&Save", Kind::default_button},
-    {L"Cancel", Kind::button},
+    {L"&Advanced…", Kind::button},
+    {L"", Kind::note},
+    {L"", Kind::note},
+    {L"", Kind::note},
 };
 
 bool system_prefers_dark() {
@@ -131,8 +131,6 @@ int combo_selection(HWND combo) {
 } // namespace
 
 int settings_control_id(SettingsControl control) {
-    if (control == SettingsControl::save_button) return IDOK;
-    if (control == SettingsControl::cancel_button) return IDCANCEL;
     return 1000 + static_cast<int>(control);
 }
 
@@ -199,7 +197,7 @@ public:
         if (installing_ && services_.cancel_install) services_.cancel_install();
         installing_ = false;
         ++setup_generation_;
-        if (hwnd_) DestroyWindow(hwnd_);
+        if (hwnd_) { save(); DestroyWindow(hwnd_); }
     }
 
     bool pre_translate(MSG *message) {
@@ -527,6 +525,7 @@ private:
             set_suspended(false);
             rebuild_trigger();
             SetFocus(control(SettingsControl::shortcut_combo));
+            save();
             break;
         }
     }
@@ -549,49 +548,49 @@ private:
     }
 
     void save() {
-        end_recording();
-        const std::wstring endpoint = settings::trim(window_text(control(SettingsControl::endpoint_edit)));
-        std::wstring error = settings::validate_endpoint(endpoint);
-        if (!error.empty()) {
-            set_status({error, true});
-            SetFocus(control(SettingsControl::endpoint_edit));
-            return;
-        }
-        const std::wstring prompt = settings::from_edit_newlines(window_text(control(SettingsControl::prompt_edit)));
-        error = settings::validate_prompt(prompt);
-        if (!error.empty()) {
-            set_status({error, true});
-            SetFocus(control(SettingsControl::prompt_edit));
-            return;
-        }
+        if (!hwnd_ || populating_ || !original_) return;
+        KillTimer(hwnd_, 2);
         WinPreferences preferences = *original_;
-        preferences.endpoint = wide_to_utf8(endpoint);
+        const auto endpoint = settings::trim(window_text(control(SettingsControl::endpoint_edit)));
+        const auto endpoint_error = settings::validate_endpoint(endpoint);
+        SetWindowTextW(control(SettingsControl::endpoint_error), endpoint_error.c_str());
+        if (endpoint_error.empty()) preferences.endpoint = wide_to_utf8(endpoint);
+        const auto prompt = settings::from_edit_newlines(window_text(control(SettingsControl::prompt_edit)));
+        const auto prompt_error = settings::validate_prompt(prompt);
+        SetWindowTextW(control(SettingsControl::prompt_error), prompt_error.c_str());
+        if (prompt_error.empty()) preferences.cleanup_prompt = wide_to_utf8(prompt);
         preferences.asr_model = selected_model(ModelRole::transcription);
         preferences.cleanup_model = selected_model(ModelRole::cleanup);
-        preferences.cleanup_prompt = wide_to_utf8(prompt);
         const int execution = combo_selection(control(SettingsControl::execution_combo));
         preferences.cleanup_backend = execution == 1 || execution == 2 ? LV_CLEANUP_BACKEND_LEMONADE : LV_CLEANUP_BACKEND_GENERIC;
-        preferences.cleanup_thinking = execution == 2 ? LV_CLEANUP_THINKING_SERVER_DEFAULT : LV_CLEANUP_THINKING_DISABLED;
-        preferences.trigger = trigger_;
+        // Generic mode does not erase a separately saved Lemonade thinking preference.
+        if (execution != 0) preferences.cleanup_thinking = execution == 2 ? LV_CLEANUP_THINKING_SERVER_DEFAULT : LV_CLEANUP_THINKING_DISABLED;
         preferences.capture_device_id = selected_device();
-
-        const bool trigger_changed = preferences.trigger != original_->trigger;
-        if (trigger_changed && services_.apply_trigger) {
-            std::wstring reason;
-            if (!services_.apply_trigger(preferences.trigger, &reason)) {
-                set_status({L"The shortcut " + describe_trigger(preferences.trigger) + L" is unavailable"
-                        + (reason.empty() ? L"" : L": " + reason) + L". Choose another shortcut.",
-                    true});
-                SetFocus(control(SettingsControl::shortcut_combo));
-                return;
-            }
+        preferences.trigger = trigger_;
+        bool trigger_changed = preferences.trigger != original_->trigger;
+        std::wstring trigger_error;
+        if (trigger_changed && services_.apply_trigger && !services_.apply_trigger(preferences.trigger, &trigger_error)) {
+            if (trigger_error.empty()) trigger_error = L"Shortcut unavailable. Choose another shortcut.";
+            preferences.trigger = original_->trigger;
+            trigger_changed = false;
         }
+        SetWindowTextW(control(SettingsControl::shortcut_error), trigger_error.c_str());
+        apply_layout(false, nullptr);
+        const auto &old = *original_;
+        const bool changed = preferences.endpoint != old.endpoint || preferences.asr_model != old.asr_model
+            || preferences.cleanup_model != old.cleanup_model || preferences.cleanup_prompt != old.cleanup_prompt
+            || preferences.cleanup_backend != old.cleanup_backend || preferences.cleanup_thinking != old.cleanup_thinking
+            || preferences.trigger != old.trigger || preferences.capture_device_id != old.capture_device_id;
+        if (!changed) return;
         if (services_.save && !services_.save(preferences)) {
-            if (trigger_changed && services_.apply_trigger) services_.apply_trigger(original_->trigger, nullptr);
-            set_status({L"Settings could not be saved. Try again.", true});
+            std::wstring rollback_error;
+            if (trigger_changed && services_.apply_trigger && !services_.apply_trigger(old.trigger, &rollback_error)) {
+                SetWindowTextW(control(SettingsControl::shortcut_error), L"Could not restore the shortcut. Re-select the saved shortcut or restart LemonVox.");
+            }
+            set_status({L"Changes could not be saved. Check access to Windows user settings and try again. Previous settings are retained.", true});
             return;
         }
-        destroy();
+        original_ = preferences;
     }
 
     void update_font() {
@@ -626,11 +625,12 @@ private:
 
     void apply_layout(bool center, const RECT *suggested) {
         const settings::Layout layout = settings::compute_layout(dpi_, line_height_,
-            [this](SettingsControl which, int width) { return measure(which, width); });
+            [this](SettingsControl which, int width) { return measure(which, width); }, advanced_);
         const HDWP batch = BeginDeferWindowPos(kControlCount);
         HDWP positions = batch;
         for (int index = 0; index < kControlCount; ++index) {
             const RECT &rect = layout.rects[index];
+            ShowWindow(controls_[index], rect.right > rect.left && rect.bottom > rect.top ? SW_SHOWNA : SW_HIDE);
             int height = rect.bottom - rect.top;
             if (kSpecs[index].kind == Kind::combo) height += MulDiv(240, dpi_, 96);
             if (positions) {
@@ -711,7 +711,9 @@ private:
     LRESULT color_control(UINT message, HDC dc, HWND child) {
         const bool field = message != WM_CTLCOLORSTATIC && message != WM_CTLCOLORBTN;
         COLORREF color = text_;
-        if (child == control(SettingsControl::status) && status_.error) color = error_;
+        if ((child == control(SettingsControl::status) && status_.error)
+            || child == control(SettingsControl::endpoint_error) || child == control(SettingsControl::prompt_error)
+            || child == control(SettingsControl::shortcut_error)) color = error_;
         if (child == control(SettingsControl::endpoint_hint) || child == control(SettingsControl::routing_note)) {
             color = secondary_;
         }
@@ -727,7 +729,16 @@ private:
     void on_command(int id, WORD code) {
         if (id == IDOK) { save(); return; }
         if (id == IDCANCEL) { destroy(); return; }
+        if (!populating_ && (code == CBN_SELCHANGE || code == EN_KILLFOCUS)) {
+            // Shortcut selection is committed after on_shortcut_command updates trigger_.
+            if (id != settings_control_id(SettingsControl::shortcut_combo)) save();
+        }
+        if (!populating_ && code == EN_CHANGE && (id == settings_control_id(SettingsControl::endpoint_edit)
+                || id == settings_control_id(SettingsControl::prompt_edit))) SetTimer(hwnd_, 2, 350, nullptr);
         switch (static_cast<SettingsControl>(id - 1000)) {
+        case SettingsControl::advanced_button:
+            if (code == BN_CLICKED) { advanced_ = !advanced_; apply_layout(false, nullptr); }
+            break;
         case SettingsControl::install_asr_button:
             if (code == BN_CLICKED) install_model(ModelRole::transcription);
             break;
@@ -747,6 +758,8 @@ private:
             if (code == BN_CLICKED) {
                 SetWindowTextW(control(SettingsControl::prompt_edit),
                     settings::to_edit_newlines(utf8_to_wide(default_prompt_)).c_str());
+                // Multiline edits do not send EN_CHANGE for WM_SETTEXT.
+                save();
             }
             break;
         case SettingsControl::privacy_button:
@@ -770,6 +783,7 @@ private:
             break;
         case SettingsControl::shortcut_combo:
             on_shortcut_command(code);
+            if (code == CBN_SELCHANGE && !recording_) save();
             break;
         default:
             break;
@@ -782,7 +796,10 @@ private:
             on_command(LOWORD(wparam), HIWORD(wparam));
             return 0;
         case DM_GETDEFID:
-            return MAKELRESULT(IDOK, DC_HASDEFID);
+            return 0;
+        case WM_TIMER:
+            if (wparam == 2) save();
+            return 0;
         case WM_CLOSE:
             destroy();
             return 0;
@@ -877,6 +894,7 @@ private:
         }
         case WM_KILLFOCUS:
             self->end_recording();
+            self->save();
             break;
         case WM_KEYDOWN: case WM_SYSKEYDOWN:
             if (self->recording_) {
@@ -900,7 +918,7 @@ private:
     }
 
     // A multiline edit wants every key; give Tab and Esc back to the dialog so
-    // keyboard users are never trapped and Esc still cancels.
+    // keyboard users are never trapped and Esc still closes Settings.
     static LRESULT CALLBACK prompt_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR, DWORD_PTR) {
         if (message == WM_GETDLGCODE) {
             LRESULT code = DefSubclassProc(hwnd, message, wparam, lparam);
@@ -939,6 +957,7 @@ private:
     bool recording_ = false;
     bool suspended_ = false;
     bool populating_ = false;
+    bool advanced_ = false;
     std::uint64_t generation_ = 0;
     std::wstring last_endpoint_;
     StatusText status_;
