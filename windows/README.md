@@ -1,269 +1,29 @@
 # LemonVox for Windows
 
-## Overview
+Simple dictation from your microphone into the app you’re using. Requires Windows 11;
+the x64 app also runs under ARM64 emulation.
 
-The Windows host is a native C++17 tray app built on the shared portable core
-(`core/`). Windows-specific code lives in `windows/src/<module>`; each module has
-its own `CMakeLists.txt` and is picked up automatically by `windows/CMakeLists.txt`.
-Presentation (`ui`) is kept separate from OS adapters, and every native completion
-reaches the core through the single serialized `UiThreadExecutor` (`common/executor.h`).
+## Install
 
-## Requirements
+[Download and run the Windows EXE](https://github.com/itomek/lemonvox/releases/download/v0.7.0/LemonVox-0.7.0-windows-x64.exe).
+The portable app needs no installer. The release is unsigned, so SmartScreen may warn.
 
-- Build: Visual Studio 2022 Build Tools with the "Desktop development with C++" workload
-  (MSVC x64 toolset 14.44 tested). CMake and Ninja are used from that installation.
-- Windows SDK 10.0.26100.
-- No other SDKs or runtimes: the host uses only in-box Win32 libraries and links the C runtime
-  statically, so `LemonVox.exe` has no redistributable dependency.
-- Run: Windows 11 x64 is the only tested configuration (see [Validation](#validation)).
-  Windows 10 and Arm64 are untested.
-- Install and run Lemonade separately, or another compatible server on this PC or a remote machine.
-  HTTP/HTTPS endpoints ending in /v1 (including /api/v1) are supported. The server must provide audio transcription, chat
-  completions and discoverable compatible model metadata; OpenAI API compatibility alone
-  does not guarantee model discovery or successful dictation. LemonVox neither installs nor
-  starts the server. Lemonade is the tested baseline below; other servers need verification.
-
-## Build & test
+The [WinGet submission](https://github.com/microsoft/winget-pkgs/pull/475080) is pending. After acceptance:
 
 ```powershell
-# Configure, build (Release) and run the non-interactive tests.
-powershell -NoProfile -ExecutionPolicy Bypass -File windows\scripts\build.ps1 -Output $env:TEMP\lv-build
-
-# Also run tests labeled "interactive" (they show windows and inject input; needs an unlocked desktop).
-powershell -NoProfile -ExecutionPolicy Bypass -File windows\scripts\build.ps1 -Output $env:TEMP\lv-build -Interactive
+winget install --id LemonVox.LemonVox --exact --source winget
 ```
 
-Options: `-Configuration Debug|Release`, `-SkipTests`, `-ExcludeLabels <regex>` (default
-`interactive`). Builds use `/W4 /WX /permissive-`. Test labels:
+## Use
 
-| Label | Needs | Examples |
-| --- | --- | --- |
-| *(none)* | nothing | core tests, controller, net (loopback server), capture conversion, prefs |
-| `interactive` | unlocked desktop; shows windows and injects input | trigger, insertion, indicator, Settings, `app_smoke`, `app_e2e_test` |
-| `lemonade` | Lemonade at `127.0.0.1:13305` with Whisper-Base, kokoro-v1 and a chat model | `lemonade_net_test`, `pipeline_lemonade_test`, `app_e2e_test` |
-| `audio-device` | a capture endpoint; initializes it but never starts recording | `capture_device_test` |
+Allow desktop microphone access in **Settings > Privacy & security > Microphone**.
+Open LemonVox Settings from the tray icon and [connect your server and models](../docs/model-setup.md).
 
-Hosted CI (`.github/workflows/windows.yml`) excludes `interactive|lemonade|audio-device`.
-Interactive tests hold `lemonvox::win::test::InteractiveLock` (`tests/support/interactive_lock.h`)
-and fail instead of injecting input when their own window is not foreground. Tests needing
-Lemonade exit 77 (skipped) when it is unreachable.
+Press **Alt twice** to start and again to stop. **X** cancels. The result is pasted
+wherever your cursor is when processing finishes. Change shortcuts in Settings.
 
-No automated test records the microphone. `pipeline_lemonade_test` and `app_e2e_test` use speech
-synthesized by Lemonade's TTS model and replayed through `FileCapture`, which runs the same 16 kHz
-conversion as live capture. `app_e2e_test` launches the real `LemonVox.exe` with
-`--settings-key Software\LemonVoxTest\e2e-<pid> --sample-wav <file>`, presses Alt twice to start
-and stop through the real global hook, and checks the cleaned text lands once in its own field with
-no Enter, focus unchanged and the clipboard restored. To check a real microphone, run
-`<output>\src\capture\lemonvox_mic_probe.exe --seconds 5` yourself; it prints only duration and
-levels.
+## Help and development
 
-`insertion_interactive_test` covers native EDIT, RichEdit, password controls,
-focus changes between fields/windows after inspection, an unknown control with
-no caret or accessibility provider, and no selected text field. It checks normal
-Ctrl+V dispatch, exact text without Enter, focus preservation, clipboard restoration,
-dispatch refusal and cancellation (including immediately before dispatch).
-
-`lemonvox_ui_demo.exe` (in `<output>\src\ui`) shows the tray icon and indicator cycling through
-every state; `--smoke` runs the cycle once and verifies the indicator never became foreground,
-active or focused (ctest `ui_demo_smoke`).
-
-## Using LemonVox
-
-- Press **Alt twice** to start recording and Alt twice again to stop. Ordinary Alt shortcuts, holds,
-  repeats, AltGr and any intervening key or mouse click cancel a pending double tap; keys are never
-  swallowed. Settings offers Ctrl/Shift/Windows-key double taps or a regular shortcut
-  (`RegisterHotKey`; a conflict keeps the previous shortcut).
-- The bar shows preparing, recording (level and time), transcribing, cleaning and inserting without
-  taking focus; it can be dragged and remembers its position. Stop, Cancel and Copy are also in the
-  tray menu. Left-click the tray icon for Settings.
-- When transcription and cleanup finish, LemonVox pastes once wherever keyboard
-  focus is now. You can move the cursor or switch apps during recording or processing.
-  It sends ordinary Ctrl+V without Enter and never reactivates an earlier app or field.
-- There is no target-field setting. Existing saved choices are ignored. Accessibility
-  discovery is not required; when no text field is focused, the ordinary paste is
-  still dispatched and the receiving app decides what to do.
-- If Windows cannot dispatch the paste (for example into an administrator app), or
-  the clipboard is unavailable, LemonVox offers **Copy** for manual paste.
-- Stop or the repeat shortcut finishes capture once. Cancel/X discards the operation
-  and suppresses late paste; a paste already dispatched to Windows cannot be undone.
-
-- Microphone errors are specific (privacy setting off, no device, in use, disconnected), with an
-  action to open `ms-settings:privacy-microphone` or Settings.
-- Debug/test launch options: `--settings` (open Settings), `--settings-key <HKCU subkey under
-  Software\>`, `--sample-wav <file>` (replay a WAV instead of the microphone), `--smoke`.
-
-The application checks the saved server endpoint in the background from startup, every
-10 seconds, using `GET /models` with a 3-second deadline. Settings displays a neutral
-checking state, green **Server connected**, or red **Could not connect** with the separate
-server requirement. This validates the inventory response, not selected-model readiness
-or inference. Unsaved endpoint edits do not change the background check; Save does.
-Closing and reopening Settings shows the latest application-owned status.
-
-Settings persist in `HKCU\Software\LemonVox`. Audio and transcripts stay in memory; the clipboard
-is used briefly with history/cloud exclusion formats and restored only if nothing else changed it;
-diagnostics (tray > Open diagnostics) contain fixed events, error categories, HTTP status codes and numeric cleanup metrics
-only.
-
-## Packaging
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File windows\scripts\package.ps1 -Output $env:TEMP\lv-pkg -Version 0.1.0
-```
-
-builds Release, runs the hosted-safe tests and writes `LemonVox-<version>-windows-x64.zip`,
-its `.sha256`, the standalone `LemonVox-<version>-windows-x64.exe`, and
-`SHA256SUMS-windows-x64.txt`. `VERSION.txt` in the zip (also exported as
-`VERSION-windows-x64.txt`) records the version, source commit (flagging uncommitted
-changes), architecture and compiler. The zip contains `LemonVox.exe`, `install.ps1`,
-`uninstall.ps1`, `README.txt`, license files.
-
-`install.ps1` installs per user to `%LOCALAPPDATA%\Programs\LemonVox` (no elevation), adds a Start
-menu shortcut, an Apps & features entry and optionally `-StartAtSignIn`. Re-running it updates in
-place and keeps settings. `uninstall.ps1` removes files, shortcuts and the entry, keeping settings
-unless `-RemoveSettings`.
-
-The direct-download artifact is unsigned; SmartScreen may warn. Public release and signing
-remain separate final steps after the artifacts are prepared and reviewed.
-GitHub EXE/ZIP releases and the `LemonVox.LemonVox` WinGet community package are part of the Windows milestone;
-the [distribution design](../docs/superpowers/specs/2026-11-08-windows-distribution-design.md)
-records the earlier channel design; the owner subsequently made Store/MSIX publication optional.
-See [distribution commands and publication checklist](DISTRIBUTION.md) for the MSIX packager,
-WinGet generator, local tests and protected draft release inputs.
-
-## Validation
-
-The table below records the earlier Windows milestone. For issue #80, the local
-build attempt on 2026-11-11 could not start because Visual Studio Build Tools
-(vswhere/MSVC) are absent. Updated native and app-matrix checks require a new run.
-
-Machine: Windows 11 Enterprise 26H2, build 26300.9711, x64 (AMD), MSVC 14.44, SDK 10.0.26100.
-Lemonade 2026.44.1 at `http://127.0.0.1:13305/v1` with Whisper-Base (whispercpp), Gemma-4-E4B-it-GGUF
-and Qwen3 GGUF chat models (llamacpp), kokoro-v1 (TTS, tests only).
-
-| Area | Result |
-| --- | --- |
-| Shared core tests under MSVC | Pass (session, trigger, contracts, protocol, workflow) |
-| Global trigger | Alt twice (left or right) fires once; Alt chords, holds, repeats, AltGr, intervening keys/mouse do not; typing passes through; hotkey conflict keeps previous binding; suspended while recording a shortcut |
-| Indicator | Never foreground/active/focused across all states, clicks and drags |
-| Fixed-text insertion | Updated regressions cover current-focus paste, unknown/no field, cancellation and no Enter; current native run pending (see below) |
-| Real apps | Updated matrix checks completion-focus paste; rerun pending. See [`tests/insertion-matrix.md`](tests/insertion-matrix.md). |
-| Pipeline | Synthesized "Um, send Alex the fourteen invoices on Friday." → "Send Alex the 14 invoices on Friday." through WinHTTP, Whisper-Base and Gemma cleanup |
-| Full app | `app_e2e_test`: Alt twice → real app → Lemonade → pasted into another process's field ("Note: Send Alex the 14 invoices on Friday."), focus kept, no Enter, clipboard restored |
-| Failure paths | Unreachable endpoint, HTTP errors, malformed/empty responses, timeouts, cancel and stale results, malformed endpoint, microphone denial/no device/device loss (fake device) |
-| Microphone | Endpoint enumeration and initialization (48 kHz stereo) verified without recording; owner-run `lemonvox_mic_probe --seconds 5`: 5.000 s at 16 kHz mono, RMS -27.2 dBFS, peak -2.1 dBFS |
-| Live dictation | Owner-verified with a real microphone and Alt twice |
-| Administrator window | Owner-verified: Alt twice is not detected in an elevated terminal (UIPI), and the "Administrator window" notice appears when it becomes active; only the elevated terminal matched on the open desktop |
-| Package | Install, launch, update with settings retained, uninstall with and without settings; exe 922,624 bytes, zip 437,702 bytes |
-| Idle | 0 ms CPU over 30 s, 17.6 MB working set, 4.3 MB private bytes, 12 threads |
-
-## Known limitations
-
-- Higher-integrity (administrator) windows are not supported. Windows (UIPI) does not deliver their
-  keystrokes to LemonVox's keyboard hook, so a modifier double tap such as Alt twice does nothing there
-  (confirmed by the owner in an elevated terminal). When such a window becomes active, the bar briefly
-  says so. A regular shortcut (`RegisterHotKey`) or tray > Start dictation still works, and the result
-  is offered for Copy because input cannot be sent to elevated windows. Comparable dictation apps that
-  run at normal integrity have the same limit. Running LemonVox as administrator, or a signed
-  `uiAccess` build installed under Program Files, would lift it; both were rejected for now because
-  they widen LemonVox's privileges, and running it elevated is unsupported.
-- A lone Alt tap puts classic Win32 apps into menu mode; a double tap enters and leaves it, so the
-  target is unchanged, but a menu bar may flash. Choose another trigger if that is distracting.
-- If Windows silently removes the keyboard hook (`LowLevelHooksTimeout`) a health check reinstalls it
-  within about 2 s; this path could not be forced in tests.
-- Only Windows 11 x64 has been tested. Dark mode was verified visually but is not covered by automated
-  tests on this light-mode machine. The Settings window does not scroll on very short screens.
-
-## Native UI decision
-
-The UI uses plain Win32 (user32, GDI/GDI+, shell32, dwmapi, uxtheme, comctl32 v6) instead of
-the C++/WinRT + WinUI 3 stack originally proposed:
-
-- **Why Win32:** the Windows App SDK is not installed on the build machines and adding a
-  framework dependency (plus its runtime installer) was not approved. Win32 ships in-box, keeps
-  the binary self-contained, and gives direct control over the activation rules the dictation bar
-  depends on (`WS_EX_NOACTIVATE`, `MA_NOACTIVATE`, layered per-pixel alpha).
-- **What WinUI 3 would add:** Fluent controls and Mica/Acrylic backdrops, built-in UI Automation
-  for every control, XAML layout and theming, and easier high-quality typography.
-- **Revisit when:** the Windows App SDK runtime can be shipped (approved dependency and installer
-  story), the Settings window outgrows comctl32 controls, or accessibility audits need richer UIA
-  than the current window-title/MSAA level. The `ui` module's interfaces (`IndicatorWindow`,
-  `TrayIcon`, `Theme`) are view-level so a WinUI implementation could replace them without touching
-  adapters or the core.
-
-The indicator is custom-drawn and cannot take keyboard focus by design; every action it offers
-(Stop, Cancel, Copy) is also available from the tray menu. Its window title is kept equal to the
-current status for Narrator, and error/copy states raise `EVENT_SYSTEM_ALERT`. Left-clicking the
-tray icon opens Settings; dictation commands are in the right-click menu.
-
-## Layout
-
-| Module | Path | Purpose |
-| --- | --- | --- |
-| common | `src/common` | UI-thread executor, UTF-8/UTF-16 conversion, trigger binding |
-| prefs | `src/prefs` | Registry-backed preferences (`HKCU\Software\LemonVox`) |
-| net | `src/net` | Endpoint facts, WinHTTP `ByteTransport` (no proxy/redirects/cookies/credentials), model catalog |
-| capture | `src/capture` | WASAPI capture adapter, 16 kHz WAV conversion, device list |
-| insertion | `src/insertion` | UIA/Win32 target inspection, integrity check, clipboard transaction, paste and Copy fallback |
-| trigger | `src/trigger` | Low-level keyboard hook double tap via the shared detector, `RegisterHotKey`, shortcut recorder |
-| ui | `src/ui` | Theme, lemon icon, indicator bar, tray icon, Settings window, demo host; `res/` holds the app manifest and icon resource |
-| app | `src/app` | `DictationController` (binds `WorkflowCore` to the adapters, user messages, diagnostics), `FileCapture`, `LemonVox.exe` composition root |
-
-GUI executables call `lemonvox_win_app_resources(<target>)` (defined in `src/ui/CMakeLists.txt`)
-to embed the manifest (PerMonitorV2 DPI awareness, common controls v6, `asInvoker`) and the
-build-time-rendered app icon (resource ID 1); `lemonvox_win_manifest(<target>)` embeds only the
-manifest.
-
-## Model setup
-
-Installing the inference server, downloading model files, and loading an installed
-model into memory are separate steps. Install and start the server separately.
-Settings → Refresh models checks its catalog without starting downloads. Choose
-transcription and cleanup models independently. Use Set up transcription / Set up
-cleanup and confirm the named model before allowing the server to download it;
-files may occupy several GB on the server machine. The server owns storage,
-network access, disk space and filesystem permissions. An installed but unloaded
-model can load at first inference and is not a missing download.
-
-Setup shows an activity state while the server works. Cancel setup requests cancellation on the server and waits until its worker
-stops; the server may retain partial or completed files. If cancellation cannot
-be confirmed after network loss, check the server model manager and Refresh
-models before retrying. Failed setup preserves saved settings. After successful setup the chosen
-compatible model is selected in Settings; Save settings applies it to later sessions.
-For servers or versions without verified model-management support, open that
-server’s model manager, install a compatible transcription or chat model, and
-return to Refresh models. LemonVox never constructs shell commands from model IDs.
-
-Model installation requires verified Lemonade 2026.46.2+ management support and
-a compatible downloads API probe. See [shared model setup](../docs/model-setup.md)
-for the API contract and verification limits.
-
-## Cleanup execution
-
-New settings target the factory Lemonade server with **Lemonade (thinking off)**
-execution: the shared request policy sends `enable_thinking: false`, temperature
-zero and a generation budget that grows with transcript length. Select
-**Compatible server (server default)** for another OpenAI-compatible server;
-that mode omits Lemonade-specific thinking parameters. **Lemonade (server default)**
-leaves thinking behavior to Lemonade as an explicit override. Existing saved
-settings without a backend marker retain compatible-server execution until a
-mode is chosen. Changing an endpoint does not detect its backend; choose the
-matching execution mode before saving.
-
-The shared default prompt requests minimal punctuation and filler corrections
-while preserving every clause, language, name, number, negation and closing.
-Selected models and custom prompts are preserved. The exact previous built-in
-prompt migrates to the shared default; reset a custom prompt in Settings to
-adopt that default. Empty or truncated cleanup is rejected rather
-than pasted. Model behavior can still change words, so review the result.
-
-Gemma-4-E2B-it-GGUF remains a fast candidate awaiting broader fidelity and native
-performance qualification. It is not selected automatically. An already installed
-Gemma-4-E4B-it-GGUF with thinking off is a quality-oriented alternative, also
-requiring review. Choose a compatible installed model explicitly. Cleanup does
-not download models or change server residency; model setup requires a separate
-confirmed action. First-load latency can exceed warm generation time.
-
-The bounded diagnostic ring retains request duration, available token/reasoning
-counts and a fixed finish-reason category. Duration includes loading, queueing
-and transport; residency and fidelity remain marked unknown/unverified. No
-dictated content, prompts or endpoint URLs are recorded.
+- [Model setup](../docs/model-setup.md) and [cleanup settings](../docs/cleanup.md)
+- [Build, test and packaging](DEVELOPMENT.md)
+- [Release publishing](DISTRIBUTION.md)
