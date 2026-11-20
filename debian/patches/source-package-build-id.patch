@@ -1,0 +1,33 @@
+Description: Accept an explicit build ID when building without Git metadata
+ Upstream developer builds keep their normal revision and dirty-state reporting.
+Author: Tomasz Iniewicz <84wholes_nozzle@icloud.com>
+Forwarded: no
+Last-Update: 2026-11-20
+
+diff --git a/ubuntu/application.cmake b/ubuntu/application.cmake
+index 94750df..c1beac3 100644
+--- a/ubuntu/application.cmake
++++ b/ubuntu/application.cmake
+@@ -1,9 +1,18 @@
+ pkg_check_modules(ADWAITA REQUIRED IMPORTED_TARGET libadwaita-1>=1.5 gtk4>=4.14)
+ set(LEMONVOX_VERSION "0.2.0" CACHE STRING "LemonVox application version")
+-execute_process(COMMAND git -C "${LEMONVOX_ROOT}" rev-parse --short HEAD OUTPUT_VARIABLE LEMONVOX_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE)
+-execute_process(COMMAND git -C "${LEMONVOX_ROOT}" status --porcelain OUTPUT_VARIABLE LEMONVOX_DIRTY OUTPUT_STRIP_TRAILING_WHITESPACE)
+-if(LEMONVOX_DIRTY)
+-    string(APPEND LEMONVOX_BUILD "-dirty")
++# Source packages may be built without .git. Packagers can supply a stable build
++# identifier; normal developer builds retain revision and dirty-state reporting.
++if(NOT DEFINED LEMONVOX_BUILD)
++    execute_process(COMMAND git -C "${LEMONVOX_ROOT}" rev-parse --short HEAD
++        OUTPUT_VARIABLE LEMONVOX_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
++    if(NOT LEMONVOX_BUILD)
++        set(LEMONVOX_BUILD "unknown")
++    endif()
++    execute_process(COMMAND git -C "${LEMONVOX_ROOT}" status --porcelain
++        OUTPUT_VARIABLE LEMONVOX_DIRTY OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
++    if(LEMONVOX_DIRTY)
++        string(APPEND LEMONVOX_BUILD "-dirty")
++    endif()
+ endif()
+ add_library(lemonvox_ubuntu_settings STATIC settings.cpp diagnostics.cpp)
+ target_compile_features(lemonvox_ubuntu_settings PUBLIC cxx_std_17)

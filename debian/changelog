@@ -1,0 +1,6 @@
+lemonvox (0.2.4+git20261120.3169048-1) UNRELEASED; urgency=medium
+
+  * Initial source packaging (Closes: #1154613).
+  * Add GNOME Shell 51 API compatibility while retaining GNOME 46 support.
+
+ -- Tomasz Iniewicz <84wholes_nozzle@icloud.com>  Fri, 20 Nov 2026 15:00:00 -0500

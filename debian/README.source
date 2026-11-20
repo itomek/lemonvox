@@ -1,0 +1,32 @@
+This is an UNRELEASED packaging candidate, not an archive upload.
+
+Maintainer correspondence uses the owner-confirmed public address
+84wholes_nozzle@icloud.com. The alias must remain reachable for review and
+ongoing package bug reports.
+
+The source version identifies upstream commit 3169048. The source archive is
+made with git archive from that exact upstream revision; debian/ is a separate
+packaging layer. No release tag or upstream release is created by packaging.
+
+The Debian patch series adds GNOME Shell 51 compatibility to the GNOME 46
+upstream extension. Package dependencies allow only those two tested major
+versions; 47-50 and future releases are not claimed. Native extension checks
+must pass on both 46 and 51 before upload. The current project-hosted APT
+package remains the unchanged upstream build.
+
+Newer GTK/libadwaita headers deprecate APIs still supported at runtime. Debian
+builds keep those diagnostics as warnings; other upstream -Werror checks stay
+enabled. This does not suppress the deprecation messages or claim an API port.
+
+The application currently vendors yyjson 0.13.0. Its license is covered by
+copyright. Discuss using the Debian system library with the sponsor before
+submission; the existing upstream build uses the bundled copy.
+
+Build in a disposable Ubuntu 24.04 environment:
+  apt-get build-dep .
+  dpkg-buildpackage --no-sign -b
+  lintian ../lemonvox_*.changes
+
+The GNOME extension schema is installed in the system GLib schema directory;
+dh_installgsettings arranges cache refresh on install and removal. The extension-local schemas directory is omitted so GNOME uses the system
+schema source. Never ship a precompiled schema cache from the source checkout.

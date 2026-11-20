@@ -24,6 +24,8 @@ brew install --cask itomek/lemonvox/lemonvox
 
 ### Ubuntu
 
+[Add the LemonVox APT repository once](ubuntu/README.md#add-the-repository-once), then:
+
 ```sh
 sudo apt install lemonvox
 ```

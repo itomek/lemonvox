@@ -1,0 +1,2 @@
+Tests: installed-package
+Depends: @, desktop-file-utils, libglib2.0-bin
