@@ -66,16 +66,17 @@ jobs:
         run: |
           dpkg-buildpackage --no-sign --build=binary
           lintian --fail-on error ../lemonvox_*_$(dpkg --print-architecture).changes
+          mkdir -p "$RUNNER_TEMP/lemonvox-debian"
+          for artifact in ../lemonvox_*.deb ../lemonvox-dbgsym_*.ddeb ../lemonvox-dbgsym_*.deb ../lemonvox_*.changes ../lemonvox_*.buildinfo; do
+            if test -f "$artifact"; then
+              cp "$artifact" "$RUNNER_TEMP/lemonvox-debian/"
+            fi
+          done
       - name: Retain Debian packaging candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: debian-development-package
-          path: |
-            ${{ github.workspace }}/../lemonvox_*.deb
-            ${{ github.workspace }}/../lemonvox-dbgsym_*.ddeb
-            ${{ github.workspace }}/../lemonvox-dbgsym_*.deb
-            ${{ github.workspace }}/../lemonvox_*.changes
-            ${{ github.workspace }}/../lemonvox_*.buildinfo
+          path: ${{ runner.temp }}/lemonvox-debian/*
           retention-days: 7
 
       - name: Retain installable development package
