@@ -1,0 +1,46 @@
+Source: lemonvox
+Section: sound
+Priority: optional
+Maintainer: Tomasz Iniewicz <84wholes_nozzle@icloud.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake (>= 3.22),
+ pkgconf,
+ libgtk-4-dev (>= 4.14),
+ libadwaita-1-dev (>= 1.5),
+ libsoup-3.0-dev,
+ libgstreamer1.0-dev,
+ libgstreamer-plugins-base1.0-dev,
+ libglib2.0-bin,
+ python3 <!nocheck>,
+ gjs <!nocheck>,
+ dbus-daemon <!nocheck>,
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/itomek/lemonvox
+Vcs-Git: https://github.com/itomek/lemonvox.git
+Vcs-Browser: https://github.com/itomek/lemonvox
+
+Package: lemonvox
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gnome-shell (>= 46),
+ gnome-shell (<< 47~) | gnome-shell (>= 51),
+ gnome-shell (<< 52~),
+ gsettings-desktop-schemas,
+ gstreamer1.0-pulseaudio,
+ gstreamer1.0-plugins-good,
+ pipewire-pulse,
+Description: speech dictation client for GNOME Wayland
+ LemonVox records speech on request and sends it to a separately running
+ Lemonade or compatible server for transcription and text cleanup. It pastes
+ the result at the current keyboard focus without sending Enter.
+ .
+ The server must provide transcription, chat completions and compatible model
+ discovery. Local and remote HTTP/HTTPS endpoints are supported. No server or
+ models are bundled.
+ .
+ Global shortcuts and the dictation indicator require the included GNOME Shell
+ extension, compatible with GNOME 46 and 51. X11 is not supported.

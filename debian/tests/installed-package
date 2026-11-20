@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+# Exercise the installed payload without starting a desktop, recording audio,
+# contacting an inference server or writing user preferences.
+version=$(dpkg-query -W -f='${Version}' lemonvox)
+lemonvox --version | grep -F "LemonVox ${version%-*} "
+desktop-file-validate /usr/share/applications/com.itomek.LemonVox.desktop
+test -f /usr/share/dbus-1/services/com.itomek.LemonVox.service
+test -f /usr/share/gnome-shell/extensions/lemonvox@itomek.com/metadata.json
+# Extension.getSettings must fall back to the system schema source. A local
+# schemas directory without gschemas.compiled would make extension loading fail.
+test ! -e /usr/share/gnome-shell/extensions/lemonvox@itomek.com/schemas
+GSETTINGS_BACKEND=memory gsettings get org.gnome.shell.extensions.lemonvox toggle-shortcut | grep -F "<Control><Alt>space"
+GSETTINGS_BACKEND=memory gsettings get org.gnome.shell.extensions.lemonvox cancel-shortcut | grep -F "<Control><Super>Escape"
+echo 'PASS: installed executable, desktop entry, activation service and system schemas'

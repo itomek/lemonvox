@@ -1,0 +1,101 @@
+Description: Support the current Debian GNOME Shell 51 API
+ GNOME 51 removed Clutter.get_default_backend and the affectsInputRegion
+ addChrome parameter. Use the stage context backend on new Shell versions;
+ retain the old backend call on GNOME 46. The omitted chrome parameter had
+ its default true value on GNOME 46. Update the native harness in the same way.
+Author: Tomasz Iniewicz <84wholes_nozzle@icloud.com>
+Forwarded: no
+Last-Update: 2026-11-20
+
+--- a/ubuntu/extension/extension.js
++++ b/ubuntu/extension/extension.js
+@@ -16,7 +16,7 @@
+         this._delivery = new ResultDelivery();
+         this._pasteSource = 0;
+         this._pasteGeneration = 0;
+-        this._keyboard = Clutter.get_default_backend().get_default_seat()
++        this._keyboard = (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat()
+             .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+         this._shortcutProblem = '';
+         this._client = new BackendClient(snapshot => this._update(snapshot));
+--- a/ubuntu/tests/extension_native_shell_session.sh
++++ b/ubuntu/tests/extension_native_shell_session.sh
+@@ -223,7 +223,7 @@
+     local key="$2"
+     local injected=''
+     injected="$(shell_eval \
+-        "Promise.all([import('gi://Clutter'), import('gi://GLib')]).then(([{default: Clutter}, {default: GLib}]) => { const device = global.__lemonVoxTestVirtualKeyboard ??= Clutter.get_default_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { let time = GLib.get_monotonic_time(); for (const keyval of [$modifiers]) device.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.RELEASED); for (const keyval of [$modifiers].reverse()) device.notify_keyval(time++, keyval, Clutter.KeyState.RELEASED); resolve('shortcut-injected'); return GLib.SOURCE_REMOVE; })); })")" || fail 'could not inject a virtual keyboard shortcut into private Shell'
++        "Promise.all([import('gi://Clutter'), import('gi://GLib')]).then(([{default: Clutter}, {default: GLib}]) => { const device = global.__lemonVoxTestVirtualKeyboard ??= (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { let time = GLib.get_monotonic_time(); for (const keyval of [$modifiers]) device.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.RELEASED); for (const keyval of [$modifiers].reverse()) device.notify_keyval(time++, keyval, Clutter.KeyState.RELEASED); resolve('shortcut-injected'); return GLib.SOURCE_REMOVE; })); })")" || fail 'could not inject a virtual keyboard shortcut into private Shell'
+     [[ "$injected" == *shortcut-injected* ]] || {
+         printf '%s\n' "$injected" >"$introspection_log"
+         fail 'private Shell did not accept virtual keyboard shortcut injection'
+@@ -233,7 +233,7 @@
+ prepare_virtual_keyboard() {
+     local prepared=''
+     prepared="$(shell_eval \
+-        "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxTestVirtualKeyboard ??= Clutter.get_default_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return global.__lemonVoxTestVirtualKeyboard ? 'virtual-keyboard-ready' : 'virtual-keyboard-missing'; })")" || fail 'could not create a private virtual keyboard'
++        "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxTestVirtualKeyboard ??= (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return global.__lemonVoxTestVirtualKeyboard ? 'virtual-keyboard-ready' : 'virtual-keyboard-missing'; })")" || fail 'could not create a private virtual keyboard'
+     [[ "$prepared" == *virtual-keyboard-ready* ]] || {
+         printf '%s\n' "$prepared" >"$introspection_log"
+         fail 'private Shell did not create a virtual keyboard'
+@@ -429,7 +429,7 @@
+ sleep 0.1
+ shell_eval 'JSON.stringify(global.__lvBareEvents)' >>"$test_root/modifier-activation-probe.log"
+ shell_eval "global.display.disconnect(global.__lvBareSignal); if (global.__lvBareAction) global.display.ungrab_accelerator(global.__lvBareAction); delete global.__lvBareSignal; delete global.__lvBareAction; delete global.__lvBareEvents; 'bare-probe-removed'" >/dev/null
+-shell_eval "Promise.all([import('gi://GObject'), import('gi://Clutter')]).then(([{default: GObject}, {default: Clutter}]) => JSON.stringify([['display', global.display], ['backend', global.backend], ['seat', Clutter.get_default_backend().get_default_seat()]].map(([name, object]) => ({name, signals: (() => { const result = []; for (let type = object.constructor.\$gtype; type; type = GObject.type_parent(type)) result.push(...GObject.signal_list_ids(type).map(id => GObject.signal_query(id).signal_name)); return result; })(), methods: (() => { const result = []; for (let prototype = Object.getPrototypeOf(object); prototype; prototype = Object.getPrototypeOf(prototype)) result.push(...Object.getOwnPropertyNames(prototype)); return result.filter(name => /key|event|device|seat|modifier|state/.test(name)); })()}))))" >"$test_root/modifier-api-probe.log"
++shell_eval "Promise.all([import('gi://GObject'), import('gi://Clutter')]).then(([{default: GObject}, {default: Clutter}]) => JSON.stringify([['display', global.display], ['backend', global.backend], ['seat', (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat()]].map(([name, object]) => ({name, signals: (() => { const result = []; for (let type = object.constructor.\$gtype; type; type = GObject.type_parent(type)) result.push(...GObject.signal_list_ids(type).map(id => GObject.signal_query(id).signal_name)); return result; })(), methods: (() => { const result = []; for (let prototype = Object.getPrototypeOf(object); prototype; prototype = Object.getPrototypeOf(prototype)) result.push(...Object.getOwnPropertyNames(prototype)); return result.filter(name => /key|event|device|seat|modifier|state/.test(name)); })()}))))" >"$test_root/modifier-api-probe.log"
+ ! rg '^\(false,' "$test_root/modifier-api-probe.log" "$test_root/modifier-activation-probe.log" || fail 'modifier API probe failed'
+ printf 'EVIDENCE: GNOME bare Alt activation timing and chord: %s\n' "$(tr '\n' ' ' <"$test_root/modifier-activation-probe.log")"
+ assert_backend_state idle
+--- a/ubuntu/tests/extension_native_matrix_session.sh
++++ b/ubuntu/tests/extension_native_matrix_session.sh
+@@ -160,7 +160,7 @@
+ prepare_virtual_keyboard() {
+     local prepared=''
+     prepared="$(shell_eval \
+-        "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxMatrixVirtualKeyboard ??= Clutter.get_default_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return global.__lemonVoxMatrixVirtualKeyboard ? 'virtual-keyboard-ready' : 'virtual-keyboard-missing'; })")" || fail 'could not create the private virtual keyboard'
++        "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxMatrixVirtualKeyboard ??= (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return global.__lemonVoxMatrixVirtualKeyboard ? 'virtual-keyboard-ready' : 'virtual-keyboard-missing'; })")" || fail 'could not create the private virtual keyboard'
+     [[ "$prepared" == *virtual-keyboard-ready* ]] || fail 'private Shell did not create the virtual keyboard'
+ }
+
+@@ -169,7 +169,7 @@
+     local key="$2"
+     local injected=''
+     injected="$(shell_eval \
+-        "Promise.all([import('gi://Clutter'), import('gi://GLib')]).then(([{default: Clutter}, {default: GLib}]) => { const device = global.__lemonVoxMatrixVirtualKeyboard ??= Clutter.get_default_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { let time = GLib.get_monotonic_time(); for (const keyval of [$modifiers]) device.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.RELEASED); for (const keyval of [$modifiers].reverse()) device.notify_keyval(time++, keyval, Clutter.KeyState.RELEASED); resolve('shortcut-injected'); return GLib.SOURCE_REMOVE; })); })")" || fail 'could not inject a private virtual keyboard shortcut'
++        "Promise.all([import('gi://Clutter'), import('gi://GLib')]).then(([{default: Clutter}, {default: GLib}]) => { const device = global.__lemonVoxMatrixVirtualKeyboard ??= (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { let time = GLib.get_monotonic_time(); for (const keyval of [$modifiers]) device.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.RELEASED); for (const keyval of [$modifiers].reverse()) device.notify_keyval(time++, keyval, Clutter.KeyState.RELEASED); resolve('shortcut-injected'); return GLib.SOURCE_REMOVE; })); })")" || fail 'could not inject a private virtual keyboard shortcut'
+     [[ "$injected" == *shortcut-injected* ]] || fail 'private Shell did not accept virtual keyboard injection'
+ }
+
+--- a/ubuntu/tests/settings_atspi_test.py
++++ b/ubuntu/tests/settings_atspi_test.py
+@@ -71,7 +71,7 @@
+     c = configparser.ConfigParser(interpolation=None); c.read(path); return c['Settings']
+
+ def key(keyval):
+-    js = "import('gi://Clutter').then(({default: C}) => { const d = global.__lvUiKeyboard ??= C.get_default_backend().get_default_seat().create_virtual_device(C.InputDeviceType.KEYBOARD_DEVICE); d.notify_keyval(0," + str(keyval) + ",C.KeyState.PRESSED); d.notify_keyval(0," + str(keyval) + ",C.KeyState.RELEASED); return 'injected'; })"
++    js = "import('gi://Clutter').then(({default: C}) => { const d = global.__lvUiKeyboard ??= (C.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(C.InputDeviceType.KEYBOARD_DEVICE); d.notify_keyval(0," + str(keyval) + ",C.KeyState.PRESSED); d.notify_keyval(0," + str(keyval) + ",C.KeyState.RELEASED); return 'injected'; })"
+     subprocess.run(['gdbus','call','--session','--dest','org.gnome.Shell','--object-path','/org/gnome/Shell','--method','org.gnome.Shell.Eval',js],check=True,stdout=subprocess.DEVNULL)
+     time.sleep(.15)
+
+--- a/ubuntu/extension/ui.js
++++ b/ubuntu/extension/ui.js
+@@ -79,7 +79,7 @@
+         this.actor.add_child(this._cancel);
+         this.actor.add_child(this._copy);
+         this.actor.add_child(this._settings);
+-        Main.layoutManager.addChrome(this.actor, {affectsInputRegion: true, trackFullscreen: true});
++        Main.layoutManager.addChrome(this.actor, {trackFullscreen: true});
+         this._monitorSignal = Main.layoutManager.connect('monitors-changed', () => this._position());
+         this._positionSource = 0;
+         this.actor.connect('notify::allocation', () => this._position());
+--- a/ubuntu/extension/metadata.json
++++ b/ubuntu/extension/metadata.json
+@@ -3,6 +3,6 @@
+   "name": "LemonVox",
+   "description": "Global dictation controls for LemonVox on Ubuntu GNOME Wayland.",
+   "url": "https://github.com/itomek/lemonvox",
+-  "shell-version": ["46"],
++  "shell-version": ["46", "51"],
+   "settings-schema": "org.gnome.shell.extensions.lemonvox"
+ }

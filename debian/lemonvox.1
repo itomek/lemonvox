@@ -1,0 +1,47 @@
+.TH LEMONVOX 1 "November 2026" "LemonVox" "User Commands"
+.SH NAME
+lemonvox \- speech dictation client for GNOME Wayland
+.SH SYNOPSIS
+.B lemonvox
+.RI [ --settings | --service | --version ]
+.SH DESCRIPTION
+LemonVox captures speech after an explicit user action and sends it to a
+separately running Lemonade or compatible transcription and chat server.
+The server and models must be installed and configured separately.
+The selected server may run locally or remotely.
+Completed dictation is pasted at the current keyboard focus without sending
+Enter. Copy remains available when paste cannot be dispatched.
+.SH OPTIONS
+.TP
+.B --settings
+Open the settings window.
+.TP
+.B --service
+Run the session D-Bus service used by the desktop integration.
+.TP
+.B --version
+Print version information and exit.
+.SH DESKTOP SETUP
+Use a GNOME 46 or 51 Wayland session. After installing, log out and back in, then
+run the following as the desktop user:
+.PP
+.nf
+  gnome-extensions enable lemonvox@itomek.com
+.fi
+.PP
+Open LemonVox settings to configure the server and transcription and cleanup
+models. The default dictation shortcut is Ctrl+Alt+Space; Ctrl+Super+Escape
+cancels an active operation. The GNOME extension supplies global shortcuts
+and the dictation indicator.
+.SH FILES
+User preferences are stored in the XDG configuration directory and are
+retained when the package is removed.
+.SH PRIVACY
+Microphone capture starts only after a user action. Audio is sent to the
+configured server. Server retention depends on that server's configuration.
+Dictated content is not intended for diagnostic logs. Pasted or copied text
+remains on the desktop clipboard according to its normal lifetime.
+.SH SEE ALSO
+.BR gnome-extensions (1)
+.PP
+https://github.com/itomek/lemonvox

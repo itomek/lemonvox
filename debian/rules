@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/pkg-info.mk
+
+%:
+	dh $@ --buildsystem=cmake --sourcedirectory=ubuntu
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DLEMONVOX_VERSION=$(DEB_VERSION_UPSTREAM) \
+		-DLEMONVOX_BUILD=$(DEB_VERSION_UPSTREAM) \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g -DNDEBUG -UNDEBUG -Wno-error=deprecated-declarations" \
+		-DBUILD_TESTING=$(if $(filter nocheck,$(DEB_BUILD_OPTIONS)),OFF,ON)
+
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/lemonvox
+	install -Dm644 ubuntu/packaging/com.itomek.LemonVox.desktop debian/lemonvox/usr/share/applications/com.itomek.LemonVox.desktop
+	install -Dm644 ubuntu/packaging/com.itomek.LemonVox.service debian/lemonvox/usr/share/dbus-1/services/com.itomek.LemonVox.service
+	mkdir -p debian/lemonvox/usr/share/gnome-shell/extensions/lemonvox@itomek.com
+	cp -a ubuntu/extension/. debian/lemonvox/usr/share/gnome-shell/extensions/lemonvox@itomek.com/
+	rm -rf debian/lemonvox/usr/share/gnome-shell/extensions/lemonvox@itomek.com/schemas
+	install -Dm644 ubuntu/extension/schemas/org.gnome.shell.extensions.lemonvox.gschema.xml debian/lemonvox/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.lemonvox.gschema.xml

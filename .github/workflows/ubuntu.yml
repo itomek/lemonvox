@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            cmake ninja-build g++ pkg-config apt-utils gnupg \
+            cmake ninja-build build-essential pkg-config apt-utils gnupg debhelper lintian \
             libgtk-4-dev libadwaita-1-dev libsoup-3.0-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-good gstreamer1.0-pulseaudio \
@@ -62,6 +62,23 @@ jobs:
           LEMONVOX_DEB="$(find "$RUNNER_TEMP/lemonvox-ubuntu" -maxdepth 1 -name 'lemonvox_*.deb' -print -quit)" \
             python3 ubuntu/tests/packaging_test.py
 
+      - name: Build Debian packaging candidate without publication
+        run: |
+          dpkg-buildpackage --no-sign --build=binary
+          lintian --fail-on error ../lemonvox_*_$(dpkg --print-architecture).changes
+          mkdir -p "$RUNNER_TEMP/lemonvox-debian"
+          for artifact in ../lemonvox_*.deb ../lemonvox-dbgsym_*.ddeb ../lemonvox-dbgsym_*.deb ../lemonvox_*.changes ../lemonvox_*.buildinfo; do
+            if test -f "$artifact"; then
+              cp "$artifact" "$RUNNER_TEMP/lemonvox-debian/"
+            fi
+          done
+      - name: Retain Debian packaging candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: debian-development-package
+          path: ${{ runner.temp }}/lemonvox-debian/*
+          retention-days: 7
+
       - name: Retain installable development package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -70,6 +87,45 @@ jobs:
             ${{ runner.temp }}/lemonvox-ubuntu/lemonvox_*.deb
             ${{ runner.temp }}/lemonvox-ubuntu/SHA256SUMS-ubuntu-*.txt
             ${{ runner.temp }}/lemonvox-ubuntu/VERSION-ubuntu-*.txt
+          retention-days: 7
+
+  debian:
+    runs-on: ubuntu-24.04
+    container: debian:unstable
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Debian build and package-test dependencies
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            build-essential cmake pkgconf debhelper lintian python3 \
+            libgtk-4-dev libadwaita-1-dev libsoup-3.0-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gjs dbus-daemon libglib2.0-bin desktop-file-utils gnome-shell \
+            gstreamer1.0-pulseaudio gstreamer1.0-plugins-good pipewire-pulse
+      - name: Build and check the current Debian candidate
+        run: |
+          useradd --create-home builder
+          mkdir -p /home/builder/build/lemonvox
+          cp -a "$GITHUB_WORKSPACE/." /home/builder/build/lemonvox/
+          chown -R builder:builder /home/builder/build
+          runuser -u builder -- sh -c 'cd /home/builder/build/lemonvox && dpkg-buildpackage --no-sign --build=binary'
+          runuser -u builder -- lintian --fail-on error /home/builder/build/lemonvox_*_$(dpkg --print-architecture).changes
+          apt-get install --yes --no-install-recommends /home/builder/build/lemonvox_*_$(dpkg --print-architecture).deb
+          runuser -u builder -- sh /home/builder/build/lemonvox/debian/tests/installed-package
+      - name: Retain current Debian candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: debian-unstable-development-package
+          path: |
+            /home/builder/build/lemonvox_*.deb
+            /home/builder/build/lemonvox-dbgsym_*.ddeb
+            /home/builder/build/lemonvox-dbgsym_*.deb
+            /home/builder/build/lemonvox_*.changes
+            /home/builder/build/lemonvox_*.buildinfo
           retention-days: 7
 
   gnome-wayland:
