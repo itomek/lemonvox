@@ -57,7 +57,7 @@ Last-Update: 2026-11-20
 +        "import('gi://Clutter').then(({default: Clutter}) => { global.__lemonVoxMatrixVirtualKeyboard ??= (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return global.__lemonVoxMatrixVirtualKeyboard ? 'virtual-keyboard-ready' : 'virtual-keyboard-missing'; })")" || fail 'could not create the private virtual keyboard'
      [[ "$prepared" == *virtual-keyboard-ready* ]] || fail 'private Shell did not create the virtual keyboard'
  }
- 
+
 @@ -169,7 +169,7 @@
      local key="$2"
      local injected=''
@@ -66,18 +66,18 @@ Last-Update: 2026-11-20
 +        "Promise.all([import('gi://Clutter'), import('gi://GLib')]).then(([{default: Clutter}, {default: GLib}]) => { const device = global.__lemonVoxMatrixVirtualKeyboard ??= (Clutter.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE); return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => { let time = GLib.get_monotonic_time(); for (const keyval of [$modifiers]) device.notify_keyval(time++, keyval, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.PRESSED); device.notify_keyval(time++, $key, Clutter.KeyState.RELEASED); for (const keyval of [$modifiers].reverse()) device.notify_keyval(time++, keyval, Clutter.KeyState.RELEASED); resolve('shortcut-injected'); return GLib.SOURCE_REMOVE; })); })")" || fail 'could not inject a private virtual keyboard shortcut'
      [[ "$injected" == *shortcut-injected* ]] || fail 'private Shell did not accept virtual keyboard injection'
  }
- 
+
 --- a/ubuntu/tests/settings_atspi_test.py
 +++ b/ubuntu/tests/settings_atspi_test.py
 @@ -71,7 +71,7 @@
      c = configparser.ConfigParser(interpolation=None); c.read(path); return c['Settings']
- 
+
  def key(keyval):
 -    js = "import('gi://Clutter').then(({default: C}) => { const d = global.__lvUiKeyboard ??= C.get_default_backend().get_default_seat().create_virtual_device(C.InputDeviceType.KEYBOARD_DEVICE); d.notify_keyval(0," + str(keyval) + ",C.KeyState.PRESSED); d.notify_keyval(0," + str(keyval) + ",C.KeyState.RELEASED); return 'injected'; })"
 +    js = "import('gi://Clutter').then(({default: C}) => { const d = global.__lvUiKeyboard ??= (C.get_default_backend?.() ?? global.stage.context.get_backend()).get_default_seat().create_virtual_device(C.InputDeviceType.KEYBOARD_DEVICE); d.notify_keyval(0," + str(keyval) + ",C.KeyState.PRESSED); d.notify_keyval(0," + str(keyval) + ",C.KeyState.RELEASED); return 'injected'; })"
      subprocess.run(['gdbus','call','--session','--dest','org.gnome.Shell','--object-path','/org/gnome/Shell','--method','org.gnome.Shell.Eval',js],check=True,stdout=subprocess.DEVNULL)
      time.sleep(.15)
- 
+
 --- a/ubuntu/extension/ui.js
 +++ b/ubuntu/extension/ui.js
 @@ -79,7 +79,7 @@
